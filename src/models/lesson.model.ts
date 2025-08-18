@@ -3,13 +3,7 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 export interface ILesson extends Document {
   type: string;
   title: string;
-  content: {
-    id: string;
-    audioUrl: string;
-    videoUrl: string;
-    transcript: string;
-    vocabulary: string[];
-  }[];
+  medias: Types.ObjectId[];
   created_at: Date;
   created_by: Types.ObjectId;
   updated_at: Date;
@@ -18,15 +12,7 @@ export interface ILesson extends Document {
 const LessonSchema = new Schema<ILesson>({
   type: String,
   title: String,
-  content: [
-    {
-      id: String,
-      audioUrl: String,
-      videoUrl: String,
-      transcript: String,
-      vocabulary: [String],
-    },
-  ],
+  medias: [{ type: Schema.Types.ObjectId, ref: 'Media' }],
   created_at: { type: Date, default: Date.now },
   created_by: { type: Schema.Types.ObjectId, ref: 'User' },
   updated_at: Date,

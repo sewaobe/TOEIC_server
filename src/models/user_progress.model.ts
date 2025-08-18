@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface IUserProgress extends Document {
+  user_id: Types.ObjectId;
   learningPaths_id: Types.ObjectId;
   completedLessons_id: Types.ObjectId[];
   questions_id: Types.ObjectId[];
@@ -12,6 +13,7 @@ export interface IUserProgress extends Document {
 }
 
 const UserProgressSchema = new Schema<IUserProgress>({
+  user_id: { type: Schema.Types.ObjectId, ref: 'User' },
   learningPaths_id: { type: Schema.Types.ObjectId, ref: 'LearningPath' },
   completedLessons_id: [{ type: Schema.Types.ObjectId, ref: 'Lesson' }],
   questions_id: [{ type: Schema.Types.ObjectId, ref: 'Question' }],

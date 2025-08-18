@@ -3,7 +3,6 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 // 1. Tạo interface cho User, kế thừa Document để mongoose biết đây là 1 document
 export interface IUser extends Document {
   role_id: Types.ObjectId;
-  progress_id: Types.ObjectId[];
   username: string;
   email: string;
   isActive: boolean;
@@ -20,7 +19,6 @@ export interface IUser extends Document {
 // 2. Định nghĩa Schema cho User
 const UserSchema = new Schema<IUser>({
   role_id: { type: Schema.Types.ObjectId, ref: 'Role' },
-  progress_id: [{ type: Schema.Types.ObjectId, ref: 'UserProgress' }],
   username: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   isActive: { type: Boolean, default: false },

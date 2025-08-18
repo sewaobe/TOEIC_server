@@ -4,6 +4,7 @@ export interface ITest extends Document {
   title: string;
   questions: Types.ObjectId[];
   type: string;
+  isAccepted: Boolean;
   created_at: Date;
   created_by: Types.ObjectId;
   updated_at: Date;
@@ -13,6 +14,7 @@ const TestSchema = new Schema<ITest>({
   title: String,
   questions: [{ type: Schema.Types.ObjectId, ref: 'Question' }],
   type: String,
+  isAccepted: { type: Boolean, default: false },
   created_at: { type: Date, default: Date.now },
   created_by: { type: Schema.Types.ObjectId, ref: 'User' },
   updated_at: Date,
