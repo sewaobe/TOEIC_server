@@ -5,6 +5,7 @@ export interface IUser extends Document {
   role_id: Types.ObjectId;
   username: string;
   email: string;
+  passwordHash: string;
   isActive: boolean;
   profile: {
     fullName: string;
@@ -21,6 +22,7 @@ const UserSchema = new Schema<IUser>({
   role_id: { type: Schema.Types.ObjectId, ref: 'Role' },
   username: { type: String, required: true },
   email: { type: String, required: true, unique: true },
+  passwordHash: { type: String, required: true },
   isActive: { type: Boolean, default: false },
   profile: {
     fullName: String,
