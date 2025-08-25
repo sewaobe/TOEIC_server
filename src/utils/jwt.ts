@@ -7,7 +7,7 @@ export interface UserPayload {
   _id: string;
   email: string;
   username: string;
-  fullName: string;
+  fullname: string;
 }
 
 type MaybeMongooseDoc<T> = T &
@@ -24,7 +24,7 @@ const buildSafePayload = (payload: MaybeMongooseDoc<IUser>): UserPayload => {
     _id: (payload._id as Types.ObjectId).toString(), // <-- cast here
     email: payload.email,
     username: payload.username,
-    fullName: payload.profile.fullName,
+    fullname: payload.profile.fullname,
   };
 };
 

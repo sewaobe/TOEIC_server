@@ -8,7 +8,7 @@ export interface IUser extends Document {
   passwordHash: string;
   isActive: boolean;
   profile: {
-    fullName: string;
+    fullname: string;
     avatar: string;
   };
   created_at: Date;
@@ -25,7 +25,7 @@ const UserSchema = new Schema<IUser>({
   passwordHash: { type: String, required: true },
   isActive: { type: Boolean, default: false },
   profile: {
-    fullName: String,
+    fullname: String,
     avatar: String,
   },
   created_at: { type: Date, default: Date.now },

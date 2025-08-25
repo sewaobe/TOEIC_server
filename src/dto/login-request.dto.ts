@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 // Định nghĩa schema
 export const LoginRequestDTO = z.object({
-  email: z.string().min(1, 'Email is required').email('Email is invalid'),
+  username: z.string().min(8, 'Username must be at least 8 characters long'),
   password: z.string().min(8, 'Password is required'),
 });
 

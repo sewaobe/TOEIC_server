@@ -3,23 +3,23 @@ import { comparePassword, hashPassword } from '../utils/hash';
 import { generateAccessToken, generateRefreshToken } from '../utils/jwt';
 
 interface LoginRequest {
-  email: string;
+  username: string;
   password: string;
 }
 
 interface RegisterRequest {
   email: string;
   password: string;
-  fullName: string;
+  fullname: string;
   username: string;
 }
 
 export const loginService = async ({
-  email,
+  username,
   password,
 }: LoginRequest): Promise<{ accessToken: string; refreshToken: string }> => {
-  const user: IUser | null = await User.findOne({ email });
-  if (!user) throw new Error('Email does not exist');
+  const user: IUser | null = await User.findOne({ username });
+  if (!user) throw new Error('Username does not exist');
 
   const match = await comparePassword(password, user.passwordHash);
   if (!match) throw new Error('Password is not correct');
@@ -36,7 +36,7 @@ export const loginService = async ({
 export const registerService = async ({
   email,
   password,
-  fullName,
+  fullname,
   username,
 }: RegisterRequest): Promise<{ message: string }> => {
   const isEmailExist = await User.findOne({ email });
@@ -49,7 +49,9 @@ export const registerService = async ({
   const user = new User({
     email,
     passwordHash: hashedPassword,
-    fullName,
+    profile: {
+      fullname: fullname,
+    },
     username,
   });
   await user.save();
