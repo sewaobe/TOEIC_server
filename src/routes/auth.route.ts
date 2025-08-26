@@ -7,6 +7,11 @@ import {
 import { validateSchema } from '../validations/validate-schema.validation';
 import { LoginRequestDTO } from '../dto/login-request.dto';
 import { RegisterRequestDTO } from '../dto/register-request.dto';
+import {
+  requestOtp,
+  resetPassword,
+  verifyOtp,
+} from '../controllers/mail.controller';
 
 const router = express.Router();
 
@@ -23,4 +28,7 @@ router.post(
 // GET /refresh-token
 router.get('/refresh-token', refreshTokenController);
 
+router.post('/request-otp', requestOtp);
+router.post('/verify-otp', verifyOtp);
+router.post('/reset-password', resetPassword);
 export default router;
