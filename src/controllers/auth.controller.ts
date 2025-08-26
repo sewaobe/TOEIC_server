@@ -11,7 +11,9 @@ export const loginController = async (
 ): Promise<void> => {
   try {
     const loginRequest = req.body;
-    const { accessToken, refreshToken } = await loginService(loginRequest);
+    const { accessToken, refreshToken, user } = await loginService(
+      loginRequest,
+    );
 
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
@@ -27,7 +29,7 @@ export const loginController = async (
       maxAge: 2 * 60 * 1000, // 2 phút (ở code của bạn ghi comment 15 phút nhưng config 2 phút, bạn check lại)
     });
 
-    res.status(200).json({ message: 'Login successfully' });
+    res.status(200).json({ message: 'Login successfully', data: user });
   } catch (err) {
     next(err);
   }
