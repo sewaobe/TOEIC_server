@@ -1,8 +1,8 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface IQuestion extends Document {
-  type: string;
-  content: string;
+  name: string;
+  textQuestion: string;
   choices: string[];
   correctAnswer: string;
   explanation: string;
@@ -12,8 +12,8 @@ export interface IQuestion extends Document {
 }
 
 const QuestionSchema = new Schema<IQuestion>({
-  type: String,
-  content: String,
+  name: String,
+  textQuestion: String,
   choices: [String],
   correctAnswer: String,
   explanation: String,

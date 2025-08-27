@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface IMedia extends Document {
+  topic: string;
   url: string;
   type: string;
   lessons: Types.ObjectId[];
@@ -9,6 +10,7 @@ export interface IMedia extends Document {
 }
 
 const MediaSchema = new Schema<IMedia>({
+  topic: String,
   url: String,
   type: String,
   lessons: [{ type: Schema.Types.ObjectId, ref: 'Lesson' }],

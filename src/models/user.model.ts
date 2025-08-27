@@ -11,6 +11,7 @@ export interface IUser extends Document {
     fullname: string;
     avatar: string;
   };
+  badges?: Types.ObjectId[];
   created_at: Date;
   updated_at: Date;
   banned_at?: Date;
@@ -28,6 +29,7 @@ const UserSchema = new Schema<IUser>({
     fullname: String,
     avatar: String,
   },
+  badges: [{ type: Schema.Types.ObjectId, ref: 'Badge' }],
   created_at: { type: Date, default: Date.now },
   updated_at: Date,
   banned_at: Date,

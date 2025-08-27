@@ -3,9 +3,10 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 export interface IAchievement extends Document {
   list_user: {
     userId: Types.ObjectId;
-    test_id: Types.ObjectId;
+    fullname: String;
     score: number;
   }[];
+  test_id: Types.ObjectId;
   created_at: Date;
 }
 
@@ -13,10 +14,11 @@ const AchievementSchema = new Schema<IAchievement>({
   list_user: [
     {
       userId: { type: Schema.Types.ObjectId, ref: 'User' },
-      test_id: { type: Schema.Types.ObjectId, ref: 'Test' },
+      fullname: String,
       score: Number,
     },
   ],
+  test_id: { type: Schema.Types.ObjectId, ref: 'Test' },
   created_at: { type: Date, default: Date.now },
 });
 
