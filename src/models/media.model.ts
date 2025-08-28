@@ -18,4 +18,4 @@ const MediaSchema = new Schema<IMedia>({
   updated_at: Date,
 });
 
-export const Lesson = mongoose.model<IMedia>('Media', MediaSchema);
+export const Media = mongoose.model<IMedia>('Media', MediaSchema);

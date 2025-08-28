@@ -18,5 +18,5 @@ export const updateUserProfile = async (
 };
 
 export const getUserByUsername = async (username: string) => {
-  return await User.findOne({ username }).lean();
+  return await User.findOne({ username }).select("-passwordHash");
 };

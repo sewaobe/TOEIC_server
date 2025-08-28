@@ -1,25 +1,25 @@
-import mongoose, { Schema, Document, Types } from 'mongoose';
+import mongoose, { Schema, Document, Types } from "mongoose";
 
 export interface IQuestion extends Document {
-  name: string;
-  textQuestion: string;
-  choices: string[];
-  correctAnswer: string;
-  explanation: string;
+  name: string; // "Question 1", "Question 2", ...
+  textQuestion: string; // Nội dung câu hỏi
+  choices: Map<string, string>; // {"A": "text1", "B": "text2", ...}
+  correctAnswer: string; // "A", "B", ...
+  explanation: string; // Giải thích nếu có
   created_at: Date;
   created_by: Types.ObjectId;
   updated_at: Date;
 }
 
 const QuestionSchema = new Schema<IQuestion>({
-  name: String,
-  textQuestion: String,
-  choices: [String],
-  correctAnswer: String,
-  explanation: String,
+  name: { type: String, required: true },
+  textQuestion: { type: String, required: true },
+  choices: { type: Map, of: String, default: {} }, // Map key/value cho các lựa chọn
+  correctAnswer: { type: String, default: "" },
+  explanation: { type: String, default: "" },
   created_at: { type: Date, default: Date.now },
-  created_by: { type: Schema.Types.ObjectId, ref: 'User' },
+  created_by: { type: Schema.Types.ObjectId, ref: "User" },
   updated_at: Date,
 });
 
-export const Question = mongoose.model<IQuestion>('Question', QuestionSchema);
+export const Question = mongoose.model<IQuestion>("Question", QuestionSchema);

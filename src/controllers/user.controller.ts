@@ -1,7 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { AuthenticatedRequest } from "../middlewares/verifyAccessToken.middleware";
 import * as userService from "../services/user.service";
-import { getUserById, getUserByUsername } from "../services/user.service";
 
 export const getCurrentUser = async (
   req: AuthenticatedRequest,
@@ -25,9 +24,7 @@ export const getCurrentUser = async (
     next(err);
   }
 };
-interface UsernameParams {
-  username: string;
-}
+
 
 // Controller cập nhật profile
 export const updateProfileController = async (
@@ -53,7 +50,9 @@ export const updateProfileController = async (
   }
 };
 
-
+interface UsernameParams {
+  username: string;
+}
 export const getUserByUsernameController = async (
   req: Request<UsernameParams>, // dùng generic để khai báo params
   res: Response,
@@ -67,7 +66,7 @@ export const getUserByUsernameController = async (
       return res.status(404).json({ message: "User not found" });
     }
 
-    return res.status(200).json(user);
+    return res.status(200).json({ data: user });
   } catch (err) {
     next(err);
   }
