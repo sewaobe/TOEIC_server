@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { AuthenticatedRequest } from "../middlewares/verifyAccessToken.middleware";
 import * as userService from "../services/user.service";
+import { ProfileDto } from "../dto/profile.dto";
 
 export const getCurrentUser = async (
   req: AuthenticatedRequest,
@@ -42,7 +43,7 @@ export const updateProfileController = async (
       email, // root
       "profile.fullname": fullname, // nested
       "profile.avatar": avatar,     // nested
-    });
+    } as any);
 
     res.json({ data: updatedUser });
   } catch (err) {
@@ -61,12 +62,12 @@ export const getUserByUsernameController = async (
   try {
     const { username } = req.params;
 
-    const user = await userService.getUserByUsername(username);
-    if (!user) {
+    const ProfileDto = await userService.getProfileUserByUsername(username);
+    if (!ProfileDto) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    return res.status(200).json({ data: user });
+    return res.status(200).json({ data: ProfileDto });
   } catch (err) {
     next(err);
   }
