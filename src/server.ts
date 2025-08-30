@@ -7,8 +7,8 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { connectDB } from './configs/db';
 import authRouter from './routes/auth.route';
-
 import userRouter from './routes/user.route';
+import testRouter from './routes/test.route'
 import { errorLogger, httpLogger } from './middlewares/logger.middleware';
 
 connectDB();
@@ -28,6 +28,7 @@ app.use(cookieParser());
 // Router API
 app.use('/api/auth', authRouter);
 app.use('/api/users', userRouter);
+app.use('/api/tests', testRouter)
 app.use(errorLogger);
 
 // Middleware xử lý lỗi cuối cùng

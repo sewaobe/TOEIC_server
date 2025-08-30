@@ -17,9 +17,7 @@ export interface IPart {
 export interface ITest extends Document {
   title: string;
   audioListen: Types.ObjectId[];
-  questions: {
-    [partName: string]: IPart; // key là tên part, ví dụ "Part 1"
-  };
+  questions: Map<string, IPart>;  // key là tên part, ví dụ "Part 1"
   type: TestType;
   status: TestStatus;
   created_at: Date;
