@@ -1,6 +1,7 @@
 import express from 'express';
 import {
   loginController,
+  logoutController,
   refreshTokenController,
   registerController,
 } from '../controllers/auth.controller';
@@ -27,6 +28,7 @@ router.post(
 
 // GET /refresh-token
 router.get('/refresh-token', refreshTokenController);
+router.post('/logout', logoutController);
 
 router.post('/request-otp', requestOtp);
 router.post('/verify-otp', verifyOtp);

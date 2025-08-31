@@ -90,3 +90,29 @@ export const refreshTokenController = async (
     next(err);
   }
 };
+
+export const logoutController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    // Xóa cookie accessToken và refreshToken
+    res.clearCookie('accessToken', {
+      httpOnly: true,
+      secure: false,   // set true nếu bạn dùng HTTPS
+      sameSite: 'lax',
+    });
+
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: false,   // set true nếu bạn dùng HTTPS
+      sameSite: 'lax',
+    });
+
+    // Optionally: trả về message
+    res.status(200).json({ message: 'Logged out successfully' });
+  } catch (err) {
+    next(err);
+  }
+};

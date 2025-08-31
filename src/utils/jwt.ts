@@ -57,8 +57,9 @@ export const generateRefreshToken = (
 export const generateAccessTokenFromPayload = (
   payload: UserPayload,
 ): string => {
+  const { exp, iat, ...safePayload } = payload as any;
   return jwt.sign(
-    payload,
+    safePayload,
     process.env.JWT_ACCESS_SECRET as Secret,
     { expiresIn: '15m' } as SignOptions,
   );
