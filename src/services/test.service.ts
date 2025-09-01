@@ -5,7 +5,7 @@ import { Types } from "mongoose";
 export const getFullTest = async (testId: string): Promise<ITest | null> => {
   return Test.findById(testId)
     .populate("audioListen", "url")
-    .populate("questions.$*.groups.audioUrl", "url" )
+    .populate("questions.$*.groups.audioUrl", "url")
     .populate("questions.$*.groups.imagesUrl", "url")
     .populate("questions.$*.groups.questions");
 };
@@ -74,7 +74,9 @@ export const submitTest = async (
 
   // Tính điểm
   const score =
-    detailedAnswers.filter((a) => a.isCorrect).length / detailedAnswers.length*990;
+    (detailedAnswers.filter((a) => a.isCorrect).length /
+      detailedAnswers.length) *
+    990;
 
   // Lưu UserTest
   const userTest = new UserTest({
@@ -88,4 +90,58 @@ export const submitTest = async (
   await userTest.save();
 
   return { score, answers: detailedAnswers };
+};
+
+export const getTestsWithScoreAndSearch = async (
+  userId: string,
+  page: number,
+  limit: number,
+  search?: string
+) => {
+  const skip = (page - 1) * limit;
+
+  const matchStage = search
+    ? { title: { $regex: new RegExp(search, "i") } } // tìm kiếm gần đúng theo tên
+    : {}; // không filter nếu không có search
+
+  const tests = await Test.aggregate([
+    { $match: matchStage },
+    {
+      $lookup: {
+        from: "usertests",
+        let: { testId: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ["$test_id", "$$testId"] },
+                  { $eq: ["$user_id", new Types.ObjectId(userId)] },
+                ],
+              },
+            },
+          },
+          { $limit: 1 },
+        ],
+        as: "userResult",
+      },
+    },
+    { $sort: { createdAt: -1, _id: 1 } },
+    { $skip: skip },
+    { $limit: limit },
+    {
+      $project: {
+        _id: 0,
+        id: "$_id",
+        title: 1,
+        details: "chưa có",
+        score: { $ifNull: [{ $arrayElemAt: ["$userResult.score", 0] }, null] },
+      },
+    },
+  ]);
+
+  const totalTests = await Test.countDocuments(matchStage);
+  const totalPages = Math.ceil(totalTests / limit);
+
+  return { tests, totalTests, totalPages };
 };
