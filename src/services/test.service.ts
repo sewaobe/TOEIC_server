@@ -145,3 +145,46 @@ export const getTestsWithScoreAndSearch = async (
 
   return { tests, totalTests, totalPages };
 };
+
+export const getLatestTest = async (limit: number = 5): Promise<ITest[]> => {
+  return await Test.aggregate([
+    { $sort: { create_at: -1 } },
+    { $limit: limit },
+    {
+      $lookup: {
+        from: 'usertests',
+        localField: "_id",
+        foreignField: "test_id",
+        as: "userTests",
+      }
+    },
+    {
+      $addFields: {
+        totalUsers: { $size: "$userTests" },
+      }
+    },
+    {
+      $lookup: {
+        from: "comments",
+        localField: "_id",
+        foreignField: "test_id",
+        as: "comments"
+      }
+    },
+    {
+      $addFields: {
+        totalComments: { $size: "$comments" }
+      }
+    },
+    {
+      $project: {
+        title: 1,
+        type: 1,
+        status: 1,
+        create_at: 1,
+        totalUsers: 1,
+        totalComments: 1
+      }
+    }
+  ])
+}

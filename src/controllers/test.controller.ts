@@ -1,6 +1,5 @@
-import { Request, Response } from "express";
+import { NextFunction, Request, Response } from "express";
 import * as testService from "../services/test.service";
-import { AuthenticatedRequest } from "../middlewares/verifyAccessToken.middleware";
 
 export const getTest = async (req: Request, res: Response) => {
   try {
@@ -79,3 +78,18 @@ export const getTestsWithScoreAndSearch = async (req: Request, res: Response) =>
     res.status(500).json({ message: "Server error" });
   }
 };
+
+export const getLatestTests = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 5;
+    const tests = await testService.getLatestTest(limit);
+    if (!tests || tests.length === 0) {
+      res.status(404).json({ message: "No tests found" });
+      return;
+    }
+
+    res.status(200).json({ status: 'success', count: tests.length, data: tests })
+  } catch (error) {
+    next(error);
+  }
+}

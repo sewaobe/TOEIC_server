@@ -1,10 +1,9 @@
 import { Request, Response, NextFunction } from "express";
-import { AuthenticatedRequest } from "../middlewares/verifyAccessToken.middleware";
 import * as userService from "../services/user.service";
 import { ProfileDto } from "../dto/profile.dto";
 
 export const getCurrentUser = async (
-  req: AuthenticatedRequest,
+  req: Request,
   res: Response,
   next: NextFunction
 ) => {
@@ -29,7 +28,7 @@ export const getCurrentUser = async (
 
 // Controller cập nhật profile
 export const updateProfileController = async (
-  req: AuthenticatedRequest,
+  req: Request,
   res: Response,
   next: NextFunction
 ) => {

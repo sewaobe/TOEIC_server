@@ -1,13 +1,16 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction, RequestHandler } from 'express';
 import jwt, { JwtPayload } from 'jsonwebtoken';
 
-// Nếu bạn muốn gán thêm trường 'user' vào Request
-export interface AuthenticatedRequest extends Request {
-  user?: string | JwtPayload;
+// Tùy chỉnh JwtPayload
+export interface JwtUserPayload extends JwtPayload {
+  _id: string;
+  role: string;
+  email: string;
+  username: string;
+  fullname: string;
 }
-
-export const verifyAccessToken = (
-  req: AuthenticatedRequest,
+export const verifyAccessToken: RequestHandler = (
+  req: Request,
   res: Response,
   next: NextFunction,
 ): void => {
@@ -19,7 +22,7 @@ export const verifyAccessToken = (
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET as string);
+    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET as string) as JwtUserPayload;
     req.user = decoded; // gán payload đã decode vào req.user
     next();
   } catch (err) {

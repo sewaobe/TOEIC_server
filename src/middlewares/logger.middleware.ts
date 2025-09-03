@@ -1,26 +1,11 @@
-// middlewares/loggerMiddleware.ts
-import {
-  Request,
-  Response,
-  NextFunction,
-  RequestHandler,
-  ErrorRequestHandler,
-} from 'express';
+import { Request, Response, NextFunction, ErrorRequestHandler } from 'express';
 import logger from '../configs/logger';
 
-// Nếu bạn muốn gán thêm user vào req
-export interface AuthenticatedRequest extends Request {
-  user?: {
-    _id?: string;
-    [key: string]: any;
-  };
-}
-
 // Middleware log HTTP request
-export const httpLogger: RequestHandler = (
-  req: AuthenticatedRequest,
+export const httpLogger = (
+  req: Request,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) => {
   const userId = req.user?._id || 'anonymous';
   const start = Date.now();
@@ -29,9 +14,7 @@ export const httpLogger: RequestHandler = (
     const duration = Date.now() - start;
     logger.info(
       `[${req.method}] ${req.originalUrl} ${res.statusCode} - ${duration}ms`,
-      {
-        userId,
-      },
+      { userId },
     );
   });
 
@@ -41,11 +24,13 @@ export const httpLogger: RequestHandler = (
 // Middleware log errors
 export const errorLogger: ErrorRequestHandler = (
   err: any,
-  req: AuthenticatedRequest,
+  req: Request, // để match type của ErrorRequestHandler
   res: Response,
   next: NextFunction,
 ) => {
+  // ép kiểu để dùng user
   const userId = req.user?._id || 'anonymous';
+
   logger.error(`[${req.method}] ${req.originalUrl} - ${err.message}`, {
     userId,
     stack: err.stack,
