@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction, RequestHandler } from 'express';
 import jwt, { JwtPayload } from 'jsonwebtoken';
 
+
 // Tùy chỉnh JwtPayload
 export interface JwtUserPayload extends JwtPayload {
   _id: string;
@@ -8,7 +9,7 @@ export interface JwtUserPayload extends JwtPayload {
   email: string;
   username: string;
   fullname: string;
-}
+};
 export const verifyAccessToken: RequestHandler = (
   req: Request,
   res: Response,

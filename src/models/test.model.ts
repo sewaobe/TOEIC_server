@@ -20,6 +20,8 @@ export interface ITest extends Document {
   questions: Map<string, IPart>;  // key là tên part, ví dụ "Part 1"
   type: TestType;
   status: TestStatus;
+  countComment: number;  // 👈 thêm
+  countSubmit: number;   // 👈 thêm
   created_at: Date;
   created_by: Types.ObjectId;
   updated_at: Date;
@@ -63,6 +65,8 @@ const TestSchema = new Schema<ITest>(
       enum: Object.values(TestStatus),
       default: TestStatus.DRAFT,
     },
+    countComment: { type: Number, default: 0 }, // 👈 thêm
+    countSubmit: { type: Number, default: 0 },  // 👈 thêm
     created_at: { type: Date, default: Date.now },
     created_by: { type: Schema.Types.ObjectId, ref: 'User' },
     updated_at: Date,

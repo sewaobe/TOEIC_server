@@ -9,20 +9,24 @@ export interface IUserTest extends Document {
     selectedOption: string;
     isCorrect: boolean;
   }[];
+  completedPart: string; // Phần đã hoàn thành, ví dụ: "Part 1,2"
+  duration: number; // Thời gian làm bài (tính bằng giây hoặc ms)
   submit_at: Date;
 }
 
 const UserTestSchema = new Schema<IUserTest>({
   user_id: { type: Schema.Types.ObjectId, ref: 'User' },
   test_id: { type: Schema.Types.ObjectId, ref: 'Test' },
-  score: Number,
+  score: { type: Number, default: 0 },
   answers: [
     {
       question_id: { type: Schema.Types.ObjectId, ref: 'Question' },
-      selectedOption: String,
-      isCorrect: Boolean,
+      selectedOption: { type: String, default: '' },
+      isCorrect: { type: Boolean, default: false },
     },
   ],
+  completedPart: { type: String, default: '' }, // mặc định rỗng
+  duration: { type: Number, default: 0 }, // mặc định 0 giây
   submit_at: { type: Date, default: Date.now },
 });
 

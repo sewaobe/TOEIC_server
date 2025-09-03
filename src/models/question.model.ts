@@ -6,6 +6,7 @@ export interface IQuestion extends Document {
   choices: Map<string, string>; // {"A": "text1", "B": "text2", ...}
   correctAnswer: string; // "A", "B", ...
   explanation: string; // Giải thích nếu có
+  tags: string[]; // <-- thêm mảng tag
   created_at: Date;
   created_by: Types.ObjectId;
   updated_at: Date;
@@ -17,6 +18,7 @@ const QuestionSchema = new Schema<IQuestion>({
   choices: { type: Map, of: String, default: {} }, // Map key/value cho các lựa chọn
   correctAnswer: { type: String, default: "" },
   explanation: { type: String, default: "" },
+  tags: { type: [String], default: [] }, // <-- khai báo array of string
   created_at: { type: Date, default: Date.now },
   created_by: { type: Schema.Types.ObjectId, ref: "User" },
   updated_at: Date,
