@@ -3,7 +3,7 @@ import jwt, { JwtPayload } from 'jsonwebtoken';
 
 // Nếu bạn muốn gán thêm trường 'user' vào Request
 export interface AuthenticatedRequest extends Request {
-  user?: string | JwtPayload;
+  user?:  JwtPayload;
 }
 
 export const verifyAccessToken = (
@@ -19,7 +19,7 @@ export const verifyAccessToken = (
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET as string);
+    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET as string) as JwtPayload;
     req.user = decoded; // gán payload đã decode vào req.user
     next();
   } catch (err) {

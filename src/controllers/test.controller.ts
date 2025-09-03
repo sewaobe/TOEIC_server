@@ -14,26 +14,34 @@ export const getTest = async (req: Request, res: Response) => {
     }
 
     if (part) {
-      const partData = await testService.getPart(testId, part as string);
-      if (!partData) return res.status(404).json({ message: "Part not found" });
-      return res.status(200).json({ data: partData });
+      const testWithOnePart = await testService.getPart(testId, part as string);
+      if (!testWithOnePart)
+        return res.status(404).json({ message: "Part not found" });
+      return res.status(200).json({ data: testWithOnePart });
     }
 
     if (parts) {
       const partsArray = (parts as string).split(",");
-      const selectedParts = await testService.getParts(testId, partsArray);
-      return res.status(200).json({ data: selectedParts });
+      const testWithSelectedParts = await testService.getParts(
+        testId,
+        partsArray
+      );
+      if (!testWithSelectedParts)
+        return res.status(404).json({ message: "Parts not found" });
+      return res.status(200).json({ data: testWithSelectedParts });
     }
 
-    // Mặc định trả metadata
+    // Mặc định: metadata
     const test = await testService.getFullTest(testId);
     if (!test) return res.status(404).json({ message: "Test not found" });
     return res.json({
-      id: test._id,
-      title: test.title,
-      type: test.type,
-      status: test.status,
-      totalParts: test.questions.size,
+      data: {
+        _id: test._id,
+        title: test.title,
+        type: test.type,
+        status: test.status,
+        totalParts: test.questions.size,
+      },
     });
   } catch (err) {
     res.status(500).json({ message: "Server error", error: err });
@@ -56,13 +64,12 @@ export const submitTest = async (req: Request, res: Response) => {
   }
 };
 
-export const getTestsWithScoreAndSearch = async (req: Request, res: Response) => {
+export const getTestsWithScoreAndSearch = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const userId = "68addc718f9d649a167e8041"; // giả lập user đã login
+    const userId = req.user?._id;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 6;
     const search = req.query.search?.toString(); // query tìm kiếm
-
     const { tests, totalTests, totalPages } =
       await testService.getTestsWithScoreAndSearch(
         userId,
@@ -77,5 +84,25 @@ export const getTestsWithScoreAndSearch = async (req: Request, res: Response) =>
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const getTestDetail = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { testId } = req.params;
+    const { page = "1", limit = "5" } = req.query;
+    const userId = req.user?._id; // nếu có auth middleware 
+    const test = await testService.getTestDetail(
+      testId,
+      userId,
+      parseInt(page as string),
+      parseInt(limit as string)
+    );
+
+    if (!test) return res.status(404).json({ message: "Test not found" });
+
+    res.json({ data: test });
+  } catch (err) {
+    res.status(500).json({ message: "Server error", error: err });
   }
 };

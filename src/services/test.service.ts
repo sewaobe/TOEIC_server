@@ -1,7 +1,7 @@
-import { Test, ITest, UserTest, IQuestion } from "../models";
+import { Test, ITest, UserTest, IQuestion, Comment } from "../models";
 import { Types } from "mongoose";
 
-// Lấy full test với tất cả populated fields
+// services/test.service.ts
 export const getFullTest = async (testId: string): Promise<ITest | null> => {
   return Test.findById(testId)
     .populate("audioListen", "url")
@@ -10,25 +10,34 @@ export const getFullTest = async (testId: string): Promise<ITest | null> => {
     .populate("questions.$*.groups.questions");
 };
 
-// Lấy một part cụ thể
 export const getPart = async (testId: string, partName: string) => {
   const test = await getFullTest(testId);
   if (!test) return null;
-  return test.questions.get("Part " + partName) || null;
+
+  return {
+    ...test.toObject(),
+    questions: {
+      ["Part " + partName]: test.questions.get("Part " + partName),
+    },
+  };
 };
 
-// Lấy nhiều part
 export const getParts = async (testId: string, partNames: string[]) => {
   const test = await getFullTest(testId);
   if (!test) return null;
 
-  const result: Record<string, any> = {};
+  const selected: Record<string, any> = {};
   partNames.forEach((p) => {
     const data = test.questions.get("Part " + p);
-    if (data) result["Part " + p] = data;
+    if (data) selected["Part " + p] = data;
   });
-  return result;
+
+  return {
+    ...test.toObject(),
+    questions: selected,
+  };
 };
+
 
 // Submit test
 export const submitTest = async (
@@ -101,11 +110,13 @@ export const getTestsWithScoreAndSearch = async (
   const skip = (page - 1) * limit;
 
   const matchStage = search
-    ? { title: { $regex: new RegExp(search, "i") } } // tìm kiếm gần đúng theo tên
-    : {}; // không filter nếu không có search
+    ? { title: { $regex: new RegExp(search, "i") } }
+    : {};
 
   const tests = await Test.aggregate([
     { $match: matchStage },
+
+    // Lấy kết quả cá nhân (cao nhất)
     {
       $lookup: {
         from: "usertests",
@@ -121,14 +132,44 @@ export const getTestsWithScoreAndSearch = async (
               },
             },
           },
+          { $sort: { score: -1 } },
           { $limit: 1 },
         ],
         as: "userResult",
       },
     },
+
+    // Tổng số người làm bài test (distinct user_id)
+    {
+      $lookup: {
+        from: "usertests",
+        let: { testId: "$_id" },
+        pipeline: [
+          { $match: { $expr: { $eq: ["$test_id", "$$testId"] } } },
+          { $group: { _id: "$user_id" } }, // group để loại trùng user
+          { $count: "count" },
+        ],
+        as: "totalUsers",
+      },
+    },
+
+    // Tổng số comment
+    {
+      $lookup: {
+        from: "comments",
+        let: { testId: "$_id" },
+        pipeline: [
+          { $match: { $expr: { $eq: ["$test_id", "$$testId"] } } },
+          { $count: "count" },
+        ],
+        as: "totalComments",
+      },
+    },
+
     { $sort: { createdAt: -1, _id: 1 } },
     { $skip: skip },
     { $limit: limit },
+
     {
       $project: {
         _id: 0,
@@ -136,6 +177,10 @@ export const getTestsWithScoreAndSearch = async (
         title: 1,
         details: "chưa có",
         score: { $ifNull: [{ $arrayElemAt: ["$userResult.score", 0] }, null] },
+        totalUsers: { $ifNull: [{ $arrayElemAt: ["$totalUsers.count", 0] }, 0] },
+        totalComments: {
+          $ifNull: [{ $arrayElemAt: ["$totalComments.count", 0] }, 0],
+        },
       },
     },
   ]);
@@ -144,4 +189,55 @@ export const getTestsWithScoreAndSearch = async (
   const totalPages = Math.ceil(totalTests / limit);
 
   return { tests, totalTests, totalPages };
+};
+export const getTestDetail = async (
+  testId: string,
+  userId?: string,
+  page = 1,
+  limit = 5
+) => {
+  const test = await Test.findById(testId)
+    .select("_id title audioListen createdAt")
+    .populate("audioListen", "url")
+    .lean();
+
+  if (!test) return null;
+
+  const totalUsers = await UserTest.countDocuments({
+    test_id: new Types.ObjectId(testId),
+  });
+
+  const totalComments = await Comment.countDocuments({
+    test_id: new Types.ObjectId(testId),
+  });
+
+  // highest score của user hiện tại
+  let highestScore = null;
+  if (userId) {
+    const best = await UserTest.findOne({
+      test_id: new Types.ObjectId(testId),
+      user_id: new Types.ObjectId(userId),
+    })
+      .sort({ score: -1 })
+      .lean();
+    highestScore = best ? best.score : null;
+  }
+
+  // load comments phân trang (latest trước)
+  const skip = (page - 1) * limit;
+  const comments = await Comment.find({
+    test_id: new Types.ObjectId(testId),
+  })
+    .populate("user_id", "username avatar")
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit)
+    .lean();
+  return {
+    ...test,
+    totalUsers,
+    totalComments,
+    highestScore,
+    comments, // page đầu tiên (5 cái chẳng hạn)
+  };
 };
