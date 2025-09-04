@@ -3,6 +3,7 @@ import { z } from 'zod';
 import bcrypt from 'bcrypt';
 import { User } from '../models/user.model';
 import { sendOtpEmail } from '../services/mail.service';
+import { ApiResponse } from '../utils/apiResponse';
 
 // ===== In-memory OTP store =====
 type OtpEntry = {
@@ -117,16 +118,17 @@ export const resetPassword = async (
       otpStore.delete(email);
       return res
         .status(400)
-        .json({ success: false, message: 'OTP không tồn tại hoặc đã hết hạn' });
+        .json(ApiResponse.fail('OTP không tồn tại hoặc đã hết hạn'));
     }
     if (!entry.verified)
       return res
         .status(400)
-        .json({ success: false, message: 'OTP chưa xác thực' });
+        .json(ApiResponse.fail('OTP chưa xác thực'));
+
     if (entry.otp !== otp)
       return res
         .status(400)
-        .json({ success: false, message: 'OTP không đúng' });
+        .json(ApiResponse.fail('OTP không đúng'));
 
     const hashed = await bcrypt.hash(newPassword, 10);
     const user = await User.findOneAndUpdate(
@@ -137,16 +139,17 @@ export const resetPassword = async (
     if (!user)
       return res
         .status(404)
-        .json({ success: false, message: 'Không tìm thấy user' });
+        .json(ApiResponse.fail('Không tìm thấy user'));
 
     otpStore.delete(email);
-    return res.json({ success: true, message: 'Đặt lại mật khẩu thành công' });
+    return res.json(ApiResponse.success(null, 'Đặt lại mật khẩu thành công'));
   } catch (err: any) {
     if (err instanceof z.ZodError)
       return res
         .status(400)
-        .json({ success: false, message: err.issues[0]?.message });
+        .json(ApiResponse.fail(err.issues[0]?.message));
     console.error(err);
-    return res.status(500).json({ success: false, message: 'Lỗi server' });
+    return res.status(500).json(ApiResponse.fail('Lỗi server'));
+
   }
 };

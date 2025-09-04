@@ -1,5 +1,6 @@
 import { Test, ITest, UserTest, IQuestion, Comment } from "../models";
 import { Types } from "mongoose";
+import { TestStatus } from "../models/enums/TestStatus";
 
 // services/test.service.ts
 export const getFullTest = async (testId: string): Promise<ITest | null> => {
@@ -193,46 +194,10 @@ export const getTestsWithScoreAndSearch = async (
 
 
 export const getLatestTest = async (limit: number = 5): Promise<ITest[]> => {
-  return await Test.aggregate([
-    { $sort: { create_at: -1 } },
-    { $limit: limit },
-    {
-      $lookup: {
-        from: 'usertests',
-        localField: "_id",
-        foreignField: "test_id",
-        as: "userTests",
-      }
-    },
-    {
-      $addFields: {
-        totalUsers: { $size: "$userTests" },
-      }
-    },
-    {
-      $lookup: {
-        from: "comments",
-        localField: "_id",
-        foreignField: "test_id",
-        as: "comments"
-      }
-    },
-    {
-      $addFields: {
-        totalComments: { $size: "$comments" }
-      }
-    },
-    {
-      $project: {
-        title: 1,
-        type: 1,
-        status: 1,
-        create_at: 1,
-        totalUsers: 1,
-        totalComments: 1
-      }
-    }
-  ])
+  return await Test.find({ status: TestStatus.OPEN })
+    .select("title type status topic countComment countSubmit create_at")
+    .sort({ create_at: -1 })
+    .limit(limit)
 };
 
 export const getTestDetail = async (

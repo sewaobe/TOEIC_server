@@ -1,13 +1,15 @@
 import { Types } from "mongoose";
-import { UserTest, IUserTest, Test, Comment } from "../models";
+import { UserTest } from "../models";
+import { TestStatus } from "../models/enums/TestStatus";
+import { IUserRecentTest } from "../dto/IUserRecentTest";
 
 export const getRecentUserTestsService = async (
     userId: string,
     limit: number = 3
-): Promise<any[]> => {
+): Promise<IUserRecentTest[]> => {
     const userObjectId = new Types.ObjectId(userId);
 
-    const recentTests = await UserTest.aggregate([
+    const recentTests = await UserTest.aggregate<IUserRecentTest>([
         // Lọc bài làm của user
         { $match: { user_id: userObjectId } },
 
@@ -25,29 +27,7 @@ export const getRecentUserTestsService = async (
             },
         },
         { $unwind: "$test" },
-
-        // Join UserTest để đếm số người đã làm bài đó
-        {
-            $lookup: {
-                from: "usertests",
-                localField: "test._id",
-                foreignField: "test_id",
-                as: "allUserTests",
-            },
-        },
-        { $addFields: { totalUsers: { $size: "$allUserTests" } } },
-
-        // Join Comment để đếm số comment
-        {
-            $lookup: {
-                from: "comments",
-                localField: "test._id",
-                foreignField: "test_id",
-                as: "comments",
-            },
-        },
-        { $addFields: { totalComments: { $size: "$comments" } } },
-
+        { $match: { "test.status": TestStatus.OPEN } },
         // Chọn field cần thiết để trả về
         {
             $project: {
@@ -56,11 +36,12 @@ export const getRecentUserTestsService = async (
                 title: "$test.title",
                 type: "$test.type",
                 status: "$test.status",
+                topic: "$test.topic",
                 created_at: "$test.created_at",
                 score: 1, // score của user
                 submit_at: 1, // thời gian submit
-                totalUsers: 1,
-                totalComments: 1,
+                totalUsers: "$test.countSubmit",
+                totalComments: "$test.countComment",
             },
         },
     ]);

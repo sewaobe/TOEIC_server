@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { loginService, registerService } from '../services/auth.service';
 import jwt from 'jsonwebtoken';
 import { generateAccessTokenFromPayload, UserPayload } from '../utils/jwt';
+import { ApiResponse } from '../utils/apiResponse';
 
 // Login
 export const loginController = async (
@@ -29,7 +30,7 @@ export const loginController = async (
       maxAge: 2 * 60 * 1000, // 2 phút (ở code của bạn ghi comment 15 phút nhưng config 2 phút, bạn check lại)
     });
 
-    res.status(200).json({ message: 'Login successfully', data: user });
+    res.status(200).json(ApiResponse.success(null, 'Login successfully'));
   } catch (err) {
     next(err);
   }
@@ -44,7 +45,7 @@ export const registerController = async (
   try {
     const registerRequest = req.body;
     const result = await registerService(registerRequest);
-    res.json(result);
+    res.status(201).json(ApiResponse.success(null, result.message));
   } catch (err) {
     next(err);
   }
@@ -59,7 +60,7 @@ export const refreshTokenController = async (
   try {
     const refreshToken = req.cookies?.refreshToken as string | undefined;
     if (!refreshToken) {
-      res.status(401).json({ message: 'Refresh token missing' });
+      res.status(401).json(ApiResponse.fail('Refresh token missing'));
       return;
     }
 
@@ -68,7 +69,7 @@ export const refreshTokenController = async (
       process.env.JWT_REFRESH_SECRET as string,
       (err, decoded) => {
         if (err || !decoded) {
-          res.status(403).json({ message: 'Invalid or expired refresh token' });
+          res.status(403).json(ApiResponse.fail('Invalid or expired refresh token'));
           return;
         }
 
@@ -83,7 +84,8 @@ export const refreshTokenController = async (
           maxAge: 15 * 60 * 1000, // 15 phút
         });
 
-        res.status(200).json({ message: 'Refresh token successfully' });
+        res.status(200).json(ApiResponse.success(null, 'Refresh token successfully'));
+
       },
     );
   } catch (err) {
@@ -111,7 +113,8 @@ export const logoutController = async (
     });
 
     // Optionally: trả về message
-    res.status(200).json({ message: 'Logged out successfully' });
+    res.status(200).json(ApiResponse.success(null, 'Logged out successfully'));
+
   } catch (err) {
     next(err);
   }

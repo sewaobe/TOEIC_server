@@ -1,4 +1,4 @@
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 dotenv.config();
@@ -9,7 +9,8 @@ import { connectDB } from './configs/db';
 import authRouter from './routes/auth.route';
 import userRouter from './routes/user.route';
 import testRouter from './routes/test.route'
-import { errorLogger, httpLogger } from './middlewares/logger.middleware';
+import { errorLogger } from './middlewares/logger.middleware';
+import { ApiResponse } from './utils/apiResponse';
 
 connectDB();
 
@@ -32,11 +33,15 @@ app.use('/api/tests', testRouter)
 app.use(errorLogger);
 
 // Middleware xử lý lỗi cuối cùng
-app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-  res.status(err.status || 500).json({
-    success: false,
-    message: err.message || 'Internal Server Error',
-  });
+app.use((err: any, req: Request, res: Response) => {
+  const statusCode = err.status || 500;
+
+  const response = ApiResponse.fail(
+    err.message || "Internal Server Error",
+    process.env.NODE_ENV === "development" ? err.stack : undefined
+  );
+
+  res.status(statusCode).json(response);
 });
 
 const PORT = process.env.PORT || 5000;
