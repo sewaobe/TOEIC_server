@@ -39,43 +39,47 @@ export const getParts = async (testId: string, partNames: string[]) => {
   };
 };
 
-
 // Submit test
 export const submitTest = async (
   userId: string,
   testId: string,
   answers: { question_id: string; selectedOption: string }[],
-  duration: number, 
-  completedPart?: string,
+  duration: number,
+  completedPart?: string
 ) => {
   const test = await getFullTest(testId);
   if (!test) throw new Error("Test not found");
 
+  // Map lưu số câu đúng từng part
+  const partStats: Record<string, { correct: number; total: number }> = {};
+
   const detailedAnswers = answers.map((a) => {
     let correct = false;
 
-    // Duyệt từng part trong Map
-    test.questions.forEach((partData, partName) => {
-      if (!partData.groups || partData.groups.length === 0) {
-        console.log("No groups in part:", partName);
-        return;
-      }
+    // Duyệt từng part
+    for (const [partName, partData] of test.questions.entries()) {
+      if (!partData.groups) continue;
 
-      // Duyệt từng group trong part
       for (const group of partData.groups) {
-        // Duyệt từng question trong group
-        for (const q of group.questions || []) {
-          const question = q as unknown as IQuestion; // cast qua unknown trước
+        for (const qRaw of group.questions || []) {
+          // Cast ObjectId -> IQuestion nếu đã populate
+          const question = qRaw as unknown as IQuestion;
+
           if (question._id!.toString() === a.question_id) {
             correct = question.correctAnswer === a.selectedOption[0];
+
+            // Cập nhật stats cho part
+            if (!partStats[partName]) partStats[partName] = { correct: 0, total: 0 };
+            partStats[partName].total += 1;
+            if (correct) partStats[partName].correct += 1;
+
             break;
           }
         }
-
-        if (correct) break; // đã tìm thấy question, thoát group
+        if (correct) break;
       }
-      if (correct) return; // đã tìm thấy question, thoát part
-    });
+      if (correct) break;
+    }
 
     return {
       question_id: new Types.ObjectId(a.question_id),
@@ -84,19 +88,25 @@ export const submitTest = async (
     };
   });
 
-  // Tính điểm
+  // Tính tổng điểm
   const score =
-    (detailedAnswers.filter((a) => a.isCorrect).length /
-      detailedAnswers.length) *
+    (detailedAnswers.filter((a) => a.isCorrect).length / detailedAnswers.length) *
     990;
-  console.log('điểm là', score)
-  // Lưu UserTest
+
+  // Chuyển stats thành parts array
+  const parts = Object.entries(partStats).map(([part_name, stat]) => ({
+    part_name,
+    accuracy: stat.total > 0 ? stat.correct / stat.total * 100 : 0,
+  }));
+
+  // Lưu vào DB
   const userTest = new UserTest({
     user_id: new Types.ObjectId(userId),
     test_id: new Types.ObjectId(testId),
     score,
     answers: detailedAnswers,
-    completedPart,
+    parts,
+    completedPart: completedPart || "",
     duration,
     submit_at: new Date(),
   });
@@ -105,7 +115,6 @@ export const submitTest = async (
 
   return { score, answers: detailedAnswers };
 };
-
 export const getTestsWithScoreAndSearch = async (
   userId: string,
   page: number,
@@ -133,6 +142,7 @@ export const getTestsWithScoreAndSearch = async (
                 $and: [
                   { $eq: ["$test_id", "$$testId"] },
                   { $eq: ["$user_id", new Types.ObjectId(userId)] },
+                  { $in: ["$completedPart", ["full-test", "demo_test"]] },
                 ],
               },
             },
@@ -182,7 +192,9 @@ export const getTestsWithScoreAndSearch = async (
         title: 1,
         details: "chưa có",
         score: { $ifNull: [{ $arrayElemAt: ["$userResult.score", 0] }, null] },
-        totalUsers: { $ifNull: [{ $arrayElemAt: ["$totalUsers.count", 0] }, 0] },
+        totalUsers: {
+          $ifNull: [{ $arrayElemAt: ["$totalUsers.count", 0] }, 0],
+        },
         totalComments: {
           $ifNull: [{ $arrayElemAt: ["$totalComments.count", 0] }, 0],
         },
@@ -196,18 +208,14 @@ export const getTestsWithScoreAndSearch = async (
   return { tests, totalTests, totalPages };
 };
 
-
 export const getLatestTest = async (limit: number = 5): Promise<ITest[]> => {
   return await Test.find({ status: TestStatus.OPEN })
     .select("title type status topic countComment countSubmit create_at")
     .sort({ create_at: -1 })
-    .limit(limit)
+    .limit(limit);
 };
 
-export const getTestDetail = async (
-  testId: string,
-  userId?: string,
-) => {
+export const getTestDetail = async (testId: string, userId?: string) => {
   const test = await Test.findById(testId)
     .select("_id title audioListen createdAt")
     .populate("audioListen", "url")
@@ -234,7 +242,6 @@ export const getTestDetail = async (
       .lean();
     highestScore = best ? best.score : null;
   }
-
 
   return {
     ...test,
