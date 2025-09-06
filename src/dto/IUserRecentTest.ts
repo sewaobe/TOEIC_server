@@ -8,8 +8,8 @@ export interface IUserRecentTest {
     status: TestStatus;
     topic: string;
     score: number;
-    totalSubmit: number;
-    totalComments: number;
+    countSubmit: number;
+    countComment: number;
     created_at: Date;
     submit_at: Date;
 }

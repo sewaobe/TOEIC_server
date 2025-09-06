@@ -40,8 +40,8 @@ export const getRecentUserTestsService = async (
                 created_at: "$test.created_at",
                 score: 1, // score của user
                 submit_at: 1, // thời gian submit
-                totalUsers: "$test.countSubmit",
-                totalComments: "$test.countComment",
+                countSubmit: "$test.countSubmit",
+                countComment: "$test.countComment",
             },
         },
     ]);

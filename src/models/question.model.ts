@@ -1,12 +1,14 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
 
 export interface IQuestion extends Document {
+  _id: Types.ObjectId;
   name: string; // "Question 1", "Question 2", ...
   textQuestion: string; // Nội dung câu hỏi
   choices: Map<string, string>; // {"A": "text1", "B": "text2", ...}
   correctAnswer: string; // "A", "B", ...
   explanation: string; // Giải thích nếu có
   tags: string[]; // <-- thêm mảng tag
+  planned_time: number;
   created_at: Date;
   created_by: Types.ObjectId;
   updated_at: Date;
@@ -19,6 +21,7 @@ const QuestionSchema = new Schema<IQuestion>({
   correctAnswer: { type: String, default: "" },
   explanation: { type: String, default: "" },
   tags: { type: [String], default: [] }, // <-- khai báo array of string
+  planned_time: { type: Number, default: 0 },
   created_at: { type: Date, default: Date.now },
   created_by: { type: Schema.Types.ObjectId, ref: "User" },
   updated_at: Date,
