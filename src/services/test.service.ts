@@ -44,7 +44,9 @@ export const getParts = async (testId: string, partNames: string[]) => {
 export const submitTest = async (
   userId: string,
   testId: string,
-  answers: { question_id: string; selectedOption: string }[]
+  answers: { question_id: string; selectedOption: string }[],
+  duration: number, 
+  completedPart?: string,
 ) => {
   const test = await getFullTest(testId);
   if (!test) throw new Error("Test not found");
@@ -87,13 +89,15 @@ export const submitTest = async (
     (detailedAnswers.filter((a) => a.isCorrect).length /
       detailedAnswers.length) *
     990;
-
+  console.log('điểm là', score)
   // Lưu UserTest
   const userTest = new UserTest({
     user_id: new Types.ObjectId(userId),
     test_id: new Types.ObjectId(testId),
     score,
     answers: detailedAnswers,
+    completedPart,
+    duration,
     submit_at: new Date(),
   });
 
@@ -147,7 +151,7 @@ export const getTestsWithScoreAndSearch = async (
         let: { testId: "$_id" },
         pipeline: [
           { $match: { $expr: { $eq: ["$test_id", "$$testId"] } } },
-          { $group: { _id: "$user_id" } }, // group để loại trùng user
+          // { $group: { _id: "$user_id" } }, // group để loại trùng user
           { $count: "count" },
         ],
         as: "totalUsers",
@@ -203,8 +207,6 @@ export const getLatestTest = async (limit: number = 5): Promise<ITest[]> => {
 export const getTestDetail = async (
   testId: string,
   userId?: string,
-  page = 1,
-  limit = 5
 ) => {
   const test = await Test.findById(testId)
     .select("_id title audioListen createdAt")
@@ -233,21 +235,11 @@ export const getTestDetail = async (
     highestScore = best ? best.score : null;
   }
 
-  // load comments phân trang (latest trước)
-  const skip = (page - 1) * limit;
-  const comments = await Comment.find({
-    test_id: new Types.ObjectId(testId),
-  })
-    .populate("user_id", "username avatar")
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit)
-    .lean();
+
   return {
     ...test,
     totalUsers,
     totalComments,
     highestScore,
-    comments, // page đầu tiên (5 cái chẳng hạn)
   };
 };

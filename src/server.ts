@@ -8,7 +8,8 @@ import cookieParser from 'cookie-parser';
 import { connectDB } from './configs/db';
 import authRouter from './routes/auth.route';
 import userRouter from './routes/user.route';
-import testRouter from './routes/test.route'
+import testRouter from './routes/test.route';
+import commentRouter from './routes/comment.route';
 import { errorLogger } from './middlewares/logger.middleware';
 import { ApiResponse } from './utils/apiResponse';
 
@@ -29,7 +30,8 @@ app.use(cookieParser());
 // Router API
 app.use('/api/auth', authRouter);
 app.use('/api/users', userRouter);
-app.use('/api/tests', testRouter)
+app.use('/api/tests', testRouter);
+app.use('/api/comments', commentRouter);
 app.use(errorLogger);
 
 // Middleware xử lý lỗi cuối cùng
