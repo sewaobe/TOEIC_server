@@ -4,7 +4,11 @@ import { ITest } from "../models";
 import { ApiResponse } from "../utils/apiResponse";
 // import {JwtUserPayload} from "../middlewares/verifyAccessToken.middleware"
 
-export const getTest = async (req: Request, res: Response) => {
+export const getTest = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const { testId } = req.params;
     const { part, parts, full } = req.query;
@@ -46,84 +50,107 @@ export const getTest = async (req: Request, res: Response) => {
       },
     });
   } catch (err) {
-    res.status(500).json({ message: "Server error", error: err });
+    next(err);
   }
 };
 
-export const submitTest = async (req: Request, res: Response) => {
+export const submitTest = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const { testId } = req.params;
-    const userId = req.body.userId; // Hoặc lấy từ token
-    const answers = req.body.answers; // [{question_id, selectedOption}, ...]
+    const { userId, answers, duration, completedPart } = req.body;
+    const result = await testService.submitTest(
+      userId,
+      testId,
+      answers,
+      duration,
+      completedPart // optional
+    );
 
-    const result = await testService.submitTest(userId, testId, answers);
     return res.status(200).json({
       message: "Test submitted successfully",
       data: result,
     });
   } catch (err: any) {
-    return res.status(500).json({ message: err.message || "Server error" });
+    next(err);
   }
 };
 
-export const getTestsWithScoreAndSearch = async (req: Request, res: Response) => {
+export const getTestsWithScoreAndSearch = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const userId = req.user!._id;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 6;
     const search = req.query.search?.toString(); // query tìm kiếm
     const { tests, totalTests, totalPages } =
-      await testService.getTestsWithScoreAndSearch(
-        userId,
-        page,
-        limit,
-        search
-      );
+      await testService.getTestsWithScoreAndSearch(userId, page, limit, search);
 
     res.json({
       data: { page, limit, totalPages, totalTests, tests },
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
+    next(err);
   }
 };
 
-
-export const getLatestTests = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+export const getLatestTests = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
   try {
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 5;
     const tests: ITest[] = await testService.getLatestTest(limit);
     if (!tests || tests.length === 0) {
-      res.status(200).json(ApiResponse.success<ITest[]>([], "Không có bài thi mới nào được tìm thấy!"));
+      res
+        .status(200)
+        .json(
+          ApiResponse.success<ITest[]>(
+            [],
+            "Không có bài thi mới nào được tìm thấy!"
+          )
+        );
       return;
     }
 
-    res.status(200).json(ApiResponse.success<ITest[]>(tests, `Lấy ${tests.length} bài thi mới nhất thành công!`, {
-      count: tests.length
-    }))
+    res.status(200).json(
+      ApiResponse.success<ITest[]>(
+        tests,
+        `Lấy ${tests.length} bài thi mới nhất thành công!`,
+        {
+          count: tests.length,
+        }
+      )
+    );
   } catch (error) {
     next(error);
   }
-}
+};
 
-export const getTestDetail = async (req: Request, res: Response) => {
+export const getTestDetail = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const { testId } = req.params;
-    const { page = "1", limit = "5" } = req.query;
-    const userId = req.user?._id; // nếu có auth middleware 
+    const userId = req.user?._id; // nếu có auth middleware
     const test = await testService.getTestDetail(
       testId,
       userId,
-      parseInt(page as string),
-      parseInt(limit as string)
     );
 
     if (!test) return res.status(404).json({ message: "Test not found" });
 
     res.json({ data: test });
   } catch (err) {
-    res.status(500).json({ message: "Server error", error: err });
+    next(err);
   }
 };
-
