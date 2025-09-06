@@ -4,7 +4,8 @@ export interface IMedia extends Document {
   topic: string;
   url: string;
   type: string;
-  lessons: Types.ObjectId[];
+  duration?: number;
+  transcript: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -13,7 +14,8 @@ const MediaSchema = new Schema<IMedia>({
   topic: String,
   url: String,
   type: String,
-  lessons: [{ type: Schema.Types.ObjectId, ref: 'Lesson' }],
+  duration: Number,
+  transcript: String,
   created_at: { type: Date, default: Date.now },
   updated_at: Date,
 });

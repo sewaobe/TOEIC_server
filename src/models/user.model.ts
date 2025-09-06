@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
+import { IPartAccuracy } from "./user_test.model";
 
 // 1. Tạo interface cho User, kế thừa Document để mongoose biết đây là 1 document
 export interface IUser extends Document {
@@ -13,6 +14,8 @@ export interface IUser extends Document {
     avatar: string;
   };
   badges?: Types.ObjectId[];
+  topics?: Types.ObjectId[];
+  master_parts: IPartAccuracy[];
   created_at: Date;
   updated_at: Date;
   banned_at?: Date;
@@ -32,6 +35,11 @@ const UserSchema = new Schema<IUser>({
     avatar: String,
   },
   badges: [{ type: Schema.Types.ObjectId, ref: "Badge" }],
+  topics: [{ type: Schema.Types.ObjectId, ref: "Topic" }],
+  master_parts: [{
+    part_name: { type: String, default: '' },
+    accuracy: { type: Number, default: 0 }
+  }],
   created_at: { type: Date, default: Date.now },
   updated_at: Date,
   banned_at: Date,
