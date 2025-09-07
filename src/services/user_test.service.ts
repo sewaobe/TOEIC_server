@@ -1,7 +1,9 @@
-import { Types } from "mongoose";
+import { PipelineStage, Types } from "mongoose";
 import { UserTest } from "../models";
 import { TestStatus } from "../models/enums/TestStatus";
 import { IUserRecentTest } from "../dto/IUserRecentTest";
+import { IUserTestHistory } from "../dto/IUserTestHistory";
+import { PaginationResult } from "../dto/PaginationResult";
 
 export const getRecentUserTestsService = async (
     userId: string,
@@ -48,3 +50,77 @@ export const getRecentUserTestsService = async (
 
     return recentTests;
 };
+
+export const getUserTestHistoryService = async (
+    userId: string,
+    testId: string,
+    page: number,
+    limit: number
+): Promise<PaginationResult<IUserTestHistory>> => {
+    const safePage = Math.max(1, Number(page) || 1);
+    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 10)); // chặn limit quá lớn
+    const skip = (safePage - 1) * safeLimit;
+
+    const userObjectId = new Types.ObjectId(userId);
+    const testObjectId = new Types.ObjectId(testId);
+
+    const pipeline: PipelineStage[] = [
+        { $match: { user_id: userObjectId, test_id: testObjectId } },
+        {
+            $facet: {
+                data: [
+                    { $sort: { submit_at: -1 } },
+                    {
+                        $project: {
+                            submit_at: 1,
+                            completedPart: 1,
+                            score: 1,
+                            duration: 1,
+                            correctCount: {
+                                $size: {
+                                    $filter: {
+                                        input: "$answers",
+                                        as: "answer",
+                                        cond: { $eq: ["$$answer.isCorrect", true] }
+                                    }
+                                }
+                            },
+                            questionCount: {
+                                $size: "$answers"
+                            }
+                        }
+                    },
+                    { $skip: skip },
+                    { $limit: safeLimit }
+                ],
+                meta: [
+                    { $count: "total" }
+                ]
+            }
+        },
+        {
+            $addFields: {
+                total: { $ifNull: [{ $arrayElemAt: ["$meta.total", 0] }, 0] }
+            }
+        },
+        { $project: { meta: 0 } }
+    ];
+
+    const agg = await UserTest.aggregate(pipeline).exec();
+    const first = agg[0] || { data: [], total: 0 };
+
+    const total = first.total as number;
+    const totalPages = Math.max(1, Math.ceil(total / safeLimit));
+
+    return {
+        data: first.data as IUserTestHistory[],
+        pagination: {
+            page: safePage,
+            limit: safeLimit,
+            total,
+            totalPages,
+            hasNext: safePage < totalPages,
+            hasPrev: safePage > 1
+        }
+    };
+}

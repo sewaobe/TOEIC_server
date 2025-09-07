@@ -1,7 +1,10 @@
 import { NextFunction, Request, Response } from 'express';
-import { getRecentUserTestsService } from './../services/user_test.service';
+import { getRecentUserTestsService, getUserTestHistoryService } from './../services/user_test.service';
 import { ApiResponse } from '../utils/apiResponse';
 import { IUserRecentTest } from '../dto/IUserRecentTest';
+import { Types } from 'mongoose';
+import { IUserTestHistory } from '../dto/IUserTestHistory';
+import { PaginationResult } from '../dto/PaginationResult';
 
 export const getRecentUserTests = async (
     req: Request,
@@ -23,6 +26,63 @@ export const getRecentUserTests = async (
             return;
         }
         res.status(200).json(ApiResponse.success<IUserRecentTest[]>(recentTests, `Lấy danh sách ${limit} bài làm gần nhất thành công`));
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+export const getUserTestHistory = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> => {
+    try {
+        const userId = req.user?._id?.toString();
+        const { testId } = req.params;
+        const page = Number(req.query.page ?? 1);
+        const limit = Number(req.query.limit ?? 4);
+
+        if (!userId) {
+            res.status(401).json(ApiResponse.fail("Không tìm thấy token của người dùng!"));
+            return;
+        }
+
+        if (!testId) {
+            res.status(404).json(ApiResponse.fail("Không tìm thấy lịch sử bài kiểm tra!"));
+            return;
+        }
+
+        if (!Number.isFinite(page) || page < 1 || !Number.isFinite(limit) || limit < 1) {
+            res.status(400).json(ApiResponse.fail("Tham số page/limit không hợp lệ."));
+            return;
+        }
+
+        // Service trả về PaginationResult<IUserTestHistory>
+        const result: PaginationResult<IUserTestHistory> =
+            await getUserTestHistoryService(userId, testId, page, limit);
+
+        // Nếu không có dữ liệu
+        if (!result.data.length) {
+            res
+                .status(200)
+                .json(
+                    ApiResponse.success<PaginationResult<IUserTestHistory>>(
+                        { ...result, data: [] },
+                        "Bạn chưa có lịch sử làm bài kiểm tra này!"
+                    )
+                );
+            return;
+        }
+
+        res
+            .status(200)
+            .json(
+                ApiResponse.success<PaginationResult<IUserTestHistory>>(
+                    result,
+                    `Lấy lịch sử làm bài của bài kiểm tra ${testId} thành công`
+                )
+            );
     } catch (error) {
         next(error);
     }
