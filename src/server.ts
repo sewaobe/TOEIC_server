@@ -1,17 +1,18 @@
-import express, { Request, Response } from 'express';
-import cors from 'cors';
-import dotenv from 'dotenv';
+import express, { Request, Response } from "express";
+import cors from "cors";
+import dotenv from "dotenv";
 dotenv.config();
 
-import helmet from 'helmet';
-import cookieParser from 'cookie-parser';
-import { connectDB } from './configs/db';
-import authRouter from './routes/auth.route';
-import userRouter from './routes/user.route';
-import testRouter from './routes/test.route';
-import commentRouter from './routes/comment.route';
-import { errorLogger } from './middlewares/logger.middleware';
-import { ApiResponse } from './utils/apiResponse';
+import helmet from "helmet";
+import cookieParser from "cookie-parser";
+import { connectDB } from "./configs/db";
+import authRouter from "./routes/auth.route";
+import userRouter from "./routes/user.route";
+import testRouter from "./routes/test.route";
+import commentRouter from "./routes/comment.route";
+import learningPathRouter from "./routes/user_learningPath.route";
+import { errorLogger } from "./middlewares/logger.middleware";
+import { ApiResponse } from "./utils/apiResponse";
 
 connectDB();
 
@@ -19,19 +20,20 @@ const app = express();
 
 app.use(
   cors({
-    origin: 'http://localhost:5173',
+    origin: "http://localhost:5173",
     credentials: true,
-  }),
+  })
 );
 app.use(express.json());
 app.use(helmet());
 app.use(cookieParser());
 
 // Router API
-app.use('/api/auth', authRouter);
-app.use('/api/users', userRouter);
-app.use('/api/tests', testRouter);
-app.use('/api/comments', commentRouter);
+app.use("/api/auth", authRouter);
+app.use("/api/users", userRouter);
+app.use("/api/tests", testRouter);
+app.use("/api/comments", commentRouter);
+app.use("/api/learning-path", learningPathRouter);
 app.use(errorLogger);
 
 // Middleware xử lý lỗi cuối cùng
