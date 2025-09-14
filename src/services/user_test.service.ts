@@ -124,3 +124,56 @@ export const getUserTestHistoryService = async (
         }
     };
 }
+
+
+
+
+export interface ITagAccuracy {
+  tag: string;
+  correct: number;
+  total: number;
+  accuracy: number; // correct / total
+}
+export const getDemoTestTagAccuracyService = async (
+  userId: string
+): Promise<ITagAccuracy[]> => {
+  const userObjectId = new Types.ObjectId(userId);
+
+  // Lấy demo_test mới nhất
+  const demoTest = await UserTest.findOne({
+    user_id: userObjectId,
+    completedPart: "demo_test",
+  })
+    .sort({ submit_at: -1 })
+    .populate({
+      path: "answers.question_id",
+      select: "tags", // Question có trường tags: string[]
+    })
+    .lean();
+
+  if (!demoTest) return [];
+
+  // Gom kết quả theo tag
+  const tagMap: Record<string, { correct: number; total: number }> = {};
+
+  for (const ans of demoTest.answers) {
+    const q: any = ans.question_id;
+    if (!q || !q.tags) continue;
+
+    for (const tag of q.tags) {
+      if (!tagMap[tag]) tagMap[tag] = { correct: 0, total: 0 };
+      tagMap[tag].total += 1;
+      if (ans.isCorrect) tagMap[tag].correct += 1;
+    }
+  }
+
+  // Convert sang array
+  const result: ITagAccuracy[] = Object.entries(tagMap).map(([tag, val]) => ({
+    tag,
+    correct: val.correct,
+    total: val.total,
+    accuracy: val.total > 0 ? val.correct / val.total : 0,
+  }));
+
+  return result;
+};
