@@ -7,6 +7,7 @@ export interface ILesson extends Document {
   summary: string;
   content: string;
   planned_completion_time: number;
+  weight: number; // 👉 thêm weight
   medias_id: Types.ObjectId[];
   created_at: Date;
   created_by: Types.ObjectId;
@@ -20,6 +21,7 @@ const LessonSchema = new Schema<ILesson>({
   summary: { type: String, default: "" },
   content: { type: String },
   planned_completion_time: { type: Number, default: 0 },
+  weight: { type: Number, default: 0.1 }, // 👉 thêm field weight
   medias_id: [{ type: Schema.Types.ObjectId, ref: 'Media' }],
   created_at: { type: Date, default: Date.now },
   created_by: { type: Schema.Types.ObjectId, ref: 'User' },

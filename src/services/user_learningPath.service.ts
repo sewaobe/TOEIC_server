@@ -1,12 +1,22 @@
 import { Types } from "mongoose";
-import { UserLearningPath } from "../models/user_learningPath.model";
-import { LearningPath } from "../models/learning_path.model";
-import { WeekStudy } from "../models/week_study.model";
-import { DayStudy } from "../models/day_study.model";
+import {
+  UserLearningPath,
+  LearningPath,
+  WeekStudy,
+  DayStudy,
+  Lesson,
+  ILesson,
+  IDayStudy,
+  IWeekStudy,
+  IUserLearningPath,
+} from "../models"; // ✅ gom từ index
+
 import { getDemoTestTagAccuracyService } from "./user_test.service";
 import { WeekStudyStatus } from "../models/enums/WeekStudyStatus";
 import { SessionType } from "../models/enums/SessionType";
 import { mockLessons } from "../mocks/mockLessons";
+
+import util from "util";
 
 interface CreateLearningPathPayload {
   methods: string[];
@@ -48,123 +58,389 @@ export const createLearningPathService = async (
   // 1. Phân tích demo test → lấy điểm yếu theo tag
   const tagAccuracy = await getDemoTestTagAccuracyService(userId);
 
-  // Tách weak / medium / strong
-  const weakTags = tagAccuracy
-    .filter((t) => t.accuracy < 0.6)
-    .map((t) => t.tag);
-  const mediumTags = tagAccuracy
-    .filter((t) => t.accuracy >= 0.6 && t.accuracy <= 0.8)
-    .map((t) => t.tag);
+  // 2. Chọn lesson phù hợp
+  const selectedLessons = (await selectLessonsByTagAccuracy(
+    tagAccuracy
+  )) as ILesson[];
+  console.log("Số bài học là:", selectedLessons.length);
 
-  // Lấy lesson từ mock theo tag
-  const weakLessons = mockLessons.filter((l) =>
-    l.tags?.some((tag) => weakTags.includes(tag))
+  // 3. Phân bổ lesson theo tuần
+  const distributed = distributeLessonsByWeek(
+    selectedLessons,
+    payload.weeklyTotals
   );
-  const mediumLessons = mockLessons.filter((l) =>
-    l.tags?.some((tag) => mediumTags.includes(tag))
+  console.log("Bài theo tuần:", JSON.stringify(distributed[0], null, 2));
+
+  // 4. Tạo LearningPath + tất cả WeekStudy + DayStudy
+  const lp = await createLearningPathWithWeeks(
+    userId,
+    "Lộ trình TOEIC",
+    "Lộ trình được tạo từ placement test",
+    payload.targetScore >= 750 ? "ADVANCED" : "INTERMEDIATE", // ví dụ
+    distributed
   );
-  // Lesson ưu tiên: Weak trước → Medium sau
-  const prioritizedLessons = [...weakLessons, ...mediumLessons];
 
-  // 2. Tính toán phân bổ lesson
-  const totalWeeks = payload.weeklyTotals.length;
-  const lessonWeeks = Math.floor(totalWeeks * (2 / 3)); // số tuần học bài
-  const lessonsPerWeek = Math.ceil(prioritizedLessons.length / lessonWeeks);
+  // tính toán sơ sơ
+  // const daysPerWeek = Object.values(payload.weeklyPlan).filter(
+  //   (v) => v > 0
+  // ).length;
 
-  let lessonCursor = 0;
-  const weekIds: Types.ObjectId[] = [];
+  const daysPerWeek = 7;
+  // const timePerDay = Math.round(
+  //   Object.values(payload.weeklyPlan).reduce((a, b) => a + b, 0) / daysPerWeek
+  // );
 
-  // 3. Tạo tuần & ngày
-  for (let i = 0; i < totalWeeks; i++) {
-    const week = new WeekStudy({
-      name: i + 1,
-      description: `Tuần ${i + 1}`,
-      status: WeekStudyStatus.LOCK,
-      accuracy_overall: 0,
-      days: [],
-    });
+  const timePerDay = 90;
+  // Tạo liên kết UserLearningPath
+  const userLP = await createUserLearningPath(
+    userId,
+    (lp._id as Types.ObjectId).toString(),
+    payload.targetScore,
+    timePerDay, // ví dụ 120 phút/ngày
+    daysPerWeek, // ví dụ 6 ngày/tuần
+    new Date(payload.endDate)
+  );
 
-    const days: Types.ObjectId[] = [];
-
-    for (let day = 0; day < 7; day++) {
-      let sessions: any[] = [];
-
-      // 🚀 Chia lesson theo tuần
-      let lessonsToday: any[] = [];
-
-      if (day === 0 && i < lessonWeeks) {
-        // 👉 chỉ dồn lesson vào ngày đầu tuần
-        const start = lessonCursor;
-        const end = Math.min(start + lessonsPerWeek, prioritizedLessons.length);
-        lessonsToday = prioritizedLessons.slice(start, end);
-        lessonCursor = end;
-      }
-
-      // Nếu có bài thì thêm session học bài
-      if (lessonsToday.length > 0) {
-        sessions.push({
-          session_no: 1,
-          status: WeekStudyStatus.LOCK,
-          items: lessonsToday.map((lesson) => ({
-            kind: SessionType.LESSON,
-            lesson_id: lesson._id, // ✅ dùng _id giả từ mockLessons
-            question_id: null,
-          })),
-        });
-        console.log("lessonsToday",lessonsToday[0]._id as Types.ObjectId)
-      }
-
-      const dayStudy = new DayStudy({
-        week_id: week._id,
-        dayOfWeek: day,
-        status: WeekStudyStatus.LOCK,
-        accuracy_overall: 0,
-        sessions,
-      });
-
-      await dayStudy.save();
-      days.push(dayStudy._id as Types.ObjectId);
-    }
-
-    week.days = days;
-    await week.save();
-    weekIds.push(week._id);
-  }
-
-  // 4. Tạo LearningPath
-  const learningPath = new LearningPath({
-    user_id: userObjectId,
-    methods: payload.methods,
-    targetScore: payload.targetScore,
-    endDate: payload.endDate,
-    week_studies_id: weekIds,
-    additional_week_studies: [],
-  });
-  await learningPath.save();
-
-  // 5. Gắn vào UserLearningPath
-  const userLearningPath = new UserLearningPath({
-    user_id: userObjectId,
-    learningPath_id: learningPath._id,
-  });
-  await userLearningPath.save();
-
-  // 6. Populate full để trả về
-  const fullLearningPath = await UserLearningPath.findOne({
-    user_id: userObjectId,
-  })
-    .sort({ createdAt: -1 }) // lấy bản mới nhất
-    .populate({
-      path: "learningPath_id",
-      populate: [
-        { path: "week_studies_id", populate: { path: "days" } },
-        { path: "additional_week_studies", populate: { path: "days" } },
-      ],
-    })
-    .lean();
+  console.log("===== USER LEARNING PATH CREATED =====");
+  console.log(JSON.stringify(userLP, null, 2));
 
   return {
-    learningPath: fullLearningPath,
     tagAccuracy,
   };
 };
+
+export async function selectLessonsByTagAccuracy(
+  tagAccuracy: Record<string, number>
+): Promise<Partial<ILesson>[]> {
+  const lessons: Partial<ILesson>[] = [];
+
+  const allLessons = await Lesson.find().lean<ILesson[]>();
+  for (const lesson of allLessons) {
+    // Kiểm tra lesson có tag nào match với tagAccuracy
+    const matchTag = lesson.tags?.find((tag) => tagAccuracy[tag] !== undefined);
+
+    if (matchTag) {
+      const acc = tagAccuracy[matchTag];
+
+      // Rule chọn
+      if (acc < 0.4) {
+        // yếu → lấy
+        lessons.push(lesson);
+      } else if (acc >= 0.4 && acc <= 0.6) {
+        // trung bình → vẫn lấy
+        lessons.push(lesson);
+      } else if (acc > 0.6 && acc <= 0.8) {
+        // khá → có thể lấy ít (tuỳ logic, ở đây mình lấy nhưng gắn flag "lowPriority")
+        lessons.push({ ...lesson, lowPriority: true } as any);
+      } else {
+        // mạnh > 0.8 → bỏ qua
+      }
+    }
+  }
+
+  // Sắp xếp theo weight tăng dần
+  lessons.sort((a, b) => (a.weight || 0) - (b.weight || 0));
+
+  return lessons;
+}
+function distributeLessonsByWeek(
+  lessons: ILesson[],
+  weeklyTotals: number[]
+): { wed: ILesson[]; thu: ILesson[] }[] {
+  const totalWeeks = weeklyTotals.length;
+  const weeks: { wed: ILesson[]; thu: ILesson[] }[] = [];
+  let cursor = 0;
+
+  // Tính số bài cơ bản + dư
+  const basePerWeek = Math.floor(lessons.length / totalWeeks);
+  let remainder = lessons.length % totalWeeks;
+
+  for (let w = 0; w < totalWeeks; w++) {
+    // số bài tuần này
+    let numThisWeek = basePerWeek + (remainder > 0 ? 1 : 0);
+    if (remainder > 0) remainder--;
+
+    const weekLessons = { wed: [] as ILesson[], thu: [] as ILesson[] };
+
+    if (numThisWeek > 0) {
+      // Nếu số bài lẻ → Thứ 4 nhiều hơn 1
+      const wedCount = Math.ceil(numThisWeek / 2);
+      const thuCount = numThisWeek - wedCount;
+
+      // Gán cho Thứ 4
+      for (let i = 0; i < wedCount && cursor < lessons.length; i++) {
+        weekLessons.wed.push(lessons[cursor++]);
+      }
+
+      // Gán cho Thứ 5
+      for (let i = 0; i < thuCount && cursor < lessons.length; i++) {
+        weekLessons.thu.push(lessons[cursor++]);
+      }
+    }
+
+    weeks.push(weekLessons);
+  }
+
+  return weeks;
+}
+export async function createUserLearningPath(
+  userId: string,
+  learningPathId: string,
+  targetScore: number,
+  timePerDay: number,
+  daysPerWeek: number,
+  targetCompletionDate: Date
+): Promise<IUserLearningPath> {
+  const userObjectId = new Types.ObjectId(userId);
+  const learningPathObjectId = new Types.ObjectId(learningPathId);
+
+  const userLearningPath = new UserLearningPath({
+    user_id: userObjectId,
+    learningPath_id: learningPathObjectId,
+    target_score: targetScore,
+    time_per_day: timePerDay,
+    days_per_week: daysPerWeek,
+    target_completion_date: targetCompletionDate,
+    current_week: 1,
+  });
+
+  await userLearningPath.save();
+
+  return userLearningPath;
+}
+export async function createLearningPathWithWeeks(
+  userId: string,
+  title: string,
+  description: string,
+  level: string,
+  distributed: { wed: ILesson[]; thu: ILesson[] }[]
+) {
+  const userObjectId = new Types.ObjectId(userId);
+
+  // 1. Tạo LearningPath trước
+  const learningPath = new LearningPath({
+    title,
+    description,
+    level,
+    isActive: true,
+    week_studies_id: [],
+    created_by: userObjectId,
+    created_at: new Date(),
+  });
+  await learningPath.save();
+
+  // 2. Tạo các tuần học
+  const weekIds: Types.ObjectId[] = [];
+
+  for (let i = 0; i < distributed.length; i++) {
+    const weekNo = i + 1;
+    const weekLessons = distributed[i];
+
+    const week = new WeekStudy({
+      name: weekNo,
+      description: `Tuần ${weekNo}`,
+      status: weekNo === 1 ? WeekStudyStatus.IN_PROGRESS : WeekStudyStatus.LOCK,
+      accuracy_overall: 0,
+      days: [],
+    });
+    await week.save();
+
+    // Sinh 7 ngày học
+    const dayStudiesData = generateWeeklyDayStudies(
+      week._id,
+      weekLessons,
+      weekNo
+    );
+    const dayStudies = await DayStudy.insertMany(dayStudiesData);
+
+    // Gắn dayIds vào week
+    week.days = dayStudies.map((d) => d._id as Types.ObjectId);
+    await week.save();
+
+    weekIds.push(week._id as Types.ObjectId);
+  }
+
+  // 3. Gắn các tuần vào LearningPath
+  learningPath.week_studies_id = weekIds;
+  await learningPath.save();
+
+  return learningPath;
+}
+// export async function createWeekStudy(
+//   weekNo: number,
+//   weekLessons: { wed: ILesson[]; thu: ILesson[] }
+// ): Promise<IWeekStudy> {
+//   // 1. Tạo WeekStudy mới (chưa có days)
+//   const week = new WeekStudy({
+//     name: weekNo,
+//     description: `Tuần ${weekNo}`,
+//     status: WeekStudyStatus.LOCK,
+//     accuracy_overall: 0,
+//     days: [],
+//   });
+
+//   await week.save();
+
+//   // 2. Sinh dữ liệu cho 7 ngày học (truyền weekLessons)
+//   const dayStudiesData = generateWeeklyDayStudies(week._id, weekLessons,weekNo);
+
+//   // 3. Insert vào DB
+//   const dayStudies = await DayStudy.insertMany(dayStudiesData);
+
+//   // 4. Gắn _id của DayStudy vào week.days
+//   week.days = dayStudies.map((d) => d._id as Types.ObjectId);
+//   await week.save();
+
+//   return week;
+// }
+
+/// tạo lịch học theo thứ
+/**
+ * Tạo lịch học cứng 7 ngày:
+ * - Thứ 2/3: Flashcard + luyện nghe part 1–4
+ * - Thứ 4: Bài học grammar cho part 5 → ngữ pháp + flashcard + làm câu hỏi
+ * - Thứ 5: Bài học grammar cho part 6 → ngữ pháp + flashcard + làm câu hỏi
+ * - Thứ 6: part 7 → flashcard + làm câu hỏi
+ * - Thứ 7: ôn từ vựng + quiz
+ * - Chủ nhật: mini test
+ */
+export function generateWeeklyDayStudies(
+  weekId: Types.ObjectId,
+  grammarLessons: { wed: ILesson[]; thu: ILesson[] },
+  weekIndex: number
+): Omit<IDayStudy, "_id">[] {
+  const result: Omit<IDayStudy, "_id">[] = [];
+
+  // Helper tạo session
+  const makeSession = (
+    no: number,
+    items: { kind: SessionType; lesson?: ILesson }[]
+  ) => ({
+    session_no: no,
+    status: WeekStudyStatus.LOCK,
+    items: items.map((it) => ({
+      kind: it.kind,
+      lesson_id: it.lesson ? it.lesson._id : undefined,
+    })),
+  });
+
+  // ===== Thứ 2: Part 1 + Part 2
+  result.push({
+    week_id: weekId,
+    dayOfWeek: 1,
+    status:
+      weekIndex === 1 ? WeekStudyStatus.IN_PROGRESS : WeekStudyStatus.LOCK,
+    accuracy_overall: 0,
+    sessions: [
+      makeSession(1, [
+        { kind: SessionType.FLASH_CARD },
+        { kind: SessionType.LISTENING },
+      ]),
+      makeSession(2, [
+        { kind: SessionType.FLASH_CARD },
+        { kind: SessionType.LISTENING },
+      ]),
+    ],
+    created_at: new Date(),
+  } as any);
+
+  // ===== Thứ 3: Part 3 + Part 4
+  result.push({
+    week_id: weekId,
+    dayOfWeek: 2,
+    status: WeekStudyStatus.LOCK,
+    accuracy_overall: 0,
+    sessions: [
+      makeSession(1, [
+        { kind: SessionType.FLASH_CARD },
+        { kind: SessionType.LISTENING },
+      ]),
+      makeSession(2, [
+        { kind: SessionType.FLASH_CARD },
+        { kind: SessionType.LISTENING },
+      ]),
+    ],
+    created_at: new Date(),
+  } as any);
+
+  // ===== Thứ 4: Grammar lessons (nhiều bài)
+  result.push({
+    week_id: weekId,
+    dayOfWeek: 3,
+    status: WeekStudyStatus.LOCK,
+    accuracy_overall: 0,
+    sessions: [
+      // Session 1: học tất cả lesson trong ngày
+      makeSession(
+        1,
+        grammarLessons.wed.map((lesson) => ({
+          kind: SessionType.LESSON,
+          lesson,
+        }))
+      ),
+      // Session 2: flashcard
+      makeSession(2, [{ kind: SessionType.FLASH_CARD }]),
+      // Session 3: luyện tập
+      makeSession(3, [{ kind: SessionType.PRACTICE }]),
+    ],
+    created_at: new Date(),
+  } as any);
+
+  // ===== Thứ 5: Grammar lessons (nhiều bài)
+  result.push({
+    week_id: weekId,
+    dayOfWeek: 4,
+    status: WeekStudyStatus.LOCK,
+    accuracy_overall: 0,
+    sessions: [
+      makeSession(
+        1,
+        grammarLessons.thu.map((lesson) => ({
+          kind: SessionType.LESSON,
+          lesson,
+        }))
+      ),
+      makeSession(2, [{ kind: SessionType.FLASH_CARD }]),
+      makeSession(3, [{ kind: SessionType.PRACTICE }]),
+    ],
+    created_at: new Date(),
+  } as any);
+
+  // ===== Thứ 6: Part 7
+  result.push({
+    week_id: weekId,
+    dayOfWeek: 5,
+    status: WeekStudyStatus.LOCK,
+    accuracy_overall: 0,
+    sessions: [
+      makeSession(1, [{ kind: SessionType.FLASH_CARD }]),
+      makeSession(2, [{ kind: SessionType.PRACTICE }]),
+    ],
+    created_at: new Date(),
+  } as any);
+
+  // ===== Thứ 7: Review + Quiz
+  result.push({
+    week_id: weekId,
+    dayOfWeek: 6,
+    status: WeekStudyStatus.LOCK,
+    accuracy_overall: 0,
+    sessions: [
+      makeSession(1, [{ kind: SessionType.FLASH_CARD }]),
+      makeSession(2, [{ kind: SessionType.MINI_TEST }]),
+    ],
+    created_at: new Date(),
+  } as any);
+
+  // ===== Chủ nhật: Mini test
+  result.push({
+    week_id: weekId,
+    dayOfWeek: 0,
+    status: WeekStudyStatus.LOCK,
+    accuracy_overall: 0,
+    sessions: [makeSession(1, [{ kind: SessionType.MINI_TEST }])],
+    created_at: new Date(),
+  } as any);
+
+  return result;
+}

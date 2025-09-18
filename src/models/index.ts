@@ -1,6 +1,7 @@
 export * from "./achievement.model";
 export * from "./badge.model";
 export * from "./comment.model";
+export * from "./day_study.model";
 export * from "./learning_path.model";
 export * from "./lesson.model";
 export * from "./media.model";
@@ -9,7 +10,9 @@ export * from "./question.model";
 export * from "./role.model";
 export * from "./test.model";
 export * from "./topic.model";
+export * from "./user_learningPath.model";
 export * from "./user_progress.model";
 export * from "./user_test.model";
 export * from "./user.model";
 export * from "./vocabulary";
+export * from "./week_study.model";

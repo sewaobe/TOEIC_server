@@ -10,6 +10,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Giới thiệu các thành phần cơ bản trong câu: chủ ngữ, vị ngữ, tân ngữ, bổ ngữ.",
     content: "Cấu trúc cơ bản: Subject + Verb + Object/Complement/Modifier.",
     planned_completion_time: 25,
+    weight: 0.3,
   },
   {
     _id: "66f000000000000000000002",
@@ -19,6 +20,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Cách sử dụng động từ To be (am, is, are, was, were).",
     content: "To be được dùng để mô tả trạng thái, đặc điểm, và làm động từ nối.",
     planned_completion_time: 20,
+    weight: 0.3,
   },
   {
     _id: "66f000000000000000000003",
@@ -28,6 +30,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Khái niệm, phân loại và cách dùng danh từ trong tiếng Anh.",
     content: "Danh từ đếm được, không đếm được, số ít và số nhiều.",
     planned_completion_time: 20,
+    weight: 0.1,
   },
   {
     _id: "66f000000000000000000004",
@@ -37,6 +40,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Định nghĩa và cách chia động từ thường.",
     content: "Động từ nguyên thể, thêm -s/-es, động từ bất quy tắc.",
     planned_completion_time: 25,
+    weight: 0.3,
   },
   {
     _id: "66f000000000000000000005",
@@ -46,6 +50,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Tính từ dùng để miêu tả danh từ hoặc đại từ.",
     content: "Vị trí: trước danh từ hoặc sau động từ to be.",
     planned_completion_time: 20,
+    weight: 0.1,
   },
   {
     _id: "66f000000000000000000006",
@@ -55,6 +60,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Thứ tự tính từ khi đi cùng nhau trong câu.",
     content: "Opinion - Size - Age - Shape - Color - Origin - Material - Purpose.",
     planned_completion_time: 20,
+    weight: 0.4,
   },
   {
     _id: "66f000000000000000000007",
@@ -64,6 +70,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Phân biệt tính từ đuôi -ing và -ed.",
     content: "Tính từ -ing chỉ đặc điểm của vật/người; -ed chỉ cảm xúc.",
     planned_completion_time: 15,
+    weight: 0.4,
   },
   {
     _id: "66f000000000000000000008",
@@ -73,6 +80,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Định nghĩa và vị trí trạng từ.",
     content: "Trạng từ chỉ cách thức, tần suất, mức độ, nơi chốn, thời gian.",
     planned_completion_time: 20,
+    weight: 0.2,
   },
   {
     _id: "66f000000000000000000009",
@@ -82,6 +90,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Cách sử dụng mạo từ a/an/the.",
     content: "A/An: danh từ số ít chưa xác định; The: danh từ xác định.",
     planned_completion_time: 15,
+    weight: 0.1,
   },
   {
     _id: "66f000000000000000000010",
@@ -91,6 +100,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Các loại đại từ trong tiếng Anh.",
     content: "Đại từ nhân xưng, sở hữu, phản thân, chỉ định, bất định.",
     planned_completion_time: 15,
+    weight: 0.2,
   },
   {
     _id: "66f000000000000000000011",
@@ -100,6 +110,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Phân biệt động từ nguyên mẫu có to và V-ing.",
     content: "Một số động từ theo sau bởi to V, một số bởi V-ing.",
     planned_completion_time: 20,
+    weight: 0.4,
   },
   {
     _id: "66f000000000000000000012",
@@ -109,6 +120,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Các loại lượng từ trong tiếng Anh.",
     content: "Much, many, a few, little, some, any, several.",
     planned_completion_time: 15,
+    weight: 0.5,
   },
   {
     _id: "66f000000000000000000013",
@@ -118,6 +130,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Cách dùng giới từ chỉ thời gian, nơi chốn, nguyên nhân, phương tiện.",
     content: "In, on, at, by, about, because of, due to, etc.",
     planned_completion_time: 20,
+    weight: 0.5,
   },
   {
     _id: "66f000000000000000000014",
@@ -127,6 +140,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Liên từ đẳng lập và liên từ phụ thuộc.",
     content: "And, but, or, so, because, although, if, when.",
     planned_completion_time: 20,
+    weight: 0.5,
   },
   {
     _id: "66f000000000000000000015",
@@ -136,6 +150,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Cấu trúc và cách dùng thì hiện tại đơn.",
     content: "S + V(s/es) + O. Thói quen, sự thật hiển nhiên.",
     planned_completion_time: 20,
+    weight: 0.3,
   },
   {
     _id: "66f000000000000000000016",
@@ -145,6 +160,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Cấu trúc và cách dùng thì quá khứ đơn.",
     content: "S + V-ed/II + O. Hành động đã xảy ra và kết thúc trong quá khứ.",
     planned_completion_time: 20,
+    weight: 0.3,
   },
   {
     _id: "66f000000000000000000017",
@@ -154,6 +170,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Cấu trúc và cách dùng thì tương lai đơn.",
     content: "S + will + V + O. Dự đoán, quyết định tức thì.",
     planned_completion_time: 20,
+    weight: 0.4,
   },
   {
     _id: "66f000000000000000000018",
@@ -163,6 +180,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Cấu trúc và cách dùng thì hiện tại tiếp diễn.",
     content: "S + am/is/are + V-ing. Hành động đang diễn ra.",
     planned_completion_time: 20,
+    weight: 0.5,
   },
   {
     _id: "66f000000000000000000019",
@@ -172,6 +190,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Cấu trúc và cách dùng thì quá khứ tiếp diễn.",
     content: "S + was/were + V-ing. Hành động đang diễn ra tại một thời điểm quá khứ.",
     planned_completion_time: 20,
+    weight: 0.5,
   },
   {
     _id: "66f000000000000000000020",
@@ -181,6 +200,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Cấu trúc và cách dùng thì tương lai tiếp diễn.",
     content: "S + will be + V-ing. Hành động sẽ đang xảy ra tại một thời điểm trong tương lai.",
     planned_completion_time: 20,
+    weight: 0.5,
   },
   {
     _id: "66f000000000000000000021",
@@ -190,6 +210,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Cấu trúc và cách dùng thì hiện tại hoàn thành.",
     content: "S + have/has + V3/ed. Hành động bắt đầu trong quá khứ kéo dài đến hiện tại.",
     planned_completion_time: 25,
+    weight: 0.6,
   },
   {
     _id: "66f000000000000000000022",
@@ -199,6 +220,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Cấu trúc và cách dùng thì quá khứ hoàn thành.",
     content: "S + had + V3/ed. Hành động xảy ra trước một hành động quá khứ khác.",
     planned_completion_time: 25,
+    weight: 0.6,
   },
   {
     _id: "66f000000000000000000023",
@@ -208,6 +230,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Cách chuyển câu chủ động sang bị động.",
     content: "S + be + V3/ed (+ by O).",
     planned_completion_time: 25,
+    weight: 0.6,
   },
   {
     _id: "66f000000000000000000024",
@@ -217,6 +240,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Cấu trúc và cách dùng câu điều kiện loại 1, 2, 3.",
     content: "If + S + V..., S + will/would + V...",
     planned_completion_time: 25,
+    weight: 0.6,
   },
   {
     _id: "66f000000000000000000025",
@@ -226,6 +250,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Cấu trúc so sánh bằng.",
     content: "S + be + as + adj + as + N.",
     planned_completion_time: 15,
+    weight: 0.3,
   },
   {
     _id: "66f000000000000000000026",
@@ -235,6 +260,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Cấu trúc so sánh hơn.",
     content: "S + be + adj-er + than + N.",
     planned_completion_time: 15,
+    weight: 0.3,
   },
   {
     _id: "66f000000000000000000027",
@@ -244,6 +270,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Cấu trúc so sánh hơn nhất.",
     content: "S + be + the + adj-est + N.",
     planned_completion_time: 15,
+    weight: 0.4,
   },
   {
     _id: "66f000000000000000000028",
@@ -253,6 +280,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Cách sử dụng đại từ quan hệ trong mệnh đề phụ.",
     content: "Who, whom, whose, which, that.",
     planned_completion_time: 20,
+    weight: 0.6,
   },
   {
     _id: "66f000000000000000000029",
@@ -262,6 +290,7 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Cách rút gọn mệnh đề quan hệ.",
     content: "Thường bỏ đại từ quan hệ, sử dụng V-ing hoặc V3/ed.",
     planned_completion_time: 20,
+    weight: 0.6,
   },
   {
     _id: "66f000000000000000000030",
@@ -271,5 +300,6 @@ export const mockLessons: Partial<ILesson>[] = [
     summary: "Phân biệt will và be going to.",
     content: "Will: dự đoán hoặc quyết định tức thì. Be going to: kế hoạch đã định.",
     planned_completion_time: 20,
+    weight: 0.5,
   },
 ];

@@ -134,9 +134,10 @@ export interface ITagAccuracy {
   total: number;
   accuracy: number; // correct / total
 }
+
 export const getDemoTestTagAccuracyService = async (
   userId: string
-): Promise<ITagAccuracy[]> => {
+): Promise<Record<string, number>> => {
   const userObjectId = new Types.ObjectId(userId);
 
   // Lấy demo_test mới nhất
@@ -151,7 +152,7 @@ export const getDemoTestTagAccuracyService = async (
     })
     .lean();
 
-  if (!demoTest) return [];
+  if (!demoTest) return {};
 
   // Gom kết quả theo tag
   const tagMap: Record<string, { correct: number; total: number }> = {};
@@ -167,13 +168,11 @@ export const getDemoTestTagAccuracyService = async (
     }
   }
 
-  // Convert sang array
-  const result: ITagAccuracy[] = Object.entries(tagMap).map(([tag, val]) => ({
-    tag,
-    correct: val.correct,
-    total: val.total,
-    accuracy: val.total > 0 ? val.correct / val.total : 0,
-  }));
+  // Convert sang Record<string, number>
+  const tagAccuracy: Record<string, number> = {};
+  for (const [tag, val] of Object.entries(tagMap)) {
+    tagAccuracy[tag] = val.total > 0 ? val.correct / val.total : 0;
+  }
 
-  return result;
+  return tagAccuracy;
 };

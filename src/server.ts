@@ -11,6 +11,7 @@ import userRouter from "./routes/user.route";
 import testRouter from "./routes/test.route";
 import commentRouter from "./routes/comment.route";
 import learningPathRouter from "./routes/user_learningPath.route";
+import dayStudyRoutes from "./routes/day_study.route";
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/apiResponse";
 
@@ -34,6 +35,7 @@ app.use("/api/users", userRouter);
 app.use("/api/tests", testRouter);
 app.use("/api/comments", commentRouter);
 app.use("/api/learning-path", learningPathRouter);
+app.use("/api/day-study", dayStudyRoutes);
 app.use(errorLogger);
 
 // Middleware xử lý lỗi cuối cùng

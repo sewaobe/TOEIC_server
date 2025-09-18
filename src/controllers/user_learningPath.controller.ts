@@ -1,6 +1,9 @@
 import { Request, Response, NextFunction } from "express";
 import { ApiResponse } from "../utils/apiResponse";
-import { getUserLearningPathService, createLearningPathService } from "../services/user_learningPath.service";
+import {
+  getUserLearningPathService,
+  createLearningPathService,
+} from "../services/user_learningPath.service";
 
 export const getUserLearningPath = async (
   req: Request,
@@ -29,7 +32,10 @@ export const getUserLearningPath = async (
     res
       .status(200)
       .json(
-        ApiResponse.success(userPlan, "Lấy lộ trình học của người dùng thành công")
+        ApiResponse.success(
+          userPlan,
+          "Lấy lộ trình học của người dùng thành công"
+        )
       );
   } catch (error) {
     next(error);
@@ -44,12 +50,14 @@ export const createLearningPath = async (
     const userId = req.user?._id?.toString();
 
     if (!userId) {
-      res.status(401).json(ApiResponse.fail("Không tìm thấy token của người dùng!"));
+      res
+        .status(401)
+        .json(ApiResponse.fail("Không tìm thấy token của người dùng!"));
       return;
     }
 
     const payload = req.body; // FE gửi methods, targetScore, endDate, weeklyTotals, weeklyPlan
-
+    console.log("Payload", payload);
     const result = await createLearningPathService(userId, payload);
 
     res
