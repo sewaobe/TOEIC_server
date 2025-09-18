@@ -9,6 +9,7 @@ import { connectDB } from "./configs/db";
 import authRouter from "./routes/auth.route";
 import userRouter from "./routes/user.route";
 import testRouter from "./routes/test.route";
+import userTestRouter from "./routes/user_test.route";
 import commentRouter from "./routes/comment.route";
 import learningPathRouter from "./routes/user_learningPath.route";
 import { errorLogger } from "./middlewares/logger.middleware";
@@ -32,6 +33,7 @@ app.use(cookieParser());
 app.use("/api/auth", authRouter);
 app.use("/api/users", userRouter);
 app.use("/api/tests", testRouter);
+app.use("/api/user-test", userTestRouter)
 app.use("/api/comments", commentRouter);
 app.use("/api/learning-path", learningPathRouter);
 app.use(errorLogger);

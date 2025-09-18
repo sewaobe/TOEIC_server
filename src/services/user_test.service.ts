@@ -1,9 +1,10 @@
 import { PipelineStage, Types } from "mongoose";
-import { UserTest } from "../models";
+import { IUserTest, UserTest } from "../models";
 import { TestStatus } from "../models/enums/TestStatus";
 import { IUserRecentTest } from "../dto/IUserRecentTest";
 import { IUserTestHistory } from "../dto/IUserTestHistory";
 import { PaginationResult } from "../dto/PaginationResult";
+import { Question } from "../models/question.model";
 
 export const getRecentUserTestsService = async (
     userId: string,
@@ -129,51 +130,92 @@ export const getUserTestHistoryService = async (
 
 
 export interface ITagAccuracy {
-  tag: string;
-  correct: number;
-  total: number;
-  accuracy: number; // correct / total
+    tag: string;
+    correct: number;
+    total: number;
+    accuracy: number; // correct / total
 }
 export const getDemoTestTagAccuracyService = async (
-  userId: string
+    userId: string
 ): Promise<ITagAccuracy[]> => {
-  const userObjectId = new Types.ObjectId(userId);
+    const userObjectId = new Types.ObjectId(userId);
 
-  // Lấy demo_test mới nhất
-  const demoTest = await UserTest.findOne({
-    user_id: userObjectId,
-    completedPart: "demo_test",
-  })
-    .sort({ submit_at: -1 })
-    .populate({
-      path: "answers.question_id",
-      select: "tags", // Question có trường tags: string[]
+    // Lấy demo_test mới nhất
+    const demoTest = await UserTest.findOne({
+        user_id: userObjectId,
+        completedPart: "demo_test",
     })
-    .lean();
+        .sort({ submit_at: -1 })
+        .populate({
+            path: "answers.question_id",
+            select: "tags", // Question có trường tags: string[]
+        })
+        .lean();
 
-  if (!demoTest) return [];
+    if (!demoTest) return [];
 
-  // Gom kết quả theo tag
-  const tagMap: Record<string, { correct: number; total: number }> = {};
+    // Gom kết quả theo tag
+    const tagMap: Record<string, { correct: number; total: number }> = {};
 
-  for (const ans of demoTest.answers) {
-    const q: any = ans.question_id;
-    if (!q || !q.tags) continue;
+    for (const ans of demoTest.answers) {
+        const q: any = ans.question_id;
+        if (!q || !q.tags) continue;
 
-    for (const tag of q.tags) {
-      if (!tagMap[tag]) tagMap[tag] = { correct: 0, total: 0 };
-      tagMap[tag].total += 1;
-      if (ans.isCorrect) tagMap[tag].correct += 1;
+        for (const tag of q.tags) {
+            if (!tagMap[tag]) tagMap[tag] = { correct: 0, total: 0 };
+            tagMap[tag].total += 1;
+            if (ans.isCorrect) tagMap[tag].correct += 1;
+        }
     }
-  }
 
-  // Convert sang array
-  const result: ITagAccuracy[] = Object.entries(tagMap).map(([tag, val]) => ({
-    tag,
-    correct: val.correct,
-    total: val.total,
-    accuracy: val.total > 0 ? val.correct / val.total : 0,
-  }));
+    // Convert sang array
+    const result: ITagAccuracy[] = Object.entries(tagMap).map(([tag, val]) => ({
+        tag,
+        correct: val.correct,
+        total: val.total,
+        accuracy: val.total > 0 ? val.correct / val.total : 0,
+    }));
 
-  return result;
+    return result;
 };
+
+const mapAnswer = (ans: any, idx: number) => {
+    const qid = ans.question_id?._id ?? ans.question_id; // nếu populate thì lấy _id, còn không thì lấy luôn
+    return {
+        question_id: qid.toString(),
+        question_no: ans.question_id.name.split(" ")[1],
+        selectedOption: ans.selectedOption,
+        isCorrect: ans.isCorrect,
+        tags: ans.question_id.tags || [],
+    }
+};
+
+
+export const getTestHistoryDetailService = async (historyId: string) => {
+    const historyObjectId = new Types.ObjectId(historyId);
+
+    // Tìm lịch sử bài test
+    const history = await UserTest.findById(historyObjectId)
+        .populate({
+            path: "answers.question_id",
+            select: "name tags", // chỉ lấy trường tags để tối ưu
+        })
+        .lean<IUserTest & { answers: any[] }>()
+        .exec();
+
+    if (!history) {
+        throw new Error("Không tìm thấy lịch sử bài test");
+    }
+
+    // Map answers sang format RawAnswer
+    const rawAnswers = history.answers.map((ans, idx) => mapAnswer(ans, idx));
+
+    return {
+        score: history.score,
+        answers: rawAnswers,
+        completedPart: history.completedPart,
+        duration: history.duration,
+        submit_at: history.submit_at,
+    };
+
+}
