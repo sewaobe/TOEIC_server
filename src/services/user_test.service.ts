@@ -12,14 +12,14 @@ export const getRecentUserTestsService = async (
     const userObjectId = new Types.ObjectId(userId);
 
     const recentTests = await UserTest.aggregate<IUserRecentTest>([
-        // Lọc bài làm của user
+        // L?c b�i l�m c?a user
         { $match: { user_id: userObjectId } },
 
-        // Sort bài làm gần nhất
+        // Sort b�i l�m g?n nh?t
         { $sort: { submit_at: -1 } },
         { $limit: limit },
 
-        // Join Test để lấy thông tin đề thi
+        // Join Test d? l?y th�ng tin d? thi
         {
             $lookup: {
                 from: "tests",
@@ -30,7 +30,7 @@ export const getRecentUserTestsService = async (
         },
         { $unwind: "$test" },
         { $match: { "test.status": TestStatus.OPEN } },
-        // Chọn field cần thiết để trả về
+        // Ch?n field c?n thi?t d? tr? v?
         {
             $project: {
                 _id: 0,
@@ -40,8 +40,8 @@ export const getRecentUserTestsService = async (
                 status: "$test.status",
                 topic: "$test.topic",
                 created_at: "$test.created_at",
-                score: 1, // score của user
-                submit_at: 1, // thời gian submit
+                score: 1, // score c?a user
+                submit_at: 1, // th?i gian submit
                 countSubmit: "$test.countSubmit",
                 countComment: "$test.countComment",
             },
@@ -58,7 +58,7 @@ export const getUserTestHistoryService = async (
     limit: number
 ): Promise<PaginationResult<IUserTestHistory>> => {
     const safePage = Math.max(1, Number(page) || 1);
-    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 10)); // chặn limit quá lớn
+    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 10)); // ch?n limit qu� l?n
     const skip = (safePage - 1) * safeLimit;
 
     const userObjectId = new Types.ObjectId(userId);
@@ -140,7 +140,7 @@ export const getDemoTestTagAccuracyService = async (
 ): Promise<Record<string, number>> => {
   const userObjectId = new Types.ObjectId(userId);
 
-  // Lấy demo_test mới nhất
+  // L?y demo_test m?i nh?t
   const demoTest = await UserTest.findOne({
     user_id: userObjectId,
     completedPart: "demo_test",
@@ -148,13 +148,13 @@ export const getDemoTestTagAccuracyService = async (
     .sort({ submit_at: -1 })
     .populate({
       path: "answers.question_id",
-      select: "tags", // Question có trường tags: string[]
+      select: "tags", // Question c� tru?ng tags: string[]
     })
     .lean();
 
   if (!demoTest) return {};
 
-  // Gom kết quả theo tag
+  // Gom k?t qu? theo tag
   const tagMap: Record<string, { correct: number; total: number }> = {};
 
   for (const ans of demoTest.answers) {

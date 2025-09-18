@@ -26,12 +26,14 @@ const UserTestSchema = new Schema<IUserTest>({
   score: { type: Number, default: 0 },
   answers: [
     {
+      _id: false,
       question_id: { type: Schema.Types.ObjectId, ref: 'Question' },
       selectedOption: { type: String, default: '' },
       isCorrect: { type: Boolean, default: false },
     },
   ],
   parts: [{
+    _id: false,
     part_name: { type: String, default: '' },
     accuracy: { type: Number, default: 0 }
   }],

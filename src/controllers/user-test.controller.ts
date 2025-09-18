@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
-import { getRecentUserTestsService, getUserTestHistoryService } from './../services/user_test.service';
+import { getRecentUserTestsService, getTestHistoryDetailService, getUserTestHistoryService } from './../services/user_test.service';
 import { ApiResponse } from '../utils/apiResponse';
 import { IUserRecentTest } from '../dto/IUserRecentTest';
 import { Types } from 'mongoose';
@@ -13,11 +13,7 @@ export const getRecentUserTests = async (
 ): Promise<void> => {
     try {
         const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 3;
-        const userId = req.user?._id;
-        if (!userId) {
-            res.status(401).json(ApiResponse.fail("Không tìm thấy token của người dùng!"));
-            return;
-        }
+        const userId = req.user._id;
 
         const recentTests: IUserRecentTest[] = await getRecentUserTestsService(userId, limit);
 
@@ -38,15 +34,10 @@ export const getUserTestHistory = async (
     next: NextFunction
 ): Promise<void> => {
     try {
-        const userId = req.user?._id?.toString();
+        const userId = req.user._id.toString();
         const { testId } = req.params;
         const page = Number(req.query.page ?? 1);
         const limit = Number(req.query.limit ?? 4);
-
-        if (!userId) {
-            res.status(401).json(ApiResponse.fail("Không tìm thấy token của người dùng!"));
-            return;
-        }
 
         if (!testId) {
             res.status(404).json(ApiResponse.fail("Không tìm thấy lịch sử bài kiểm tra!"));
@@ -87,3 +78,27 @@ export const getUserTestHistory = async (
         next(error);
     }
 };
+
+export const getTestHistoryDetail = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const { historyId } = req.params;
+
+        if (!historyId) {
+            res.status(404).json(ApiResponse.fail("Không tìm thấy lịch sử chi tiết bài kiểm tra!"));
+            return;
+        }
+        const result = await getTestHistoryDetailService(historyId);
+        if (!result) {
+            res.status(404)
+                .json(ApiResponse.fail("Không tìm thấy lịch sử bài kiểm tra!"));
+            return;
+        }
+
+        res.status(200)
+            .json(ApiResponse.success(result, "Lấy chi tiết lịch sử làm bài thành công"));
+
+    }
+    catch (error) {
+        next(error);
+    }
+}
