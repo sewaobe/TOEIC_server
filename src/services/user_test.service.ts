@@ -1,5 +1,5 @@
 import { PipelineStage, Types } from "mongoose";
-import { UserTest } from "../models";
+import { IUserTest, UserTest } from "../models";
 import { TestStatus } from "../models/enums/TestStatus";
 import { IUserRecentTest } from "../dto/IUserRecentTest";
 import { IUserTestHistory } from "../dto/IUserTestHistory";
@@ -12,14 +12,14 @@ export const getRecentUserTestsService = async (
     const userObjectId = new Types.ObjectId(userId);
 
     const recentTests = await UserTest.aggregate<IUserRecentTest>([
-        // L?c b�i l�m c?a user
+        // L?c b�i l�m c?a user
         { $match: { user_id: userObjectId } },
 
-        // Sort b�i l�m g?n nh?t
+        // Sort b�i l�m g?n nh?t
         { $sort: { submit_at: -1 } },
         { $limit: limit },
 
-        // Join Test d? l?y th�ng tin d? thi
+        // Join Test d? l?y th�ng tin d? thi
         {
             $lookup: {
                 from: "tests",
@@ -58,7 +58,7 @@ export const getUserTestHistoryService = async (
     limit: number
 ): Promise<PaginationResult<IUserTestHistory>> => {
     const safePage = Math.max(1, Number(page) || 1);
-    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 10)); // ch?n limit qu� l?n
+    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 10)); // ch?n limit qu� l?n
     const skip = (safePage - 1) * safeLimit;
 
     const userObjectId = new Types.ObjectId(userId);
@@ -129,50 +129,91 @@ export const getUserTestHistoryService = async (
 
 
 export interface ITagAccuracy {
-  tag: string;
-  correct: number;
-  total: number;
-  accuracy: number; // correct / total
+    tag: string;
+    correct: number;
+    total: number;
+    accuracy: number; // correct / total
 }
 
 export const getDemoTestTagAccuracyService = async (
-  userId: string
+    userId: string
 ): Promise<Record<string, number>> => {
-  const userObjectId = new Types.ObjectId(userId);
+    const userObjectId = new Types.ObjectId(userId);
 
-  // L?y demo_test m?i nh?t
-  const demoTest = await UserTest.findOne({
-    user_id: userObjectId,
-    completedPart: "demo_test",
-  })
-    .sort({ submit_at: -1 })
-    .populate({
-      path: "answers.question_id",
-      select: "tags", // Question c� tru?ng tags: string[]
+    // L?y demo_test m?i nh?t
+    const demoTest = await UserTest.findOne({
+        user_id: userObjectId,
+        completedPart: "demo_test",
     })
-    .lean();
+        .sort({ submit_at: -1 })
+        .populate({
+            path: "answers.question_id",
+            select: "tags", // Question c� tru?ng tags: string[]
+        })
+        .lean();
 
-  if (!demoTest) return {};
+    if (!demoTest) return {};
 
-  // Gom k?t qu? theo tag
-  const tagMap: Record<string, { correct: number; total: number }> = {};
+    // Gom k?t qu? theo tag
+    const tagMap: Record<string, { correct: number; total: number }> = {};
 
-  for (const ans of demoTest.answers) {
-    const q: any = ans.question_id;
-    if (!q || !q.tags) continue;
+    for (const ans of demoTest.answers) {
+        const q: any = ans.question_id;
+        if (!q || !q.tags) continue;
 
-    for (const tag of q.tags) {
-      if (!tagMap[tag]) tagMap[tag] = { correct: 0, total: 0 };
-      tagMap[tag].total += 1;
-      if (ans.isCorrect) tagMap[tag].correct += 1;
+        for (const tag of q.tags) {
+            if (!tagMap[tag]) tagMap[tag] = { correct: 0, total: 0 };
+            tagMap[tag].total += 1;
+            if (ans.isCorrect) tagMap[tag].correct += 1;
+        }
     }
-  }
 
-  // Convert sang Record<string, number>
-  const tagAccuracy: Record<string, number> = {};
-  for (const [tag, val] of Object.entries(tagMap)) {
-    tagAccuracy[tag] = val.total > 0 ? val.correct / val.total : 0;
-  }
+    // Convert sang Record<string, number>
+    const tagAccuracy: Record<string, number> = {};
+    for (const [tag, val] of Object.entries(tagMap)) {
+        tagAccuracy[tag] = val.total > 0 ? val.correct / val.total : 0;
+    }
 
-  return tagAccuracy;
+    return tagAccuracy;
 };
+
+const mapAnswer = (ans: any, idx: number) => {
+    const qid = ans.question_id?._id ?? ans.question_id; // nếu populate thì lấy _id, còn không thì lấy luôn
+    return {
+        question_id: qid.toString(),
+        question_no: ans.question_id.name.split(" ")[1],
+        selectedOption: ans.selectedOption,
+        isCorrect: ans.isCorrect,
+        tags: ans.question_id.tags || [],
+    }
+};
+
+
+export const getTestHistoryDetailService = async (historyId: string) => {
+    const historyObjectId = new Types.ObjectId(historyId);
+
+    // Tìm lịch sử bài test
+    const history = await UserTest.findById(historyObjectId)
+        .populate({
+            path: "answers.question_id",
+            select: "name tags", // chỉ lấy trường tags để tối ưu
+        })
+        .lean<IUserTest & { answers: any[] }>()
+        .exec();
+
+    if (!history) {
+        throw new Error("Không tìm thấy lịch sử bài test");
+    }
+
+    // Map answers sang format RawAnswer
+    const rawAnswers = history.answers.map((ans, idx) => mapAnswer(ans, idx));
+
+    return {
+        score: history.score,
+        answers: rawAnswers,
+        completedPart: history.completedPart,
+        duration: history.duration,
+        submit_at: history.submit_at,
+    };
+
+}

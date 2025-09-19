@@ -1,16 +1,17 @@
 import { Schema, model, Document, Types } from "mongoose";
 import { WeekStudyStatus } from "./enums/WeekStudyStatus";
 import { SessionType } from "./enums/SessionType";
+import { PartType } from "./enums/PartType";
 
 export interface ISessionItem {
-  kind: SessionType;             // lesson | quiz | review...
-  lesson_id?: Types.ObjectId;    // nếu là bài học
-  question_id?: Types.ObjectId;  // nếu là quiz
+  kind: SessionType;             // flashcard | dictation | quiz | shadowing | lesson
+  activity_id?: Types.ObjectId;  // reference tới Lesson | QuizPlan | ShadowingPlan | DictationPlan | FlashCardPlan (tùy theo kind)
 }
 
 export interface ISession {
   session_no: number;            // số thứ tự trong ngày
   status: WeekStudyStatus;       // lock | in_progress | completed | deleted
+  part_type: PartType;           // part của TOEIC
   items: ISessionItem[];
 }
 
@@ -28,8 +29,8 @@ export interface IDayStudy extends Document {
 const SessionItemSchema = new Schema<ISessionItem>(
   {
     kind: { type: String, enum: Object.values(SessionType), required: true },
-    lesson_id: { type: Schema.Types.ObjectId, ref: "Lesson" },
-    question_id: { type: Schema.Types.ObjectId, ref: "Question" },
+    activity_id: { type: Schema.Types.ObjectId, required: false },
+    //reference tới Lesson | QuizPlan | ShadowingPlan | DictationPlan | FlashCardPlan
   },
   { _id: false }
 );
@@ -41,6 +42,11 @@ const SessionSchema = new Schema<ISession>(
       type: String,
       enum: Object.values(WeekStudyStatus),
       default: WeekStudyStatus.LOCK,
+    },
+    part_type: {
+      type: String,
+      enum: Object.values(PartType),
+      default: PartType.PART_1,
     },
     items: { type: [SessionItemSchema], default: [] },
   },
