@@ -44,7 +44,7 @@ const SessionSchema = new Schema<ISession>(
       default: WeekStudyStatus.LOCK,
     },
     part_type: {
-      type: String,
+      type: Number,
       enum: Object.values(PartType),
       default: PartType.PART_1,
     },
