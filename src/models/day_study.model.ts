@@ -4,22 +4,22 @@ import { SessionType } from "./enums/SessionType";
 import { PartType } from "./enums/PartType";
 
 export interface ISessionItem {
-  kind: SessionType;             // flashcard | dictation | quiz | shadowing | lesson
-  activity_id?: Types.ObjectId;  // reference tới Lesson | QuizPlan | ShadowingPlan | DictationPlan | FlashCardPlan (tùy theo kind)
+  kind: SessionType; // flashcard | dictation | quiz | shadowing | lesson
+  activity_id?: Types.ObjectId; // reference tới Lesson | QuizPlan | ShadowingPlan | DictationPlan | FlashCardPlan (tùy theo kind)
 }
 
 export interface ISession {
-  session_no: number;            // số thứ tự trong ngày
-  status: WeekStudyStatus;       // lock | in_progress | completed | deleted
-  part_type: PartType;           // part của TOEIC
+  session_no: number; // số thứ tự trong ngày
+  status: WeekStudyStatus; // lock | in_progress | completed | deleted
+  part_type?: PartType | null; // part của TOEIC (có thể null nếu là review/mini-test)
   items: ISessionItem[];
 }
 
 export interface IDayStudy extends Document {
-  week_id: Types.ObjectId;       // reference tới WeekStudy
-  dayOfWeek: number;             // 0=Sun, 1=Mon, ..., 6=Sat
+  week_id: Types.ObjectId; // reference tới WeekStudy
+  dayOfWeek: number; // 0=Sun, 1=Mon, ..., 6=Sat
   status: WeekStudyStatus;
-  accuracy_overall: number;      // % đúng trong ngày
+  accuracy_overall: number; // % đúng trong ngày
   sessions: ISession[];
   created_at: Date;
   updated_at?: Date;
@@ -30,7 +30,6 @@ const SessionItemSchema = new Schema<ISessionItem>(
   {
     kind: { type: String, enum: Object.values(SessionType), required: true },
     activity_id: { type: Schema.Types.ObjectId, required: false },
-    //reference tới Lesson | QuizPlan | ShadowingPlan | DictationPlan | FlashCardPlan
   },
   { _id: false }
 );
@@ -45,8 +44,8 @@ const SessionSchema = new Schema<ISession>(
     },
     part_type: {
       type: Number,
-      enum: Object.values(PartType),
-      default: PartType.PART_1,
+      enum: Object.values(PartType).filter((v) => typeof v === "number"),
+      required: false, // 👉 không bắt buộc
     },
     items: { type: [SessionItemSchema], default: [] },
   },

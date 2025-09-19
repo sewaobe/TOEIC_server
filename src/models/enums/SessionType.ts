@@ -6,4 +6,5 @@ export enum SessionType {
     MINI_TEST = 'mini_test',
     LISTENING = 'listening',
     PRACTICE = 'practice',
+    QUIZ = 'quiz',
 }
