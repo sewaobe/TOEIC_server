@@ -361,11 +361,11 @@ export function generateWeeklyDayStudies(
     sessions: [
       makeSession(1, PartType.PART_1, [
         { kind: SessionType.FLASH_CARD },
-        { kind: SessionType.LISTENING },
+        { kind: SessionType.SHADOWING },
       ]),
       makeSession(2, PartType.PART_2, [
         { kind: SessionType.FLASH_CARD },
-        { kind: SessionType.LISTENING },
+        { kind: SessionType.SHADOWING },
       ]),
     ],
     created_at: new Date(),
@@ -380,11 +380,11 @@ export function generateWeeklyDayStudies(
     sessions: [
       makeSession(1, PartType.PART_3, [
         { kind: SessionType.FLASH_CARD },
-        { kind: SessionType.LISTENING },
+        { kind: SessionType.SHADOWING },
       ]),
       makeSession(2, PartType.PART_4, [
         { kind: SessionType.FLASH_CARD },
-        { kind: SessionType.LISTENING },
+        { kind: SessionType.SHADOWING },
       ]),
     ],
     created_at: new Date(),
@@ -406,7 +406,7 @@ export function generateWeeklyDayStudies(
         }))
       ),
       makeSession(2, PartType.PART_5, [{ kind: SessionType.FLASH_CARD }]),
-      makeSession(3, PartType.PART_5, [{ kind: SessionType.PRACTICE }]),
+      makeSession(3, PartType.PART_5, [{ kind: SessionType.QUIZ }]),
     ],
     created_at: new Date(),
   } as any);
@@ -427,7 +427,7 @@ export function generateWeeklyDayStudies(
         }))
       ),
       makeSession(2, PartType.PART_6, [{ kind: SessionType.FLASH_CARD }]),
-      makeSession(3, PartType.PART_6, [{ kind: SessionType.PRACTICE }]),
+      makeSession(3, PartType.PART_6, [{ kind: SessionType.QUIZ }]),
     ],
     created_at: new Date(),
   } as any);
@@ -440,19 +440,29 @@ export function generateWeeklyDayStudies(
     accuracy_overall: 0,
     sessions: [
       makeSession(1, PartType.PART_7, [{ kind: SessionType.FLASH_CARD }]),
-      makeSession(2, PartType.PART_7, [{ kind: SessionType.PRACTICE }]),
+      makeSession(2, PartType.PART_7, [{ kind: SessionType.QUIZ }]),
     ],
     created_at: new Date(),
   } as any);
 
-  // ===== Thứ 7: Ôn tập từ vựng + quiz test
+  // ===== Thứ 7: Ôn tập tổng hợp flashcard + quiz test
   result.push({
     week_id: weekId,
     dayOfWeek: 6,
     status: WeekStudyStatus.LOCK,
     accuracy_overall: 0,
     sessions: [
-      makeSession(1, null, [{ kind: SessionType.FLASH_CARD }]),
+      // Tổng hợp tất cả flashcard của tuần
+      {
+        session_no: 1,
+        status: WeekStudyStatus.LOCK,
+        part_type: null,
+        items: lists.flashcards.map((fc) => ({
+          kind: SessionType.FLASH_CARD,
+          activity_id: fc._id as Types.ObjectId,
+        })),
+      },
+      // Quiz test tổng hợp
       makeSession(2, null, [{ kind: SessionType.QUIZ }]),
     ],
     created_at: new Date(),
