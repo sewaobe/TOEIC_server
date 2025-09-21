@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from 'express';
 import { getRecentUserTestsService, getTestHistoryDetailService, getUserTestHistoryService } from './../services/user_test.service';
-import { ApiResponse } from '../utils/apiResponse';
+import { ApiResponse } from '../utils/ApiResponse';
 import { IUserRecentTest } from '../dto/IUserRecentTest';
 import { Types } from 'mongoose';
 import { IUserTestHistory } from '../dto/IUserTestHistory';

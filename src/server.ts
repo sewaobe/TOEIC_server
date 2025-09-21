@@ -14,7 +14,7 @@ import commentRouter from "./routes/comment.route";
 import learningPathRouter from "./routes/user_learningPath.route";
 import dayStudyRoutes from "./routes/day_study.route";
 import { errorLogger } from "./middlewares/logger.middleware";
-import { ApiResponse } from "./utils/apiResponse";
+import { ApiResponse } from "./utils/ApiResponse";
 
 connectDB();
 
@@ -22,7 +22,7 @@ const app = express();
 
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin: ["http://localhost:5173", "http://localhost:5174"],
     credentials: true,
   })
 );

@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { loginService, registerService } from '../services/auth.service';
 import jwt from 'jsonwebtoken';
 import { generateAccessTokenFromPayload, UserPayload } from '../utils/jwt';
-import { ApiResponse } from '../utils/apiResponse';
+import { ApiResponse } from '../utils/ApiResponse';
 
 // Login
 export const loginController = async (
@@ -12,7 +12,7 @@ export const loginController = async (
 ): Promise<void> => {
   try {
     const loginRequest = req.body;
-    const { accessToken, refreshToken, user } = await loginService(
+    const { accessToken, refreshToken, role_name } = await loginService(
       loginRequest,
     );
 
@@ -30,7 +30,9 @@ export const loginController = async (
       maxAge: 2 * 60 * 1000, // 2 phút (ở code của bạn ghi comment 15 phút nhưng config 2 phút, bạn check lại)
     });
 
-    res.status(200).json(ApiResponse.success(null, 'Login successfully'));
+    res.status(200).json(ApiResponse.success(null, 'Login successfully', {
+      role_name: role_name
+    }));
   } catch (err) {
     next(err);
   }

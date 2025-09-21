@@ -21,9 +21,12 @@ export const loginService = async ({
 }: LoginRequest): Promise<{
   accessToken: string;
   refreshToken: string;
-  user: Object;
+  role_name: string;
 }> => {
-  const user: IUser | null = await User.findOne({ username });
+  const user: IUser | null = await User
+    .findOne({ username })
+    .populate("role_id", "name")
+    .lean();
   if (!user) throw new Error('Username does not exist');
 
   const match = await comparePassword(password, user.passwordHash);
@@ -32,12 +35,10 @@ export const loginService = async ({
   const accessToken = generateAccessToken(user);
   const refreshToken = generateRefreshToken(user);
 
-  const { passwordHash, __v, banned_by, ...safeUser } = user.toObject();
-
   return {
     accessToken,
     refreshToken,
-    user: safeUser,
+    role_name: (user.role_id as any)?.name || null,
   };
 };
 

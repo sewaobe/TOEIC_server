@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import * as testService from "../services/test.service";
 import { ITest } from "../models";
-import { ApiResponse } from "../utils/apiResponse";
+import { ApiResponse } from "../utils/ApiResponse";
 // import {JwtUserPayload} from "../middlewares/verifyAccessToken.middleware"
 
 export const getTest = async (

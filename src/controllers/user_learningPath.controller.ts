@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { ApiResponse } from "../utils/apiResponse";
+import { ApiResponse } from "../utils/ApiResponse";
 import {
   getUserLearningPathService,
   createLearningPathService,

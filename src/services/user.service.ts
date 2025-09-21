@@ -55,7 +55,18 @@ export const getProfileUserByUsername = async (
 
 // Lấy user theo ID
 export const getUserById = async (id: string) => {
-  return User.findById(id).select("-passwordHash");
+  const user = await User.findById(id)
+    .select("-passwordHash")
+    .populate("role_id", "name")
+    .lean();
+
+  if (!user) return null;
+
+  return {
+    ...user,
+    role_name: (user.role_id as any).name,
+    role_id: undefined, // ẩn role_id
+  };
 };
 
 // Cập nhật profile user

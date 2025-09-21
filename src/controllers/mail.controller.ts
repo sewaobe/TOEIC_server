@@ -3,7 +3,7 @@ import { z } from 'zod';
 import bcrypt from 'bcrypt';
 import { User } from '../models/user.model';
 import { sendOtpEmail } from '../services/mail.service';
-import { ApiResponse } from '../utils/apiResponse';
+import { ApiResponse } from '../utils/ApiResponse';
 
 // ===== In-memory OTP store =====
 type OtpEntry = {
