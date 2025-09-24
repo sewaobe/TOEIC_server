@@ -236,7 +236,7 @@ export async function createLearningPathWithWeeks(
   await learningPath.save();
 
   // 2. Query tất cả Plans (⚡ bỏ filter user_id, lấy tất cả)
-  const [flashcards, dictations, quizzes, shadowings] = await Promise.all([
+  const [flashcards, dictations, quizes, shadowings] = await Promise.all([
     FlashCardPlan.find().lean(),
     DictationPlan.find().lean(),
     QuizPlan.find().lean(),
@@ -264,7 +264,7 @@ export async function createLearningPathWithWeeks(
       week._id,
       weekLessons,
       weekNo,
-      { flashcards, dictations, quizzes, shadowings }
+      { flashcards, dictations, quizes, shadowings }
     );
     console.log("===CHECK part_type in dayStudiesData===");
     dayStudiesData.forEach((d) =>
@@ -304,7 +304,7 @@ export function generateWeeklyDayStudies(
   lists: {
     flashcards: any[];
     dictations: any[];
-    quizzes: any[];
+    quizes: any[];
     shadowings: any[];
   }
 ): Omit<IDayStudy, "_id">[] {
@@ -323,14 +323,12 @@ export function generateWeeklyDayStudies(
     items: { kind: SessionType; activityId?: Types.ObjectId }[]
   ) => ({
     session_no: no,
-    status: WeekStudyStatus.LOCK,
+    status: no === 1 ? WeekStudyStatus.IN_PROGRESS : WeekStudyStatus.LOCK,
     part_type: part,
     items: items.map((it) => {
       let activityId = it.activityId;
 
       if (!activityId && part) {
-        console.log("DEBUG typeof part =", typeof part, "value=", part);
-
         switch (it.kind) {
           case SessionType.FLASH_CARD:
             activityId = pickPlanId(lists.flashcards, part);
@@ -339,7 +337,7 @@ export function generateWeeklyDayStudies(
             activityId = pickPlanId(lists.dictations, part);
             break;
           case SessionType.QUIZ:
-            activityId = pickPlanId(lists.quizzes, part);
+            activityId = pickPlanId(lists.quizes, part);
             break;
           case SessionType.SHADOWING:
             activityId = pickPlanId(lists.shadowings, part);
@@ -350,6 +348,30 @@ export function generateWeeklyDayStudies(
       return { kind: it.kind, activity_id: activityId };
     }),
   });
+
+  // helper tạo sessions xen kẽ lesson + quiz, rồi thêm flashcard cuối
+  const makeLessonQuizSessions = (part: PartType, lessons: ILesson[]) => {
+    const sessions: any[] = [];
+
+    lessons.forEach((lesson, idx) => {
+      sessions.push(
+        makeSession(idx + 1, part, [
+          {
+            kind: SessionType.LESSON,
+            activityId: lesson._id as Types.ObjectId,
+          },
+          { kind: SessionType.QUIZ },
+        ])
+      );
+    });
+
+    // thêm flashcard cuối
+    sessions.push(
+      makeSession(sessions.length + 1, part, [{ kind: SessionType.FLASH_CARD }])
+    );
+
+    return sessions;
+  };
 
   // ===== Thứ 2: Part 1–2 → từ vựng + luyện nghe
   result.push({
@@ -362,10 +384,12 @@ export function generateWeeklyDayStudies(
       makeSession(1, PartType.PART_1, [
         { kind: SessionType.FLASH_CARD },
         { kind: SessionType.SHADOWING },
+        { kind: SessionType.DICTATION },
       ]),
       makeSession(2, PartType.PART_2, [
         { kind: SessionType.FLASH_CARD },
         { kind: SessionType.SHADOWING },
+        { kind: SessionType.DICTATION },
       ]),
     ],
     created_at: new Date(),
@@ -381,54 +405,34 @@ export function generateWeeklyDayStudies(
       makeSession(1, PartType.PART_3, [
         { kind: SessionType.FLASH_CARD },
         { kind: SessionType.SHADOWING },
+        { kind: SessionType.DICTATION },
       ]),
       makeSession(2, PartType.PART_4, [
         { kind: SessionType.FLASH_CARD },
         { kind: SessionType.SHADOWING },
+        { kind: SessionType.DICTATION },
       ]),
     ],
     created_at: new Date(),
   } as any);
 
-  // ===== Thứ 4: Part 5 → ngữ pháp + từ vựng + làm câu hỏi
+  // ===== Thứ 4: Part 5 → xen kẽ lesson + quiz, thêm flashcard
   result.push({
     week_id: weekId,
     dayOfWeek: 3,
     status: WeekStudyStatus.LOCK,
     accuracy_overall: 0,
-    sessions: [
-      makeSession(
-        1,
-        PartType.PART_5,
-        grammarLessons.wed.map((lesson) => ({
-          kind: SessionType.LESSON,
-          activityId: lesson._id as Types.ObjectId,
-        }))
-      ),
-      makeSession(2, PartType.PART_5, [{ kind: SessionType.FLASH_CARD }]),
-      makeSession(3, PartType.PART_5, [{ kind: SessionType.QUIZ }]),
-    ],
+    sessions: makeLessonQuizSessions(PartType.PART_5, grammarLessons.wed),
     created_at: new Date(),
   } as any);
 
-  // ===== Thứ 5: Part 6 → ngữ pháp + từ vựng + làm câu hỏi
+  // ===== Thứ 5: Part 6 → xen kẽ lesson + quiz, thêm flashcard
   result.push({
     week_id: weekId,
     dayOfWeek: 4,
     status: WeekStudyStatus.LOCK,
     accuracy_overall: 0,
-    sessions: [
-      makeSession(
-        1,
-        PartType.PART_6,
-        grammarLessons.thu.map((lesson) => ({
-          kind: SessionType.LESSON,
-          activityId: lesson._id as Types.ObjectId,
-        }))
-      ),
-      makeSession(2, PartType.PART_6, [{ kind: SessionType.FLASH_CARD }]),
-      makeSession(3, PartType.PART_6, [{ kind: SessionType.QUIZ }]),
-    ],
+    sessions: makeLessonQuizSessions(PartType.PART_6, grammarLessons.thu),
     created_at: new Date(),
   } as any);
 
@@ -452,7 +456,6 @@ export function generateWeeklyDayStudies(
     status: WeekStudyStatus.LOCK,
     accuracy_overall: 0,
     sessions: [
-      // Tổng hợp tất cả flashcard của tuần
       {
         session_no: 1,
         status: WeekStudyStatus.LOCK,
@@ -462,7 +465,6 @@ export function generateWeeklyDayStudies(
           activity_id: fc._id as Types.ObjectId,
         })),
       },
-      // Quiz test tổng hợp
       makeSession(2, null, [{ kind: SessionType.QUIZ }]),
     ],
     created_at: new Date(),
@@ -480,3 +482,4 @@ export function generateWeeklyDayStudies(
 
   return result;
 }
+
