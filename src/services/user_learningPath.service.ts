@@ -236,6 +236,7 @@ export async function createLearningPathWithWeeks(
   await learningPath.save();
 
   // 2. Query tất cả Plans (⚡ bỏ filter user_id, lấy tất cả)
+
   const [flashcards, dictations, quizes, shadowings] = await Promise.all([
     FlashCardPlan.find().lean(),
     DictationPlan.find().lean(),
@@ -264,6 +265,7 @@ export async function createLearningPathWithWeeks(
       week._id,
       weekLessons,
       weekNo,
+
       { flashcards, dictations, quizes, shadowings }
     );
     console.log("===CHECK part_type in dayStudiesData===");
@@ -320,10 +322,11 @@ export function generateWeeklyDayStudies(
   const makeSession = (
     no: number,
     part: PartType | null,
-    items: { kind: SessionType; activityId?: Types.ObjectId }[]
+    items: { kind: SessionType; activityId?: Types.ObjectId }[],
+    status: WeekStudyStatus = WeekStudyStatus.LOCK
   ) => ({
     session_no: no,
-    status: no === 1 ? WeekStudyStatus.IN_PROGRESS : WeekStudyStatus.LOCK,
+    status: status,
     part_type: part,
     items: items.map((it) => {
       let activityId = it.activityId;
@@ -416,15 +419,18 @@ export function generateWeeklyDayStudies(
     created_at: new Date(),
   } as any);
 
+
   // ===== Thứ 4: Part 5 → xen kẽ lesson + quiz, thêm flashcard
   result.push({
     week_id: weekId,
     dayOfWeek: 3,
     status: WeekStudyStatus.LOCK,
     accuracy_overall: 0,
+    
     sessions: makeLessonQuizSessions(PartType.PART_5, grammarLessons.wed),
     created_at: new Date(),
   } as any);
+
 
   // ===== Thứ 5: Part 6 → xen kẽ lesson + quiz, thêm flashcard
   result.push({
@@ -432,6 +438,7 @@ export function generateWeeklyDayStudies(
     dayOfWeek: 4,
     status: WeekStudyStatus.LOCK,
     accuracy_overall: 0,
+   
     sessions: makeLessonQuizSessions(PartType.PART_6, grammarLessons.thu),
     created_at: new Date(),
   } as any);

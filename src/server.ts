@@ -13,6 +13,7 @@ import userTestRouter from "./routes/user_test.route";
 import commentRouter from "./routes/comment.route";
 import learningPathRouter from "./routes/user_learningPath.route";
 import dayStudyRoutes from "./routes/day_study.route";
+import flashCardRoutes from "./routes/flashCard.route";
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
 
@@ -38,6 +39,7 @@ app.use("/api/user-test", userTestRouter)
 app.use("/api/comments", commentRouter);
 app.use("/api/learning-path", learningPathRouter);
 app.use("/api/day-study", dayStudyRoutes);
+app.use("/api/flash-card", flashCardRoutes);
 app.use(errorLogger);
 
 // Middleware xử lý lỗi cuối cùng

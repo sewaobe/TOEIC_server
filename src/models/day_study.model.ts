@@ -10,6 +10,7 @@ export interface ISessionItem {
 
 export interface ISession {
   session_no: number; // số thứ tự trong ngày
+  accuracy: number; // % đúng trong buổi học
   status: WeekStudyStatus; // lock | in_progress | completed | deleted
   part_type?: PartType | null; // part của TOEIC (có thể null nếu là review/mini-test)
   items: ISessionItem[];
