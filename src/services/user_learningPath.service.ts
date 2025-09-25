@@ -388,7 +388,7 @@ export function generateWeeklyDayStudies(
         { kind: SessionType.FLASH_CARD },
         { kind: SessionType.SHADOWING },
         { kind: SessionType.DICTATION },
-      ]),
+      ], WeekStudyStatus.IN_PROGRESS),,
       makeSession(2, PartType.PART_2, [
         { kind: SessionType.FLASH_CARD },
         { kind: SessionType.SHADOWING },
