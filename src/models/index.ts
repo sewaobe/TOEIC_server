@@ -24,3 +24,4 @@ export * from "./quiz_attempt.model";
 export * from "./quiz_plan.model";
 export * from "./shadowing_attempt.model";
 export * from "./shadowing_plan.model";
+export * from "./group.model"
