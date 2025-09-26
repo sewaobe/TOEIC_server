@@ -16,6 +16,7 @@ import dayStudyRoutes from "./routes/day_study.route";
 import flashCardRoutes from "./routes/flashCard.route";
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
+import { verifyAccessToken } from "./middlewares/verifyAccessToken.middleware";
 
 connectDB();
 
@@ -39,7 +40,7 @@ app.use("/api/user-test", userTestRouter)
 app.use("/api/comments", commentRouter);
 app.use("/api/learning-path", learningPathRouter);
 app.use("/api/day-study", dayStudyRoutes);
-app.use("/api/flash-card", flashCardRoutes);
+app.use("/api/flash-card", verifyAccessToken, flashCardRoutes);
 app.use(errorLogger);
 
 // Middleware xử lý lỗi cuối cùng
