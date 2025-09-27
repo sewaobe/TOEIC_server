@@ -1,14 +1,46 @@
-import { Test, ITest, UserTest, IQuestion, Comment } from "../models";
+import {
+  Test,
+  Group,
+  IGroup,
+  ITest,
+  IQuestion,
+  Comment,
+  UserTest,
+} from "../models";
 import { Types } from "mongoose";
 import { TestStatus } from "../models/enums/TestStatus";
 
-// services/test.service.ts
-export const getFullTest = async (testId: string): Promise<ITest | null> => {
-  return Test.findById(testId)
+export const getFullTest = async (testId: string): Promise<any | null> => {
+  const test = await Test.findById(testId)
     .populate("audioListen", "url")
-    .populate("questions.$*.groups.audioUrl", "url")
-    .populate("questions.$*.groups.imagesUrl", "url")
-    .populate("questions.$*.groups.questions");
+    .populate({
+      path: "groups",
+      model: "Group",
+      populate: [
+        { path: "audioUrl", select: "url" },
+        { path: "imagesUrl", select: "url" },
+        { path: "questions" }, // populate Question
+      ],
+    })
+    .lean();
+
+  if (!test) return null;
+  const groups = test.groups as IGroup[];
+  // ⚡ convert từ test.groups[] → test.questions Map như cũ
+  const questions: Record<string, any> = {};
+
+  for (const group of groups) {
+    const partName = `Part ${group.part}`;
+    if (!questions[partName]) {
+      questions[partName] = { groups: [] };
+    }
+    questions[partName].groups.push(group);
+  }
+
+  return {
+    ...test,
+    questions,
+  };
 };
 
 export const getPart = async (testId: string, partName: string) => {
@@ -29,12 +61,12 @@ export const getParts = async (testId: string, partNames: string[]) => {
 
   const selected: Record<string, any> = {};
   partNames.forEach((p) => {
-    const data = test.questions.get("Part " + p);
+    const data = test.questions["Part " + p];
     if (data) selected["Part " + p] = data;
   });
 
   return {
-    ...test.toObject(),
+    ...test,
     questions: selected,
   };
 };
@@ -56,20 +88,22 @@ export const submitTest = async (
   const detailedAnswers = answers.map((a) => {
     let correct = false;
 
-    // Duyệt từng part
-    for (const [partName, partData] of test.questions.entries()) {
+    // ✅ duyệt qua object bằng Object.entries thay vì .entries()
+    for (const [partName, partData] of Object.entries(
+      test.questions as Record<string, { groups: IGroup[] }>
+    )) {
       if (!partData.groups) continue;
 
       for (const group of partData.groups) {
         for (const qRaw of group.questions || []) {
-          // Cast ObjectId -> IQuestion nếu đã populate
           const question = qRaw as unknown as IQuestion;
 
           if (question._id!.toString() === a.question_id) {
             correct = question.correctAnswer === a.selectedOption[0];
 
             // Cập nhật stats cho part
-            if (!partStats[partName]) partStats[partName] = { correct: 0, total: 0 };
+            if (!partStats[partName])
+              partStats[partName] = { correct: 0, total: 0 };
             partStats[partName].total += 1;
             if (correct) partStats[partName].correct += 1;
 
@@ -90,13 +124,14 @@ export const submitTest = async (
 
   // Tính tổng điểm
   const score =
-    (detailedAnswers.filter((a) => a.isCorrect).length / detailedAnswers.length) *
+    (detailedAnswers.filter((a) => a.isCorrect).length /
+      detailedAnswers.length) *
     990;
 
   // Chuyển stats thành parts array
   const parts = Object.entries(partStats).map(([part_name, stat]) => ({
     part_name,
-    accuracy: stat.total > 0 ? stat.correct / stat.total * 100 : 0,
+    accuracy: stat.total > 0 ? (stat.correct / stat.total) * 100 : 0,
   }));
 
   // Lưu vào DB
@@ -115,6 +150,7 @@ export const submitTest = async (
 
   return { score, answers: detailedAnswers };
 };
+
 export const getTestsWithScoreAndSearch = async (
   userId: string,
   page: number,
@@ -250,4 +286,3 @@ export const getTestDetail = async (testId: string, userId?: string) => {
     highestScore,
   };
 };
-
