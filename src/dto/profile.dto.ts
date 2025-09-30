@@ -1,9 +1,9 @@
-import { IUserProgress, IUser } from "../models"; // import interface
+import { IUser, IUserLearningPath } from "../models"; // import interface
 
 export interface ProfileDto {
   infor: IUser;
   // progress: lấy nguyên bản UserProgress
-  progress: IUserProgress[];
+  progress: IUserLearningPath[];
   // highest test
   highestTest: {
     testId: string;
