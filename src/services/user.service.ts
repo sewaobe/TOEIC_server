@@ -1,4 +1,4 @@
-import { User, UserProgress, LearningPath, UserTest, IUserProgress } from "../models";
+import { User, UserProgress, LearningPath, UserTest, IUserProgress, IUserLearningPath, UserLearningPath } from "../models";
 import { Types } from "mongoose";
 import { ProfileDto } from "../dto/profile.dto";
 
@@ -13,9 +13,9 @@ export const getProfileUserByUsername = async (
   const userId = new Types.ObjectId(user._id);
 
   // Lấy progress nguyên bản + populate learning_path_id
-  const progressList: (IUserProgress & { learning_path_id?: any })[] =
-    await UserProgress.find({ user_id: userId })
-      .populate("learningPaths_id") // populate thông tin learning path
+  const progressList: (IUserLearningPath & { learning_path_id?: any })[] =
+    await UserLearningPath.find({ user_id: userId })
+      .populate("learningPath_id") // populate thông tin learning path
       .lean();
 
   // Lấy bài test có điểm cao nhất

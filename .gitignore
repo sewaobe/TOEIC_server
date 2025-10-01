@@ -1,3 +1,4 @@
 node_modules
 .env
 logs
+src/configs/serviceAccountKey.json

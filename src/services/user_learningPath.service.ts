@@ -1,8 +1,8 @@
+import { WeekStudyStatus } from './../models/enums/WeekStudyStatus';
 import { Types } from "mongoose";
 import {
   UserLearningPath,
   LearningPath,
-  WeekStudy,
   DayStudy,
   Lesson,
   ILesson,
@@ -13,10 +13,10 @@ import {
   DictationPlan,
   QuizPlan,
   ShadowingPlan,
+  WeekStudy,
 } from "../models"; // ✅ gom từ index
 
 import { getDemoTestTagAccuracyService } from "./user_test.service";
-import { WeekStudyStatus } from "../models/enums/WeekStudyStatus";
 import { SessionType } from "../models/enums/SessionType";
 import { PartType } from "../models/enums/PartType";
 import { mockLessons } from "../mocks/mockLessons";
@@ -322,7 +322,11 @@ export function generateWeeklyDayStudies(
   const makeSession = (
     no: number,
     part: PartType | null,
-    items: { kind: SessionType; activityId?: Types.ObjectId }[],
+    items: {
+      kind: SessionType,
+      activityId?: Types.ObjectId,
+      status?: WeekStudyStatus
+    }[],
     status: WeekStudyStatus = WeekStudyStatus.LOCK
   ) => ({
     session_no: no,
@@ -348,7 +352,7 @@ export function generateWeeklyDayStudies(
         }
       }
 
-      return { kind: it.kind, activity_id: activityId };
+      return { kind: it.kind, activity_id: activityId, status: it.status ? it.status : WeekStudyStatus.LOCK };
     }),
   });
 
@@ -385,10 +389,10 @@ export function generateWeeklyDayStudies(
     accuracy_overall: 0,
     sessions: [
       makeSession(1, PartType.PART_1, [
-        { kind: SessionType.FLASH_CARD },
+        { kind: SessionType.FLASH_CARD, status: WeekStudyStatus.IN_PROGRESS },
         { kind: SessionType.SHADOWING },
         { kind: SessionType.DICTATION },
-      ], WeekStudyStatus.IN_PROGRESS),,
+      ]), ,
       makeSession(2, PartType.PART_2, [
         { kind: SessionType.FLASH_CARD },
         { kind: SessionType.SHADOWING },
@@ -426,7 +430,7 @@ export function generateWeeklyDayStudies(
     dayOfWeek: 3,
     status: WeekStudyStatus.LOCK,
     accuracy_overall: 0,
-    
+
     sessions: makeLessonQuizSessions(PartType.PART_5, grammarLessons.wed),
     created_at: new Date(),
   } as any);
@@ -438,7 +442,7 @@ export function generateWeeklyDayStudies(
     dayOfWeek: 4,
     status: WeekStudyStatus.LOCK,
     accuracy_overall: 0,
-   
+
     sessions: makeLessonQuizSessions(PartType.PART_6, grammarLessons.thu),
     created_at: new Date(),
   } as any);

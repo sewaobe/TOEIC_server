@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { loginService, registerService } from '../services/auth.service';
+import { loginService, loginWithGoogleService, registerService } from '../services/auth.service';
 import jwt from 'jsonwebtoken';
 import { generateAccessTokenFromPayload, UserPayload } from '../utils/jwt';
 import { ApiResponse } from '../utils/ApiResponse';
@@ -119,5 +119,37 @@ export const logoutController = async (
 
   } catch (err) {
     next(err);
+  }
+};
+
+export const loginWithGoogleController = async (req: Request, res: Response) => {
+  try {
+    const { idToken } = req.body;
+
+    if (!idToken) {
+      return res.status(400).json({ message: 'Missing idToken' });
+    }
+
+    const {accessToken, refreshToken, role_name } = await loginWithGoogleService(idToken);
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: false, // đổi true nếu deploy HTTPS
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
+    });
+
+    res.cookie('accessToken', accessToken, {
+      httpOnly: true,
+      secure: false,
+      sameSite: 'lax',
+      maxAge: 2 * 60 * 1000, // 2 phút (ở code của bạn ghi comment 15 phút nhưng config 2 phút, bạn check lại)
+    });
+
+    res.status(200).json(ApiResponse.success(null, 'Login successfully', {
+      role_name: role_name
+    }));
+
+  } catch (error: any) {
+    res.status(401).json({ message: error.message });
   }
 };

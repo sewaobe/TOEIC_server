@@ -6,6 +6,7 @@ import { PartType } from "./enums/PartType";
 export interface ISessionItem {
   kind: SessionType; // flashcard | dictation | quiz | shadowing | lesson
   activity_id?: Types.ObjectId; // reference tới Lesson | QuizPlan | ShadowingPlan | DictationPlan | FlashCardPlan (tùy theo kind)
+  status: WeekStudyStatus; // lock | in_progress | completed | deleted
 }
 
 export interface ISession {
@@ -31,6 +32,7 @@ const SessionItemSchema = new Schema<ISessionItem>(
   {
     kind: { type: String, enum: Object.values(SessionType), required: true },
     activity_id: { type: Schema.Types.ObjectId, required: false },
+    status: {type: String, enum: Object.values(WeekStudyStatus), default: WeekStudyStatus.LOCK}
   },
   { _id: false }
 );
@@ -46,7 +48,7 @@ const SessionSchema = new Schema<ISession>(
     part_type: {
       type: Number,
       enum: Object.values(PartType).filter((v) => typeof v === "number"),
-      required: false, // 👉 không bắt buộc
+      required: false,
     },
     items: { type: [SessionItemSchema], default: [] },
   },
