@@ -1,6 +1,7 @@
 import express from 'express';
 import {
   loginController,
+  loginWithGoogleController,
   logoutController,
   refreshTokenController,
   registerController,
@@ -18,6 +19,7 @@ const router = express.Router();
 
 // POST /login
 router.post('/login', validateSchema(LoginRequestDTO), loginController);
+router.post('/google', loginWithGoogleController);
 
 // POST /register
 router.post(
