@@ -6,6 +6,8 @@ import {
   IQuestion,
   Comment,
   UserTest,
+  Media,
+  Question,
 } from "../models";
 import { Types } from "mongoose";
 import { TestStatus } from "../models/enums/TestStatus";
@@ -285,4 +287,129 @@ export const getTestDetail = async (testId: string, userId?: string) => {
     totalComments,
     highestScore,
   };
+};
+export const getAllTests = async (
+  page: number = 1,
+  limit: number = 10
+): Promise<{ tests: Partial<ITest>[]; total: number }> => {
+  const skip = (page - 1) * limit;
+
+  const [tests, total] = await Promise.all([
+    Test.find({})
+      .select("title type status topic countComment countSubmit created_at")
+      .sort({ created_at: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    Test.countDocuments(),
+  ]);
+
+  return { tests, total };
+};
+
+export const createTest = async (data: Partial<ITest>): Promise<ITest> => {
+  // 1. Tạo Test rỗng trước
+  const newTest = new Test({
+    title: data.title,
+    audioListen: [],
+    groups: [],
+    type: data.type || "full-test",
+    status: data.status || "draft",
+    topic: data.topic || "",
+    countComment: 0,
+    countSubmit: 0,
+    created_by: data.created_by ? new Types.ObjectId(data.created_by) : null,
+    updated_at: new Date(),
+  });
+
+  await newTest.save();
+
+  const groupIds: Types.ObjectId[] = [];
+
+  // 2. Duyệt qua groups từ FE
+  if (data.groups && data.groups.length > 0) {
+    for (const g of data.groups as any[]) {
+      //2.1 Audio
+      let audioMediaId: Types.ObjectId | null = null;
+      if (g.audioUrl && g.audioUrl.url) {
+        const audioMedia = await Media.create({
+          url: g.audioUrl.url,
+          type: g.audioUrl.type || "AUDIO",
+          transcript: "",
+          topic: data.topic || "",
+        });
+        audioMediaId = audioMedia._id as Types.ObjectId; // ✅ ép kiểu
+      }
+
+      //2.2 Images
+      const imageMediaIds: Types.ObjectId[] = [];
+      if (g.imagesUrl && g.imagesUrl.length > 0) {
+        for (const img of g.imagesUrl) {
+          const imageMedia = await Media.create({
+            url: img.url,
+            type: img.type || "IMAGE",
+            transcript: "",
+            topic: data.topic || "",
+          });
+          imageMediaIds.push(imageMedia._id as Types.ObjectId); // ✅ ép kiểu
+        }
+      }
+
+      // 2.3 Tạo Questions
+      const questionIds: Types.ObjectId[] = [];
+      if (g.questions && g.questions.length > 0) {
+        for (let i = 0; i < g.questions.length; i++) {
+          const q = g.questions[i];
+          const question = await Question.create({
+            name: q.name || `Question ${i + 1}`,
+            textQuestion: q.textQuestion || "",
+            choices: q.choices || {},
+            correctAnswer: q.correctAnswer || "",
+            explanation: q.explanation || "",
+            tags: q.tags || [],
+            planned_time: q.planned_time || 0,
+            created_by: data.created_by
+              ? new Types.ObjectId(data.created_by)
+              : null,
+            created_at: new Date(),
+            updated_at: new Date(),
+          });
+          questionIds.push(question._id);
+        }
+      }
+
+      // 2.4 Tạo Group
+      const group = await Group.create({
+        test_id: newTest._id,
+        part: g.partIndex,
+        type: g.type || "TEST",
+        audioUrl: audioMediaId,
+        imagesUrl: imageMediaIds,
+        transcriptEnglish: g.transcriptEnglish || "",
+        transcriptTranslation: g.transcriptTranslation || "",
+        questions: questionIds,
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+
+      groupIds.push(group._id);
+    }
+  }
+
+  // 3. Cập nhật lại Test với groupIds
+  newTest.groups = groupIds;
+  await newTest.save();
+
+  // 4. Populate kết quả trả về
+  return (await Test.findById(newTest._id)
+    .populate({
+      path: "groups",
+      populate: [
+        { path: "audioUrl" },
+        { path: "imagesUrl" },
+        { path: "questions" },
+      ],
+    })
+    .lean()
+    .exec()) as ITest;
 };

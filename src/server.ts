@@ -1,4 +1,4 @@
-import express, { Request, Response } from "express";
+import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 dotenv.config();
@@ -14,8 +14,11 @@ import commentRouter from "./routes/comment.route";
 import learningPathRouter from "./routes/user_learningPath.route";
 import dayStudyRoutes from "./routes/day_study.route";
 import flashCardRoutes from "./routes/flashCard.route";
+import ctvTestRouter from "./routes/ctv_test.route";
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
+
+
 
 connectDB();
 
@@ -35,11 +38,14 @@ app.use(cookieParser());
 app.use("/api/auth", authRouter);
 app.use("/api/users", userRouter);
 app.use("/api/tests", testRouter);
-app.use("/api/user-test", userTestRouter)
+app.use("/api/user-test", userTestRouter);
 app.use("/api/comments", commentRouter);
 app.use("/api/learning-path", learningPathRouter);
 app.use("/api/day-study", dayStudyRoutes);
 app.use("/api/flash-card", flashCardRoutes);
+console.log("server");
+app.use("/api/ctv", ctvTestRouter);
+
 app.use(errorLogger);
 
 // Middleware xử lý lỗi cuối cùng
@@ -53,7 +59,17 @@ app.use((err: any, req: Request, res: Response) => {
 
   res.status(statusCode).json(response);
 });
-
+// app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+//   console.log("1");
+//   const statusCode = err.status || 500;
+//   console.log("2");
+//   const response = ApiResponse.fail(
+//     err.message || "Internal Server Error",
+//     process.env.NODE_ENV === "development" ? err.stack : undefined
+//   );
+//   console.log("3");
+//   res.status(statusCode).json(response);
+// });
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {

@@ -15,15 +15,20 @@ export const getTest = async (
 
     if (full === "true") {
       const test = await testService.getFullTest(testId);
-      if (!test) return res.status(404).json({ message: "Test not found" });
-      return res.status(200).json({ data: test });
+      if (!test)
+        return res.status(404).json(ApiResponse.fail("Test not found"));
+      return res
+        .status(200)
+        .json(ApiResponse.success(test, "Lấy full test thành công"));
     }
 
     if (part) {
       const testWithOnePart = await testService.getPart(testId, part as string);
       if (!testWithOnePart)
-        return res.status(404).json({ message: "Part not found" });
-      return res.status(200).json({ data: testWithOnePart });
+        return res.status(404).json(ApiResponse.fail("Part not found"));
+      return res
+        .status(200)
+        .json(ApiResponse.success(testWithOnePart, "Lấy 1 part thành công"));
     }
 
     if (parts) {
@@ -33,26 +38,34 @@ export const getTest = async (
         partsArray
       );
       if (!testWithSelectedParts)
-        return res.status(404).json({ message: "Parts not found" });
-      return res.status(200).json({ data: testWithSelectedParts });
+        return res.status(404).json(ApiResponse.fail("Parts not found"));
+      return res
+        .status(200)
+        .json(ApiResponse.success(testWithSelectedParts, "Lấy nhiều part thành công"));
     }
 
     // Mặc định: metadata
     const test = await testService.getFullTest(testId);
-    if (!test) return res.status(404).json({ message: "Test not found" });
-    return res.json({
-      data: {
-        _id: test._id,
-        title: test.title,
-        type: test.type,
-        status: test.status,
-        totalParts: test.questions.size,
-      },
-    });
+    if (!test)
+      return res.status(404).json(ApiResponse.fail("Test not found"));
+
+    return res.status(200).json(
+      ApiResponse.success(
+        {
+          _id: test._id,
+          title: test.title,
+          type: test.type,
+          status: test.status,
+          totalParts: test.questions.size,
+        },
+        "Lấy metadata test thành công"
+      )
+    );
   } catch (err) {
     next(err);
   }
 };
+
 
 export const submitTest = async (
   req: Request,
@@ -152,5 +165,54 @@ export const getTestDetail = async (
     res.json({ data: test });
   } catch (err) {
     next(err);
+  }
+};
+
+export const getAllTests = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) : Promise<void> => {
+  console.log("check")
+  try {
+    const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
+    const { tests, total } = await testService.getAllTests(page, limit);
+
+    res.status(200).json(
+      ApiResponse.success<Partial<ITest>[]>(
+        tests,
+        "Lấy danh sách bài thi thành công!",
+        {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        }
+      )
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+export const createTest = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  console.log("create")
+  try {
+    const payload: Partial<ITest> = req.body;
+
+    const newTest = await testService.createTest(payload);
+
+    res.status(201).json(
+      ApiResponse.success<ITest>(
+        newTest,
+        "Tạo đề thi thành công!"
+      )
+    );
+  } catch (error) {
+    next(error);
   }
 };

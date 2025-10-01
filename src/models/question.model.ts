@@ -16,7 +16,11 @@ export interface IQuestion extends Document {
 
 const QuestionSchema = new Schema<IQuestion>({
   name: { type: String, required: true },
-  textQuestion: { type: String, required: true },
+  textQuestion: {
+    type: String,
+    required: false, // ❌ bỏ required
+    default: "",
+  },
   choices: { type: Map, of: String, default: {} }, // Map key/value cho các lựa chọn
   correctAnswer: { type: String, default: "" },
   explanation: { type: String, default: "" },
