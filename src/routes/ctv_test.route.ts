@@ -2,18 +2,22 @@ import { Router } from "express";
 import {
   getAllTests,
   getTest,
-  createTest,
+  createTestController,
+  updateTest, // ✅ thêm controller
+  deleteTest,
 } from "../controllers/test.controller";
+import { verifyAccessToken } from "../middlewares/verifyAccessToken.middleware";
 
 const router = Router();
 
-// Lấy danh sách đề thi
-router.get("/tests/get-all", getAllTests);
+router.get("/tests/get-all", verifyAccessToken, getAllTests);
+router.post("/tests/create", verifyAccessToken, createTestController);
+router.get("/tests/:testId", verifyAccessToken, getTest);
 
-// ✅ Thêm mới 1 đề thi
-router.post("/tests/create", createTest);
+// ✅ Sửa đề thi
+router.put("/tests/:testId", verifyAccessToken, updateTest);
 
-// Lấy 1 đề thi chi tiết
-router.get("/tests/:testId", getTest);
+// ✅ Xóa đề thi
+router.delete("/tests/:testId", verifyAccessToken, deleteTest);
 
 export default router;

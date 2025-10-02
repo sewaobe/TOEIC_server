@@ -11,6 +11,7 @@ import {
 } from "../models";
 import { Types } from "mongoose";
 import { TestStatus } from "../models/enums/TestStatus";
+import { createGroupWithNewRelations,updateGroupWithRelations, deleteGroupWithRelations  } from "./group.service";
 
 export const getFullTest = async (testId: string): Promise<any | null> => {
   const test = await Test.findById(testId)
@@ -307,8 +308,11 @@ export const getAllTests = async (
   return { tests, total };
 };
 
+/**
+ * Tạo Test mới kèm Group + Media + Question mới
+ */
 export const createTest = async (data: Partial<ITest>): Promise<ITest> => {
-  // 1. Tạo Test rỗng trước
+  // 1. Tạo Test rỗng
   const newTest = new Test({
     title: data.title,
     audioListen: [],
@@ -321,87 +325,101 @@ export const createTest = async (data: Partial<ITest>): Promise<ITest> => {
     created_by: data.created_by ? new Types.ObjectId(data.created_by) : null,
     updated_at: new Date(),
   });
-
   await newTest.save();
-
+  // 2. Tạo Group(s)
   const groupIds: Types.ObjectId[] = [];
-
-  // 2. Duyệt qua groups từ FE
-  if (data.groups && data.groups.length > 0) {
-    for (const g of data.groups as any[]) {
-      //2.1 Audio
-      let audioMediaId: Types.ObjectId | null = null;
-      if (g.audioUrl && g.audioUrl.url) {
-        const audioMedia = await Media.create({
-          url: g.audioUrl.url,
-          type: g.audioUrl.type || "AUDIO",
-          transcript: "",
-          topic: data.topic || "",
-        });
-        audioMediaId = audioMedia._id as Types.ObjectId; // ✅ ép kiểu
-      }
-
-      //2.2 Images
-      const imageMediaIds: Types.ObjectId[] = [];
-      if (g.imagesUrl && g.imagesUrl.length > 0) {
-        for (const img of g.imagesUrl) {
-          const imageMedia = await Media.create({
-            url: img.url,
-            type: img.type || "IMAGE",
-            transcript: "",
-            topic: data.topic || "",
-          });
-          imageMediaIds.push(imageMedia._id as Types.ObjectId); // ✅ ép kiểu
-        }
-      }
-
-      // 2.3 Tạo Questions
-      const questionIds: Types.ObjectId[] = [];
-      if (g.questions && g.questions.length > 0) {
-        for (let i = 0; i < g.questions.length; i++) {
-          const q = g.questions[i];
-          const question = await Question.create({
-            name: q.name || `Question ${i + 1}`,
-            textQuestion: q.textQuestion || "",
-            choices: q.choices || {},
-            correctAnswer: q.correctAnswer || "",
-            explanation: q.explanation || "",
-            tags: q.tags || [],
-            planned_time: q.planned_time || 0,
-            created_by: data.created_by
-              ? new Types.ObjectId(data.created_by)
-              : null,
-            created_at: new Date(),
-            updated_at: new Date(),
-          });
-          questionIds.push(question._id);
-        }
-      }
-
-      // 2.4 Tạo Group
-      const group = await Group.create({
-        test_id: newTest._id,
-        part: g.partIndex,
-        type: g.type || "TEST",
-        audioUrl: audioMediaId,
-        imagesUrl: imageMediaIds,
-        transcriptEnglish: g.transcriptEnglish || "",
-        transcriptTranslation: g.transcriptTranslation || "",
-        questions: questionIds,
-        created_at: new Date(),
-        updated_at: new Date(),
-      });
-
-      groupIds.push(group._id);
-    }
+  for (const g of data.groups ?? []) {
+    const group = await createGroupWithNewRelations({
+      ...(g as any), // ép kiểu cục bộ
+      topic: data.topic,
+      created_by: data.created_by,
+      test_id: newTest._id,
+    });
+    groupIds.push(group._id as Types.ObjectId);
   }
-
   // 3. Cập nhật lại Test với groupIds
   newTest.groups = groupIds;
   await newTest.save();
-
   // 4. Populate kết quả trả về
   return (await Test.findById(newTest._id)
+    .populate({
+      path: "groups",
+      populate: ["audioUrl", "imagesUrl", "questions"],
+    })
+    .lean()
+    .exec()) as ITest;
+};
+
+export const deleteTest = async (id: string): Promise<boolean> => {
+  const testId = new Types.ObjectId(id);
+  const test = await Test.findById(testId);
+  if (!test) return false;
+  // Xoá tất cả group liên quan qua service
+  const groups = await Group.find({ test_id: testId }).lean();
+  for (const g of groups) {
+    await deleteGroupWithRelations(g._id);
+  }
+  // Xoá test cuối cùng
+  await Test.findByIdAndDelete(testId);
+  return true;
+};
+
+/**
+ * Cập nhật Test + Group + Question + Media theo payload FE gửi
+ */
+export const updateTest = async (
+  id: string,
+  data: Partial<ITest>
+): Promise<ITest | null> => {
+  const testId = new Types.ObjectId(id);
+  // 1. Update các field cơ bản của Test
+  const test = await Test.findByIdAndUpdate(
+    testId,
+    {
+      title: data.title,
+      // description: data.description,
+      topic: data.topic,
+      // duration: data.duration,
+      status: data.status,
+      updated_at: new Date(),
+    },
+    { new: true }
+  );
+  if (!test) return null;
+  // 2. Lấy danh sách group hiện tại từ DB
+  const existingGroups = await Group.find({ test_id: testId }).lean();
+  const newGroupIds: Types.ObjectId[] = [];
+  // 3. Đồng bộ groups theo FE gửi
+  for (const g of data.groups ?? []) {
+    if (g._id) {
+      // Nếu có _id → update group
+      const updatedGroup = await updateGroupWithRelations(g._id, (g as any), data.created_by);
+      if (updatedGroup) newGroupIds.push(updatedGroup._id);
+    } else {
+      // Nếu chưa có _id → tạo mới
+      const newGroup = await createGroupWithNewRelations({
+        ...(g as any),
+        test_id: test._id,
+        topic: data.topic,
+        created_by: data.created_by,
+      });
+      newGroupIds.push(newGroup._id);
+    }
+  }
+  // 4. Xoá group không còn trong FE
+  for (const oldGroup of existingGroups) {
+    const stillExists = newGroupIds.find(
+      (id) => id.toString() === oldGroup._id.toString()
+    );
+    if (!stillExists) {
+      await deleteGroupWithRelations(oldGroup._id);
+    }
+  }
+  // 5. Gán lại danh sách groups vào Test
+  test.groups = newGroupIds;
+  await test.save();
+  // 6. Populate trước khi trả về FE
+  return (await Test.findById(test._id)
     .populate({
       path: "groups",
       populate: [
@@ -410,6 +428,6 @@ export const createTest = async (data: Partial<ITest>): Promise<ITest> => {
         { path: "questions" },
       ],
     })
-    .lean()
-    .exec()) as ITest;
+    .lean()) as ITest;
 };
+

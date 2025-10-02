@@ -2,6 +2,7 @@ import { NextFunction, Request, Response } from "express";
 import * as testService from "../services/test.service";
 import { ITest } from "../models";
 import { ApiResponse } from "../utils/ApiResponse";
+import { Types } from "mongoose";
 // import {JwtUserPayload} from "../middlewares/verifyAccessToken.middleware"
 
 export const getTest = async (
@@ -41,13 +42,17 @@ export const getTest = async (
         return res.status(404).json(ApiResponse.fail("Parts not found"));
       return res
         .status(200)
-        .json(ApiResponse.success(testWithSelectedParts, "Lấy nhiều part thành công"));
+        .json(
+          ApiResponse.success(
+            testWithSelectedParts,
+            "Lấy nhiều part thành công"
+          )
+        );
     }
 
     // Mặc định: metadata
     const test = await testService.getFullTest(testId);
-    if (!test)
-      return res.status(404).json(ApiResponse.fail("Test not found"));
+    if (!test) return res.status(404).json(ApiResponse.fail("Test not found"));
 
     return res.status(200).json(
       ApiResponse.success(
@@ -65,7 +70,6 @@ export const getTest = async (
     next(err);
   }
 };
-
 
 export const submitTest = async (
   req: Request,
@@ -155,10 +159,7 @@ export const getTestDetail = async (
   try {
     const { testId } = req.params;
     const userId = req.user?._id; // nếu có auth middleware
-    const test = await testService.getTestDetail(
-      testId,
-      userId,
-    );
+    const test = await testService.getTestDetail(testId, userId);
 
     if (!test) return res.status(404).json({ message: "Test not found" });
 
@@ -172,11 +173,13 @@ export const getAllTests = async (
   req: Request,
   res: Response,
   next: NextFunction
-) : Promise<void> => {
-  console.log("check")
+): Promise<void> => {
+  console.log("check");
   try {
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
+    const limit = req.query.limit
+      ? parseInt(req.query.limit as string, 10)
+      : 10;
     const { tests, total } = await testService.getAllTests(page, limit);
 
     res.status(200).json(
@@ -195,24 +198,77 @@ export const getAllTests = async (
     next(error);
   }
 };
-export const createTest = async (
+export const createTestController = async (
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
-  console.log("create")
+  console.log("create");
   try {
     const payload: Partial<ITest> = req.body;
 
+    payload.created_by = new Types.ObjectId(req.user!._id);
+    console.log(payload.created_by);
+
     const newTest = await testService.createTest(payload);
 
-    res.status(201).json(
-      ApiResponse.success<ITest>(
-        newTest,
-        "Tạo đề thi thành công!"
-      )
-    );
+    res
+      .status(201)
+      .json(ApiResponse.success<ITest>(newTest, "Tạo đề thi thành công!"));
   } catch (error) {
     next(error);
+  }
+};
+
+export const deleteTest = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { testId } = req.params;
+
+    if (!Types.ObjectId.isValid(testId)) {
+      res.status(400).json(ApiResponse.fail("ID không hợp lệ"));
+      return;
+    }
+
+    const deleted = await testService.deleteTest(testId);
+
+    if (!deleted) {
+      res.status(404).json(ApiResponse.fail("Không tìm thấy đề thi"));
+      return;
+    }
+
+    res.status(200).json(ApiResponse.success(null, "Xóa đề thi thành công!"));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateTest = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { testId } = req.params;
+
+    if (!Types.ObjectId.isValid(testId)) {
+      res.status(400).json(ApiResponse.fail("ID không hợp lệ"));
+      return;
+    }
+
+    const updated = await testService.updateTest(testId, req.body);
+    if (!updated) {
+      res.status(404).json(ApiResponse.fail("Không tìm thấy đề thi"));
+      return;
+    }
+
+    res
+      .status(200)
+      .json(ApiResponse.success(updated, "Cập nhật đề thi thành công!"));
+  } catch (err) {
+    next(err);
   }
 };
