@@ -10,8 +10,12 @@ export interface IVocabulary extends Document {
   type: string; // Loại từ (noun, verb, adj,...)
   weight: number; //0->1: Xác định độ dễ/khó của từ vựng.
   definition: string; // Định nghĩa
-  examples: string[]; // Ví dụ
+  examples?: {
+    en: string,
+    vi: string
+  }[]; // Ví dụ
   image: string; // Link ảnh minh họa
+  audio: string;
   part_type: VocabularyType;
   tags: string[]; // Các tag gắn kèm (ví dụ: TOEIC, Travel, Business)
   created_at: Date; // Ngày tạo
@@ -26,8 +30,12 @@ const VocabularySchema = new Schema<IVocabulary>(
     part_type: { type: String, default: VocabularyType.LC },
     weight: { type: Number, default: 0 },
     definition: { type: String, required: true },
-    examples: [{ type: String, trim: true }],
+    examples: [{
+      en: { type: String },
+      vi: { type: String }
+    }],
     image: { type: String, trim: true },
+    audio: { type: String, trim: true },
     tags: [{ type: String, trim: true }],
     created_at: { type: Date, default: Date.now },
     updated_at: { type: Date, default: Date.now },

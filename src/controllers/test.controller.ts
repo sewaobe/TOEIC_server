@@ -3,7 +3,6 @@ import * as testService from "../services/test.service";
 import { ITest } from "../models";
 import { ApiResponse } from "../utils/ApiResponse";
 import { Types } from "mongoose";
-// import {JwtUserPayload} from "../middlewares/verifyAccessToken.middleware"
 
 export const getTest = async (
   req: Request,

@@ -5,11 +5,11 @@ import { PartType } from "./enums/PartType";
 export interface IFlashCardPlan extends Document {
   user_id: Types.ObjectId;
   topic_id: Types.ObjectId; // trỏ tới Topic (chứa nhiều vocabularies)
-  part_type?: PartType | null; // 👉 thêm
+  part_type?: PartType | null; 
   status: WeekStudyStatus;
   latest_attempt?: Types.ObjectId;
-  planned_completion_time: number; // 👉 thêm
-  weight: number; // 👉 thêm
+  planned_completion_time: number; 
+  weight: number; 
   created_at: Date;
   updated_at?: Date;
 }

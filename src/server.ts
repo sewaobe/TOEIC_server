@@ -1,4 +1,4 @@
-import express, { Request, Response} from "express";
+import express, { Request, Response } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 dotenv.config();
@@ -16,6 +16,7 @@ import dayStudyRouter from "./routes/day_study.route";
 import flashCardRouter from "./routes/flashCard.route";
 import demoRouter from "./routes/demo.route";
 import ctvTestRouter from "./routes/ctv_test.route";
+import ctvTopicRouter from "./routes/ctv/ctv_topic.route";
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
 import { verifyAccessToken } from "./middlewares/verifyAccessToken.middleware";
@@ -49,8 +50,10 @@ app.use("/api/learning-path", learningPathRouter);
 app.use("/api/day-study", dayStudyRouter);
 app.use("/api/flash-card", verifyAccessToken, flashCardRouter);
 app.use("/api/demo", demoRouter);
-console.log("server");
+
+// ========= CTV ============
 app.use("/api/ctv", ctvTestRouter);
+app.use("/api/ctv/topic", verifyAccessToken, ctvTopicRouter);
 
 app.use(errorLogger);
 

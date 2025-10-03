@@ -193,34 +193,7 @@ export const getTestsWithScoreAndSearch = async (
       },
     },
 
-    // Tổng số người làm bài test (distinct user_id)
-    {
-      $lookup: {
-        from: "usertests",
-        let: { testId: "$_id" },
-        pipeline: [
-          { $match: { $expr: { $eq: ["$test_id", "$$testId"] } } },
-          // { $group: { _id: "$user_id" } }, // group để loại trùng user
-          { $count: "count" },
-        ],
-        as: "totalUsers",
-      },
-    },
-
-    // Tổng số comment
-    {
-      $lookup: {
-        from: "comments",
-        let: { testId: "$_id" },
-        pipeline: [
-          { $match: { $expr: { $eq: ["$test_id", "$$testId"] } } },
-          { $count: "count" },
-        ],
-        as: "totalComments",
-      },
-    },
-
-    { $sort: { createdAt: -1, _id: 1 } },
+    { $sort: { created_at: -1, _id: 1 } },
     { $skip: skip },
     { $limit: limit },
 
@@ -231,12 +204,10 @@ export const getTestsWithScoreAndSearch = async (
         title: 1,
         details: "chưa có",
         score: { $ifNull: [{ $arrayElemAt: ["$userResult.score", 0] }, null] },
-        totalUsers: {
-          $ifNull: [{ $arrayElemAt: ["$totalUsers.count", 0] }, 0],
-        },
-        totalComments: {
-          $ifNull: [{ $arrayElemAt: ["$totalComments.count", 0] }, 0],
-        },
+
+        // dùng field có sẵn thay vì $lookup
+        totalComments: "$countComment",
+        totalUsers: "$countSubmit",
       },
     },
   ]);
@@ -246,6 +217,7 @@ export const getTestsWithScoreAndSearch = async (
 
   return { tests, totalTests, totalPages };
 };
+
 
 export const getLatestTest = async (limit: number = 5): Promise<ITest[]> => {
   return await Test.find({ status: TestStatus.OPEN })
