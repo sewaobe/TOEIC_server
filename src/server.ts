@@ -53,7 +53,7 @@ app.use("/api/demo", demoRouter);
 
 // ========= CTV ============
 app.use("/api/ctv", ctvTestRouter);
-app.use("/api/ctv/topic", verifyAccessToken, ctvTopicRouter);
+app.use("/api/ctv/topics", verifyAccessToken, ctvTopicRouter);
 
 app.use(errorLogger);
 

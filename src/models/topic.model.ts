@@ -13,7 +13,9 @@ export interface ITopic extends Document {
   description: string;
   tags: string[];
   level: TopicLevel;
+  iconName: string;
   bgColor: string;
+  gradient: string;
   vocabularies_id: Types.ObjectId[];
   created_at: Date;
   created_by: Types.ObjectId;
@@ -24,7 +26,9 @@ const TopicSchema = new Schema<ITopic>({
   title: String,
   description: String,
   tags: [{type: String, required: true}],
-  bgColor: [{type: String, default: "ffffff"}],
+  iconName: {type: String},
+  bgColor: {type: String, default: "ffffff"},
+  gradient: {type: String},
   level: {type: String, enum: Object.values(TopicLevel), default: TopicLevel.A1},
   vocabularies_id: [{ type: Schema.Types.ObjectId, ref: 'Vocabulary' }],
   created_at: { type: Date, default: Date.now },
