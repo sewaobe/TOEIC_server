@@ -17,6 +17,7 @@ import flashCardRouter from "./routes/flashCard.route";
 import demoRouter from "./routes/demo.route";
 import ctvTestRouter from "./routes/ctv_test.route";
 import ctvTopicRouter from "./routes/ctv/ctv_topic.route";
+import ctvVocabularyRouter from "./routes/ctv/ctv_vocabulary.route";
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
 import { verifyAccessToken } from "./middlewares/verifyAccessToken.middleware";
@@ -54,6 +55,7 @@ app.use("/api/demo", demoRouter);
 // ========= CTV ============
 app.use("/api/ctv", ctvTestRouter);
 app.use("/api/ctv/topics", verifyAccessToken, ctvTopicRouter);
+app.use("/api/ctv/vocabularies", verifyAccessToken, ctvVocabularyRouter);
 
 app.use(errorLogger);
 
