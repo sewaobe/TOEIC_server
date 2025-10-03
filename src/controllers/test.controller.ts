@@ -101,16 +101,24 @@ export const getTestsWithScoreAndSearch = async (
   next: NextFunction
 ) => {
   try {
-    const userId = req.user!._id;
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 6;
-    const search = req.query.search?.toString(); // query tìm kiếm
+    const userId = req.user._id;
+    if (!userId) {
+      return res.status(401).json(ApiResponse.fail("Bạn không có quyền thực hiện chức năng tìm kiếm đề thi!"));[3]
+    }
+    const page = parseInt(req.query.page?.toString() || "1");
+    const limit = parseInt(req.query.limit?.toString() || "6");
+    const search = req.query.search?.toString().trim() || "";
+
+    if (!search) {
+      return res.status(400).json(ApiResponse.fail("Từ khóa tìm kiếm không được để trống!"));[6]
+    }
     const { tests, totalTests, totalPages } =
       await testService.getTestsWithScoreAndSearch(userId, page, limit, search);
 
-    res.json({
-      data: { page, limit, totalPages, totalTests, tests },
-    });
+    res.status(200).json(
+      ApiResponse.success({ page, limit, totalPages, totalTests, tests },
+        "Tìm kiếm đề thi thành công")
+    );
   } catch (err) {
     next(err);
   }
