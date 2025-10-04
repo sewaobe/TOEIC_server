@@ -11,7 +11,7 @@ import {
 } from "../models";
 import { Types } from "mongoose";
 import { TestStatus } from "../models/enums/TestStatus";
-import { createGroupWithNewRelations,updateGroupWithRelations, deleteGroupWithRelations  } from "./group.service";
+import { createGroupWithNewRelations, updateGroupWithRelations, deleteGroupWithRelations } from "./group.service";
 
 export const getFullTest = async (testId: string): Promise<any | null> => {
   const test = await Test.findById(testId)
@@ -336,62 +336,48 @@ export const deleteTest = async (id: string): Promise<boolean> => {
   return true;
 };
 
-/**
- * Cập nhật Test + Group + Question + Media theo payload FE gửi
- */
-export const updateTest = async (
-  id: string,
+// Hàm private: đồng bộ groups theo FE gửi
+async function syncGroups(
+  testId: Types.ObjectId,
+  testObjectId: Types.ObjectId,
   data: Partial<ITest>
-): Promise<ITest | null> => {
-  const testId = new Types.ObjectId(id);
-  // 1. Update các field cơ bản của Test
-  const test = await Test.findByIdAndUpdate(
-    testId,
-    {
-      title: data.title,
-      // description: data.description,
-      topic: data.topic,
-      // duration: data.duration,
-      status: data.status,
-      updated_at: new Date(),
-    },
-    { new: true }
-  );
-  if (!test) return null;
-  // 2. Lấy danh sách group hiện tại từ DB
-  const existingGroups = await Group.find({ test_id: testId }).lean();
+): Promise<Types.ObjectId[]> {
   const newGroupIds: Types.ObjectId[] = [];
-  // 3. Đồng bộ groups theo FE gửi
+
   for (const g of data.groups ?? []) {
     if (g._id) {
       // Nếu có _id → update group
-      const updatedGroup = await updateGroupWithRelations(g._id, (g as any), data.created_by);
+      const updatedGroup = await updateGroupWithRelations(
+        g._id,
+        g as any,
+        data.created_by
+      );
       if (updatedGroup) newGroupIds.push(updatedGroup._id);
     } else {
       // Nếu chưa có _id → tạo mới
       const newGroup = await createGroupWithNewRelations({
         ...(g as any),
-        test_id: test._id,
+        test_id: testObjectId,
         topic: data.topic,
         created_by: data.created_by,
       });
       newGroupIds.push(newGroup._id);
     }
   }
-  // 4. Xoá group không còn trong FE
-  for (const oldGroup of existingGroups) {
-    const stillExists = newGroupIds.find(
-      (id) => id.toString() === oldGroup._id.toString()
-    );
-    if (!stillExists) {
-      await deleteGroupWithRelations(oldGroup._id);
-    }
-  }
-  // 5. Gán lại danh sách groups vào Test
+
+  return newGroupIds;
+}
+
+async function finalizeTestWithGroups(
+  test: ITest,
+  newGroupIds: Types.ObjectId[]
+): Promise<ITest> {
+  // Gán lại groups
   test.groups = newGroupIds;
   await test.save();
-  // 6. Populate trước khi trả về FE
-  return (await Test.findById(test._id)
+
+  // Populate để trả về đầy đủ dữ liệu
+  const populatedTest = await Test.findById(test._id)
     .populate({
       path: "groups",
       populate: [
@@ -400,6 +386,55 @@ export const updateTest = async (
         { path: "questions" },
       ],
     })
-    .lean()) as ITest;
+    .lean();
+
+  return populatedTest as ITest;
+}
+
+/**
+ * Cập nhật Test + Group + Question + Media theo payload FE gửi
+ */
+export const updateTest = async (
+  id: string,
+  data: Partial<ITest>
+): Promise<ITest | null> => {
+  const testId = new Types.ObjectId(id);
+
+  // 1. Update các field cơ bản của Test
+  const test = await Test.findByIdAndUpdate(
+    testId,
+    {
+      title: data.title,
+      topic: data.topic,
+      status: data.status,
+      updated_at: new Date(),
+    },
+    { new: true }
+  );
+
+  if (!test) return null;
+
+  // 2 + 3. Đồng bộ group (refactor ra hàm riêng)
+  const newGroupIds = await syncGroups(testId, test._id, data);
+
+  // 4. Xoá group không còn trong FE
+  const existingGroups = await Group.find({ test_id: testId }).lean();
+
+  for (let i = 0; i < existingGroups.length; i++) {
+    const oldGroup = existingGroups[i];
+
+    const stillExists = newGroupIds.find(
+      (id) => id.toString() === oldGroup._id.toString()
+    );
+
+    if (!stillExists) {
+      await deleteGroupWithRelations(oldGroup._id);
+    }
+  }
+
+  // 5 + 6. Gán lại groups, save và populate (refactor ra hàm riêng)
+  return await finalizeTestWithGroups(test, newGroupIds);
 };
+
+
 
