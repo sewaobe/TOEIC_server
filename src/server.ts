@@ -15,9 +15,11 @@ import learningPathRouter from "./routes/user_learningPath.route";
 import dayStudyRouter from "./routes/day_study.route";
 import flashCardRouter from "./routes/flashCard.route";
 import demoRouter from "./routes/demo.route";
-import ctvTestRouter from "./routes/ctv_test.route";
+import ctvTestRouter from "./routes/ctv/ctv_test.route";
 import ctvTopicRouter from "./routes/ctv/ctv_topic.route";
 import ctvVocabularyRouter from "./routes/ctv/ctv_vocabulary.route";
+import ctvGroupRouter from "./routes/ctv/ctv_group.route";
+import ctvFolderRoutes from "./routes/ctv/ctv_media_folder.route";
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
 import { verifyAccessToken } from "./middlewares/verifyAccessToken.middleware";
@@ -56,6 +58,8 @@ app.use("/api/demo", demoRouter);
 app.use("/api/ctv", ctvTestRouter);
 app.use("/api/ctv/topics", verifyAccessToken, ctvTopicRouter);
 app.use("/api/ctv/vocabularies", verifyAccessToken, ctvVocabularyRouter);
+app.use("/api/ctv/groups", verifyAccessToken, ctvGroupRouter);
+app.use("/api/ctv/folders",verifyAccessToken, ctvFolderRoutes);
 
 app.use(errorLogger);
 

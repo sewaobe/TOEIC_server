@@ -5,8 +5,8 @@ import {
   createTestController,
   updateTest, // ✅ thêm controller
   deleteTest,
-} from "../controllers/test.controller";
-import { verifyAccessToken } from "../middlewares/verifyAccessToken.middleware";
+} from "../../controllers/test.controller";
+import { verifyAccessToken } from "../../middlewares/verifyAccessToken.middleware";
 
 const router = Router();
 
