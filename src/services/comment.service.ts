@@ -1,5 +1,5 @@
 import { Types } from "mongoose";
-import { Comment, IComment } from "../models";
+import { Comment, IComment, Test } from "../models";
 
 export const getCommentsByTest = async (
   testId: string,
@@ -14,6 +14,13 @@ export const getCommentsByTest = async (
     totalPages: number;
   };
 }> => {
+  if (!testId) {
+    throw new Error("Invalid testId");
+  }
+
+  if (page < 1) page = 1;
+  if (limit < 1) limit = 10;
+
   const skip = (page - 1) * limit;
 
   const total = await Comment.countDocuments({
@@ -21,13 +28,46 @@ export const getCommentsByTest = async (
     parent_id: null,
   });
 
+  if (total === 0) {
+    return {
+      comments: [],
+      pagination: {
+        total: 0,
+        page,
+        limit,
+        totalPages: 0
+      }
+    }
+  }
+
   // aggregate + lookup + project
-  const comments = await Comment.aggregate([
+  const comments = await fetchCommentsAggregate(testId, skip, limit);
+
+  if (!comments || comments.length === 0) {
+    return {
+      comments: [],
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      }
+    }
+  }
+
+  return populateAndFormatComments(comments, total, page, limit);
+};
+
+async function fetchCommentsAggregate(
+  testId: string,
+  skip: number,
+  limit: number
+) {
+  return await Comment.aggregate([
     { $match: { test_id: new Types.ObjectId(testId), parent_id: null } },
     { $sort: { create_at: -1 } },
     { $skip: skip },
     { $limit: limit },
-    // lấy số reply
     {
       $lookup: {
         from: "comments",
@@ -36,15 +76,20 @@ export const getCommentsByTest = async (
         as: "replies",
       },
     },
-    {
-      $addFields: {
-        replyCount: { $size: "$replies" },
-      },
-    },
-    { $project: { replies: 0 } }, // bỏ mảng replies nếu không cần
-  ]).exec(); // .exec() để trả về Promise
+    { $addFields: { replyCount: { $size: "$replies" } } },
+    { $project: { replies: 0 } },
+  ]).exec();
+}
 
-  // populate user_id nhưng dùng lean
+// ===============================
+// Populate và format dữ liệu trả về
+// ===============================
+async function populateAndFormatComments(
+  comments: any[],
+  total: number,
+  page: number,
+  limit: number
+) {
   const commentsLean = await Comment.populate(comments, {
     path: "user_id",
     select: "username profile",
@@ -59,7 +104,7 @@ export const getCommentsByTest = async (
       totalPages: Math.ceil(total / limit),
     },
   };
-};
+}
 
 // Tùy chọn: thêm API riêng lấy replies cho 1 comment
 export const getRepliesByComment = async (
@@ -120,5 +165,17 @@ export const createComment = async (
 
   await newComment.populate("user_id", "username profile");
 
-  return await newComment.save();
+  const savedComment = await newComment.save();
+
+  if (savedComment) {
+    await Test.findByIdAndUpdate(
+      testId,
+      { $inc: { countComment: 1 } }
+    );
+  }
+  else {
+    throw new Error("Failed to save comment");
+  }
+
+  return savedComment
 };

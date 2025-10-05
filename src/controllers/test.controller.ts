@@ -109,9 +109,6 @@ export const getTestsWithScoreAndSearch = async (
     const limit = parseInt(req.query.limit?.toString() || "6");
     const search = req.query.search?.toString().trim() || "";
 
-    if (!search) {
-      return res.status(400).json(ApiResponse.fail("Từ khóa tìm kiếm không được để trống!"));[6]
-    }
     const { tests, totalTests, totalPages } =
       await testService.getTestsWithScoreAndSearch(userId, page, limit, search);
 
