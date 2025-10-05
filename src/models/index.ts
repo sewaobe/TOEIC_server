@@ -25,3 +25,4 @@ export * from "./quiz_plan.model";
 export * from "./shadowing_attempt.model";
 export * from "./shadowing_plan.model";
 export * from "./group.model"
+export * from "./media_folder.model";
