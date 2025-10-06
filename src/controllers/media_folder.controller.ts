@@ -20,7 +20,9 @@ export const createFolderController = async (
       created_by,
     });
 
-    res.status(201).json(ApiResponse.success(folder, "Tạo thư mục thành công!"));
+    res
+      .status(201)
+      .json(ApiResponse.success(folder, "Tạo thư mục thành công!"));
   } catch (error) {
     next(error);
   }
@@ -43,7 +45,9 @@ export const getFolderByIdController = async (
     if (!folder)
       return res.status(404).json(ApiResponse.fail("Không tìm thấy thư mục."));
 
-    res.status(200).json(ApiResponse.success(folder, "Lấy thư mục thành công!"));
+    res
+      .status(200)
+      .json(ApiResponse.success(folder, "Lấy thư mục thành công!"));
   } catch (error) {
     next(error);
   }
@@ -59,7 +63,9 @@ export const getFolderTreeController = async (
 ) => {
   try {
     const tree = await folderService.getFolderTree();
-    res.status(200).json(ApiResponse.success(tree, "Lấy cây thư mục thành công!"));
+    res
+      .status(200)
+      .json(ApiResponse.success(tree, "Lấy cây thư mục thành công!"));
   } catch (error) {
     next(error);
   }
@@ -144,26 +150,74 @@ export const getMediasByFolderController = async (
 ) => {
   try {
     const { id } = req.params;
+    const { page = "1", limit = "12" } = req.query; // 👈 thêm query phân trang
+
     if (!Types.ObjectId.isValid(id))
       return res.status(400).json(ApiResponse.fail("ID thư mục không hợp lệ."));
 
-    const medias = await folderService.getMediasByFolder(id);
+    // ⚙️ Lấy dữ liệu từ service có phân trang
+    const { medias, total } = await folderService.getMediasByFolder(
+      id,
+      Number(page),
+      Number(limit)
+    );
 
-    res
+    return res
       .status(200)
-      .json(ApiResponse.success(medias, "Lấy danh sách media thành công!"));
+      .json(
+        ApiResponse.success(
+          { items: medias, total },
+          "Lấy danh sách media thành công!"
+        )
+      );
   } catch (error) {
     next(error);
   }
 };
 /* =====================================
+   🔍 SEARCH MEDIAS (toàn hệ thống)
+===================================== */
+export const searchMediasController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { query = "", page = "1", limit = "12" } = req.query;
+
+    const { medias, total } = await folderService.searchMedias(
+      String(query),
+      Number(page),
+      Number(limit)
+    );
+
+    return res
+      .status(200)
+      .json(
+        ApiResponse.success(
+          { items: medias, total },
+          "Tìm kiếm media thành công!"
+        )
+      );
+  } catch (error) {
+    next(error);
+  }
+};
+
+/* =====================================
    ✏️ UPDATE MEDIA
 ===================================== */
-export const updateMediaController = async (req: Request, res: Response, next: NextFunction) => {
+export const updateMediaController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const { id } = req.params; // id của media
     const updated = await folderService.updateMedia(id, req.body);
-    res.status(200).json(ApiResponse.success(updated, "Cập nhật media thành công!"));
+    res
+      .status(200)
+      .json(ApiResponse.success(updated, "Cập nhật media thành công!"));
   } catch (error) {
     next(error);
   }
@@ -172,7 +226,11 @@ export const updateMediaController = async (req: Request, res: Response, next: N
 /* =====================================
    🗑️ DELETE MEDIA
 ===================================== */
-export const deleteMediaController = async (req: Request, res: Response, next: NextFunction) => {
+export const deleteMediaController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const { id } = req.params;
     await folderService.deleteMedia(id);
