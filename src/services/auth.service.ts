@@ -23,6 +23,7 @@ export const loginService = async ({
   accessToken: string;
   refreshToken: string;
   role_name: string;
+  user_id: string;
 }> => {
   const user: IUser | null = await User
     .findOne({ username })
@@ -40,6 +41,7 @@ export const loginService = async ({
     accessToken,
     refreshToken,
     role_name: (user.role_id as any)?.name || null,
+    user_id: user._id.toString()
   };
 };
 
@@ -83,6 +85,7 @@ export const loginWithGoogleService = async (
   accessToken: string;
   refreshToken: string;
   role_name: string;
+  user_id: string;
 }> => {
   // 1. Verify token from Firebase
   const decoded = await admin.auth().verifyIdToken(idToken);
@@ -135,5 +138,6 @@ export const loginWithGoogleService = async (
     accessToken,
     refreshToken,
     role_name: (user.role_id as any)?.name || null,
+    user_id: user._id.toString()
   };
 };

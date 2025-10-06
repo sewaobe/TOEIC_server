@@ -12,18 +12,18 @@ export const loginController = async (
 ): Promise<void> => {
   try {
     const loginRequest = req.body;
-    const { accessToken, refreshToken, role_name } = await loginService(
+    const { accessToken, refreshToken, role_name, user_id } = await loginService(
       loginRequest,
     );
 
-    res.cookie('refreshToken', refreshToken, {
+    res.cookie(`refreshToken_${user_id}`, refreshToken, {
       httpOnly: true,
       secure: false, // đổi true nếu deploy HTTPS
       sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
     });
 
-    res.cookie('accessToken', accessToken, {
+    res.cookie(`accessToken_${user_id}`, accessToken, {
       httpOnly: true,
       secure: false,
       sameSite: 'lax',
@@ -31,7 +31,8 @@ export const loginController = async (
     });
 
     res.status(200).json(ApiResponse.success(null, 'Login successfully', {
-      role_name: role_name
+      role_name: role_name,
+      user_id: user_id
     }));
   } catch (err) {
     next(err);
@@ -60,6 +61,7 @@ export const refreshTokenController = async (
   next: NextFunction,
 ): Promise<void> => {
   try {
+    const userId = req.user.id;
     const refreshToken = req.cookies?.refreshToken as string | undefined;
     if (!refreshToken) {
       res.status(401).json(ApiResponse.fail('Refresh token missing'));
@@ -79,7 +81,7 @@ export const refreshTokenController = async (
           decoded as UserPayload,
         );
 
-        res.cookie('accessToken', accessToken, {
+        res.cookie(`accessToken_${userId}`, accessToken, {
           httpOnly: true,
           secure: false,
           sameSite: 'lax',
@@ -101,14 +103,15 @@ export const logoutController = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    const userId = req.user._id;
     // Xóa cookie accessToken và refreshToken
-    res.clearCookie('accessToken', {
+    res.clearCookie(`accessToken_${userId}`, {
       httpOnly: true,
       secure: false,   // set true nếu bạn dùng HTTPS
       sameSite: 'lax',
     });
 
-    res.clearCookie('refreshToken', {
+    res.clearCookie(`refreshToken_${userId}`, {
       httpOnly: true,
       secure: false,   // set true nếu bạn dùng HTTPS
       sameSite: 'lax',
@@ -130,15 +133,15 @@ export const loginWithGoogleController = async (req: Request, res: Response) => 
       return res.status(400).json({ message: 'Missing idToken' });
     }
 
-    const {accessToken, refreshToken, role_name } = await loginWithGoogleService(idToken);
-    res.cookie('refreshToken', refreshToken, {
+    const {accessToken, refreshToken, role_name, user_id } = await loginWithGoogleService(idToken);
+    res.cookie(`refreshToken_${user_id}`, refreshToken, {
       httpOnly: true,
       secure: false, // đổi true nếu deploy HTTPS
       sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
     });
 
-    res.cookie('accessToken', accessToken, {
+    res.cookie(`accessToken_${user_id}`, accessToken, {
       httpOnly: true,
       secure: false,
       sameSite: 'lax',
@@ -146,7 +149,8 @@ export const loginWithGoogleController = async (req: Request, res: Response) => 
     });
 
     res.status(200).json(ApiResponse.success(null, 'Login successfully', {
-      role_name: role_name
+      role_name: role_name,
+      user_id: user_id
     }));
 
   } catch (error: any) {
