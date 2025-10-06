@@ -137,12 +137,57 @@ export const addMediaToFolder = async (
  * 🧾 Lấy danh sách media trong folder
  */
 export const getMediasByFolder = async (
-  folderId: string | Types.ObjectId
-): Promise<IMedia[]> => {
-  const folder = await MediaFolder.findById(folderId).populate("medias").exec();
+  folderId: string | Types.ObjectId,
+  page = 1,
+  limit = 12
+): Promise<{ medias: IMedia[]; total: number }> => {
+  // Kiểm tra thư mục có tồn tại không
+  const folder = await MediaFolder.findById(folderId);
   if (!folder) throw new Error("Folder not found");
-  return folder.medias as unknown as IMedia[];
+
+  // Đếm tổng số media
+  const total = await Media.countDocuments({ _id: { $in: folder.medias } });
+
+  // Lấy danh sách media có phân trang
+  const medias = await Media.find({ _id: { $in: folder.medias } })
+    .sort({ _id: -1 })
+    .skip((page - 1) * limit)
+    .limit(limit)
+    .exec();
+
+  return { medias, total };
 };
+/* =====================================
+   🔍 SEARCH MEDIA (theo tên / topic / url)
+===================================== */
+export const searchMedias = async (
+  keyword: string,
+  page = 1,
+  limit = 12
+): Promise<{ medias: IMedia[]; total: number }> => {
+  const filter = {
+    type: { $regex: "^video$", $options: "i" }, // ✅ case-insensitive
+    $or: [
+      { topic: { $regex: keyword, $options: "i" } },
+      { url: { $regex: keyword, $options: "i" } },
+      { transcript: { $regex: keyword, $options: "i" } },
+    ],
+  };
+
+  console.log("🔍 searchMedias filter:", filter);
+
+  const total = await Media.countDocuments(filter);
+  const medias = await Media.find(filter)
+    .sort({ updated_at: -1 })
+    .skip((page - 1) * limit)
+    .limit(limit)
+    .exec();
+
+  console.log("✅ searchMedias found:", medias.length);
+
+  return { medias, total };
+};
+
 
 /* =====================================
    ✏️ UPDATE MEDIA

@@ -8,6 +8,8 @@ const router = express.Router();
 router.post("/",  folderController.createFolderController);
 router.get("/tree", folderController.getFolderTreeController);
 
+router.get("/medias/search", folderController.searchMediasController);
+
 router.put("/media/:id", folderController.updateMediaController);   // ✏️ Sửa media
 router.delete("/media/:id", folderController.deleteMediaController); // 🗑️ Xóa media
 
