@@ -14,6 +14,7 @@ import {
   resetPassword,
   verifyOtp,
 } from '../controllers/mail.controller';
+import { verifyAccessToken } from '../middlewares/verifyAccessToken.middleware';
 
 const router = express.Router();
 
@@ -29,8 +30,8 @@ router.post(
 );
 
 // GET /refresh-token
-router.get('/refresh-token', refreshTokenController);
-router.post('/logout', logoutController);
+router.get('/refresh-token', verifyAccessToken, refreshTokenController);
+router.post('/logout', verifyAccessToken, logoutController);
 
 router.post('/request-otp', requestOtp);
 router.post('/verify-otp', verifyOtp);
