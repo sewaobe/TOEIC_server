@@ -1,6 +1,8 @@
 import express, { Request, Response } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import http from "http";
+
 dotenv.config();
 
 import helmet from "helmet";
@@ -23,6 +25,7 @@ import ctvFolderRoutes from "./routes/ctv/ctv_media_folder.route";
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
 import { verifyAccessToken } from "./middlewares/verifyAccessToken.middleware";
+import { initSocket } from "./socket";
 
 
 
@@ -75,8 +78,14 @@ app.use((err: any, req: Request, res: Response) => {
   res.status(statusCode).json(response);
 });
 
+// === TẠO SERVER HTTP ===
+const server = http.createServer(app);
+
+// === KHỞI TẠO SOCKET.IO ===
+initSocket(server);
+
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });

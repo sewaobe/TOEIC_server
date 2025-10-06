@@ -30,8 +30,8 @@ router.post(
 );
 
 // GET /refresh-token
-router.get('/refresh-token', verifyAccessToken, refreshTokenController);
-router.post('/logout', verifyAccessToken, logoutController);
+router.get('/refresh-token', refreshTokenController);
+router.post('/logout', logoutController);
 
 router.post('/request-otp', requestOtp);
 router.post('/verify-otp', verifyOtp);
