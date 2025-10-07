@@ -17,6 +17,7 @@ import learningPathRouter from "./routes/user_learningPath.route";
 import dayStudyRouter from "./routes/day_study.route";
 import flashCardRouter from "./routes/flashCard.route";
 import demoRouter from "./routes/demo.route";
+import notificationRouter from "./routes/notification.route";
 import ctvTestRouter from "./routes/ctv/ctv_test.route";
 import ctvTopicRouter from "./routes/ctv/ctv_topic.route";
 import ctvVocabularyRouter from "./routes/ctv/ctv_vocabulary.route";
@@ -56,7 +57,7 @@ app.use("/api/learning-path", learningPathRouter);
 app.use("/api/day-study", dayStudyRouter);
 app.use("/api/flash-card", verifyAccessToken, flashCardRouter);
 app.use("/api/demo", demoRouter);
-
+app.use("/api/notifications", notificationRouter)
 // ========= CTV ============
 app.use("/api/ctv", ctvTestRouter);
 app.use("/api/ctv/topics", verifyAccessToken, ctvTopicRouter);
