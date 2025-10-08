@@ -1,6 +1,7 @@
 import { Server } from "socket.io";
 import { SocketWithUser } from "./types";
 import { createNotification, createWelcomeNotificationOnce, markNotificationAsRead } from "../services/notification.service";
+import { sendWebPushToUser } from "../services/push.service";
 
 interface NotificationData {
   recipientId: string;
@@ -47,9 +48,12 @@ export function registerNotificationHandlers(
       if (recipientSocketId) {
         io.to(recipientSocketId).emit("receiveNotification", notif);
         console.log(`📩 Notification sent from ${socket.user?.id} to ${data.recipientId}`);
-      } else {
-        console.log(`⚠️ User ${data.recipientId} is offline → chỉ lưu trong DB`);
-      }
+      } 
+      await sendWebPushToUser(data.recipientId, {
+        title: "Thông báo mới",
+        body: data.message,
+        url: ""
+      })
     } catch (err) {
       console.error("❌ Lỗi khi gửi thông báo:", err);
     }

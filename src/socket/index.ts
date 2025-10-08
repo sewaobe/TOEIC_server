@@ -4,18 +4,20 @@ import jwt from "jsonwebtoken";
 import { SocketWithUser } from "./types";
 import { registerNotificationHandlers } from "./notification.socket";
 
+export const onlineUsers = new Map<string, string>(); // userId → socketId
+export let io: Server; 
+
 export function initSocket(server: any) {
-  const io = new Server(server, {
+  io = new Server(server, {
     cors: {
       origin: ["http://localhost:5173", "http://localhost:5174"],
       credentials: true,
     },
   });
 
-  const onlineUsers = new Map<string, string>(); // userId → socketId
 
   // ===========================
-  // 🔒 Middleware xác thực socket
+  // Middleware xác thực socket
   // ===========================
   io.use((socket: SocketWithUser, next) => {
     try {
@@ -23,17 +25,17 @@ export function initSocket(server: any) {
       const cookies = cookie.parse(cookieHeader);
       const token = cookies["accessToken"];
       if (!token) {
-        console.warn("⛔ Missing accessToken cookie — blocking connection");
+        console.warn("Missing accessToken cookie — blocking connection");
         return next(new Error("Authentication required"));
       }
 
       const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET!) as { _id: string };
       socket.user = { id: decoded._id };
 
-      console.log("🔐 Authenticated socket for user:", decoded._id);
+      console.log("Authenticated socket for user:", decoded._id);
       return next();
     } catch (err) {
-      console.warn("⛔ Invalid or expired token — blocking connection");
+      console.warn("Invalid or expired token — blocking connection");
       return next(new Error("Invalid token"));
     }
   });
@@ -46,12 +48,12 @@ export function initSocket(server: any) {
 
     if (userId) {
       onlineUsers.set(userId, socket.id);
-      console.log(`✅ Auth user connected: ${userId}`);
+      console.log(`Auth user connected: ${userId}`);
     } else {
-      console.log(`🧍 Guest connected: ${socket.id}`);
+      console.log(`Guest connected: ${socket.id}`);
     }
 
-    // ✅ Kích hoạt các module socket
+    // Kích hoạt các module socket
     registerNotificationHandlers(io, socket, onlineUsers);
     // registerChatHandlers(io, socket, onlineUsers);
 
@@ -60,10 +62,10 @@ export function initSocket(server: any) {
     // ===========================
     socket.on("disconnect", () => {
       if (userId) onlineUsers.delete(userId);
-      console.log(`❌ Socket disconnected: ${userId || socket.id}`);
+      console.log(`Socket disconnected: ${userId || socket.id}`);
     });
   });
 
-  console.log("🚀 Socket.IO initialized");
+  console.log("Socket.IO initialized");
   return io;
 }
