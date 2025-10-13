@@ -22,7 +22,6 @@ export interface IShadowing extends Document {
   transcript: string;
   audio_url?: string;
   duration?: number;
-  voice_settings?: { voice: string; rate: string; pitch: string };
   timings: ISegment[];
   display_mode: "sentence" | "word";
   created_at: Date;
@@ -33,15 +32,10 @@ const ShadowingSchema = new Schema<IShadowing>(
   {
     topic: { type: String, required: true },
     part_type: { type: Number, enum: Object.values(PartType) },
-    level: { type: String,  enum:Object.values(TopicLevel), required: true },
+    level: { type: String, enum: Object.values(TopicLevel), required: true },
     transcript: { type: String, required: true },
     audio_url: String,
     duration: Number,
-    voice_settings: {
-      voice: String,
-      rate: String,
-      pitch: String,
-    },
     timings: [
       {
         text: String,

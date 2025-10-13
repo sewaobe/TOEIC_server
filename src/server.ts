@@ -25,6 +25,7 @@ import ctvVocabularyRouter from "./routes/ctv/ctv_vocabulary.route";
 import ctvGroupRouter from "./routes/ctv/ctv_group.route";
 import ctvFolderRoutes from "./routes/ctv/ctv_media_folder.route";
 import ctvDictationRouter from "./routes/ctv/ctv_dictation.route";
+import ctvShadowingRouter from "./routes/ctv/ctv_shadowing.route";
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
 import { verifyAccessToken } from "./middlewares/verifyAccessToken.middleware";
@@ -72,6 +73,7 @@ app.use("/api/ctv/groups", verifyAccessToken, ctvGroupRouter);
 app.use("/api/ctv/folders", verifyAccessToken, ctvFolderRoutes);
 
 app.use("/api/ctv/dictation", verifyAccessToken, ctvDictationRouter);
+app.use("/api/ctv/shadowing", verifyAccessToken, ctvShadowingRouter);
 
 app.use(errorLogger);
 

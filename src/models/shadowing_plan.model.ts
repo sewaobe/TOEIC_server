@@ -4,11 +4,15 @@ import { PartType } from "./enums/PartType";
 
 export interface IShadowingPlan extends Document {
   user_id: Types.ObjectId;
-  shadowing_ids: Types.ObjectId[]; // nhiều question có audio
+  shadowing_ids: Types.ObjectId[];
   status: WeekStudyStatus;
   latest_attempt?: Types.ObjectId;
-  planned_completion_time: number; // 👉 thêm
-  weight: number; // 👉 thêm
+  planned_completion_time: number;
+  weight: number;
+  start_date?: Date;
+  end_date?: Date;
+  progress?: number;
+  notes?: string;
   created_at: Date;
   updated_at?: Date;
 }
@@ -27,6 +31,10 @@ const ShadowingPlanSchema = new Schema<IShadowingPlan>(
     latest_attempt: { type: Schema.Types.ObjectId, ref: "ShadowingAttempt" },
     planned_completion_time: { type: Number, default: 0 },
     weight: { type: Number, default: 0.1 },
+    start_date: { type: Date, default: Date.now },
+    end_date: { type: Date },
+    progress: { type: Number },
+    notes: { type: String }
   },
   { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
 );

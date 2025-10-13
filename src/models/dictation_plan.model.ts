@@ -7,8 +7,11 @@ export interface IDictationPlan extends Document {
   dictation_ids: Types.ObjectId[]; // nhiều question dạng dictation
   status: WeekStudyStatus;
   latest_attempt?: Types.ObjectId;
-  planned_completion_time: number; // 👉 thêm
-  weight: number; // 👉 thêm
+  planned_completion_time: number;
+  weight: number;
+  start_date?: Date;
+  end_date?: Date;
+  progress?: number;
   created_at: Date;
   updated_at?: Date;
 }
@@ -27,6 +30,9 @@ const DictationPlanSchema = new Schema<IDictationPlan>(
     latest_attempt: { type: Schema.Types.ObjectId, ref: "DictationAttempt" },
     planned_completion_time: { type: Number, default: 0 },
     weight: { type: Number, default: 0.1 },
+    start_date: { type: Date, default: Date.now },
+    end_date: { type: Date },
+    progress: { type: Number },
   },
   { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
 );

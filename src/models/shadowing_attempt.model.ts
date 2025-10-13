@@ -10,6 +10,10 @@ export interface IShadowingAttempt extends Document {
     duration: number;
     started_at: Date;
     finished_at?: Date;
+    accuracy_score?: number;
+    fluency_score?: number;
+    intonation_score?: number;
+    overall_feedback?: string;
 }
 
 const ShadowingAttemptSchema = new Schema<IShadowingAttempt>(
@@ -24,6 +28,10 @@ const ShadowingAttemptSchema = new Schema<IShadowingAttempt>(
         duration: { type: Number, default: 0 },
         started_at: { type: Date, default: Date.now },
         finished_at: { type: Date },
+        accuracy_score: { type: Number },
+        fluency_score: { type: Number },
+        intonation_score: { type: Number },
+        overall_feedback: { type: String },
     },
     { timestamps: true }
 );
