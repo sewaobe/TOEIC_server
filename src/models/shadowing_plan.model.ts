@@ -4,8 +4,7 @@ import { PartType } from "./enums/PartType";
 
 export interface IShadowingPlan extends Document {
   user_id: Types.ObjectId;
-  question_ids: Types.ObjectId[]; // nhiều question có audio
-  part_type?: PartType | null; // 👉 thêm
+  shadowing_ids: Types.ObjectId[]; // nhiều question có audio
   status: WeekStudyStatus;
   latest_attempt?: Types.ObjectId;
   planned_completion_time: number; // 👉 thêm
@@ -17,14 +16,9 @@ export interface IShadowingPlan extends Document {
 const ShadowingPlanSchema = new Schema<IShadowingPlan>(
   {
     user_id: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    question_ids: [
-      { type: Schema.Types.ObjectId, ref: "Question", required: true },
+    shadowing_ids: [
+      { type: Schema.Types.ObjectId, ref: "Shadowing", required: true },
     ],
-    part_type: {
-      type: Number,
-      enum: Object.values(PartType),
-      required: false,
-    },
     status: {
       type: String,
       enum: Object.values(WeekStudyStatus),

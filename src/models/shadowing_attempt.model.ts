@@ -1,8 +1,12 @@
 import { Schema, model, Document, Types } from "mongoose";
 export interface IShadowingAttempt extends Document {
     user_id: Types.ObjectId;
-    question_id: Types.ObjectId;
-    recordings: { audio_url: string; similarity_score: number };
+    shadowing_id: Types.ObjectId;
+    recorded_audio: string;
+    similarity_score: number;
+    pronunciation_feedback?: {
+        words: { word: string; score: number }[];
+    };
     duration: number;
     started_at: Date;
     finished_at?: Date;
@@ -11,11 +15,11 @@ export interface IShadowingAttempt extends Document {
 const ShadowingAttemptSchema = new Schema<IShadowingAttempt>(
     {
         user_id: { type: Schema.Types.ObjectId, ref: "User", required: true },
-        question_id: { type: Schema.Types.ObjectId, ref: "Question", required: true },
-        recordings:
-        {
-            audio_url: { type: String, required: true },
-            similarity_score: { type: Number, default: 0 },
+        shadowing_id: { type: Schema.Types.ObjectId, ref: "Shadowing", required: true },
+        recorded_audio: { type: String, required: true },
+        similarity_score: { type: Number, default: 0 },
+        pronunciation_feedback: {
+            words: [{ word: String, score: Number }],
         },
         duration: { type: Number, default: 0 },
         started_at: { type: Date, default: Date.now },

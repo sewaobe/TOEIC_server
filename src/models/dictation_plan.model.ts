@@ -4,8 +4,7 @@ import { PartType } from "./enums/PartType";
 
 export interface IDictationPlan extends Document {
   user_id: Types.ObjectId;
-  question_ids: Types.ObjectId[]; // nhiều question dạng dictation
-  part_type?: PartType | null; // 👉 thêm
+  dictation_ids: Types.ObjectId[]; // nhiều question dạng dictation
   status: WeekStudyStatus;
   latest_attempt?: Types.ObjectId;
   planned_completion_time: number; // 👉 thêm
@@ -17,14 +16,9 @@ export interface IDictationPlan extends Document {
 const DictationPlanSchema = new Schema<IDictationPlan>(
   {
     user_id: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    question_ids: [
-      { type: Schema.Types.ObjectId, ref: "Question", required: true },
+    dictation_ids: [
+      { type: Schema.Types.ObjectId, ref: "Dictation", required: true },
     ],
-    part_type: {
-      type: Number,
-      enum: Object.values(PartType),
-      required: false,
-    },
     status: {
       type: String,
       enum: Object.values(WeekStudyStatus),

@@ -24,10 +24,12 @@ import ctvTopicRouter from "./routes/ctv/ctv_topic.route";
 import ctvVocabularyRouter from "./routes/ctv/ctv_vocabulary.route";
 import ctvGroupRouter from "./routes/ctv/ctv_group.route";
 import ctvFolderRoutes from "./routes/ctv/ctv_media_folder.route";
+import ctvDictationRouter from "./routes/ctv/ctv_dictation.route";
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
 import { verifyAccessToken } from "./middlewares/verifyAccessToken.middleware";
 import { initSocket } from "./socket";
+import { setupSwagger } from "./swagger";
 
 
 
@@ -48,6 +50,7 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use(helmet());
 app.use(cookieParser());
 
+setupSwagger(app);
 // Router API
 app.use("/api/auth", authRouter);
 app.use("/api/users", userRouter);
@@ -66,7 +69,9 @@ app.use("/api/ctv", ctvTestRouter);
 app.use("/api/ctv/topics", verifyAccessToken, ctvTopicRouter);
 app.use("/api/ctv/vocabularies", verifyAccessToken, ctvVocabularyRouter);
 app.use("/api/ctv/groups", verifyAccessToken, ctvGroupRouter);
-app.use("/api/ctv/folders",verifyAccessToken, ctvFolderRoutes);
+app.use("/api/ctv/folders", verifyAccessToken, ctvFolderRoutes);
+
+app.use("/api/ctv/dictation", verifyAccessToken, ctvDictationRouter);
 
 app.use(errorLogger);
 
