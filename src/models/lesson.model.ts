@@ -27,3 +27,32 @@ const LessonSchema = new Schema<ILesson>({
 });
 
 export const Lesson = mongoose.model<ILesson>("Lesson", LessonSchema);
+
+// {
+//     "title": "Thì hiện tại đơn",
+//     "summary": "Trình độ: Cơ bản | Trạng thái: Đã hoàn thành",
+//     "sections": [
+//         {
+//             "id": "section-1760349579083",
+//             "title": "Lỗi sai mới",
+//             "order": 0,
+//             "type": "error",
+//             "error": {
+//                 "wrong": "asd",
+//                 "correct": "asd",
+//                 "explanation": "asd"
+//             }
+//         },
+//         {
+//             "id": "section-1760349588700",
+//             "title": "Ví dụ mới",
+//             "order": 1,
+//             "type": "example",
+//             "example": {
+//                 "en": "asd",
+//                 "vi": "asda",
+//                 "note": ""
+//             }
+//         }
+//     ]
+// }

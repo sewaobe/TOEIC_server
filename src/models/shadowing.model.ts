@@ -1,6 +1,6 @@
 import { Schema, model, Document } from "mongoose";
-import { TopicLevel } from "./topic.model";
 import { PartType } from "./enums/PartType";
+import { CERFLevel } from "./topic_vocabulary.model";
 
 interface IWord {
   word: string;
@@ -18,7 +18,7 @@ interface ISegment {
 export interface IShadowing extends Document {
   topic: string;
   part_type?: PartType;
-  level: TopicLevel;
+  level: CERFLevel;
   transcript: string;
   audio_url?: string;
   duration?: number;
@@ -32,7 +32,7 @@ const ShadowingSchema = new Schema<IShadowing>(
   {
     topic: { type: String, required: true },
     part_type: { type: Number, enum: Object.values(PartType) },
-    level: { type: String, enum: Object.values(TopicLevel), required: true },
+    level: { type: String, enum: Object.values(CERFLevel), required: true },
     transcript: { type: String, required: true },
     audio_url: String,
     duration: Number,

@@ -1,10 +1,9 @@
 import { Schema, model, Document, Types } from "mongoose";
 import { WeekStudyStatus } from "./enums/WeekStudyStatus";
-import { PartType } from "./enums/PartType";
 
 export interface IShadowingPlan extends Document {
   user_id: Types.ObjectId;
-  shadowing_ids: Types.ObjectId[];
+  shadowing_id: Types.ObjectId;
   status: WeekStudyStatus;
   latest_attempt?: Types.ObjectId;
   planned_completion_time: number;
@@ -20,9 +19,7 @@ export interface IShadowingPlan extends Document {
 const ShadowingPlanSchema = new Schema<IShadowingPlan>(
   {
     user_id: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    shadowing_ids: [
-      { type: Schema.Types.ObjectId, ref: "Shadowing", required: true },
-    ],
+    shadowing_id: { type: Schema.Types.ObjectId, ref: "Shadowing", required: true },
     status: {
       type: String,
       enum: Object.values(WeekStudyStatus),

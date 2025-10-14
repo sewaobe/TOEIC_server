@@ -4,12 +4,12 @@ import { PartType } from "./enums/PartType";
 
 export interface IFlashCardPlan extends Document {
   user_id: Types.ObjectId;
-  topic_id: Types.ObjectId; // trỏ tới Topic (chứa nhiều vocabularies)
-  part_type?: PartType | null; 
+  topic_vocabulary_id: Types.ObjectId; // trỏ tới TopicVocabulary (chứa nhiều vocabularies)
+  part_type?: PartType;
   status: WeekStudyStatus;
   latest_attempt?: Types.ObjectId;
-  planned_completion_time: number; 
-  weight: number; 
+  planned_completion_time: number;
+  weight: number;
   created_at: Date;
   updated_at?: Date;
 }
@@ -17,7 +17,7 @@ export interface IFlashCardPlan extends Document {
 const FlashCardPlanSchema = new Schema<IFlashCardPlan>(
   {
     user_id: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    topic_id: { type: Schema.Types.ObjectId, ref: "Topic", required: true },
+    topic_vocabulary_id: { type: Schema.Types.ObjectId, ref: "TopicVocabulary", required: true },
     part_type: {
       type: Number,
       enum: Object.values(PartType),

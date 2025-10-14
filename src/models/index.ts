@@ -9,7 +9,7 @@ export * from "./message.model";
 export * from "./question.model";
 export * from "./role.model";
 export * from "./test.model";
-export * from "./topic.model";
+export * from "./topic_vocabulary.model";
 export * from "./user_learningPath.model";
 export * from "./user_progress.model";
 export * from "./user_test.model";

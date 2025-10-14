@@ -7,8 +7,8 @@ export const getFlashCardByIdService = async (id: string): Promise<any> => {
     { $match: { _id: new mongoose.Types.ObjectId(id) } },
     {
       $lookup: {
-        from: "topics",
-        localField: "topic_id",
+        from: "topicvocabularies",
+        localField: "topic_vocabulary_id",
         foreignField: "_id",
         as: "topic",
       },
@@ -64,7 +64,7 @@ export const getHistoryFlashCardByTopicService = async (topicId: string, userId:
     // Bước 1: Tìm các attempt khớp với topic và user
     {
       $match: {
-        topic_id: new mongoose.Types.ObjectId(topicId),
+        topic_vocabulary_id: new mongoose.Types.ObjectId(topicId),
         user_id: new mongoose.Types.ObjectId(userId),
       }
     },

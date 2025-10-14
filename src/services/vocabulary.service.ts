@@ -1,5 +1,5 @@
 import { Types } from "mongoose";
-import { FlashCardPlan, IVocabulary, Topic, Vocabulary } from "../models";
+import { FlashCardPlan, IVocabulary, TopicVocabulary, Vocabulary } from "../models";
 
 export const getVocabulariesByTopicService = async (
   topicId: string,
@@ -10,7 +10,7 @@ export const getVocabulariesByTopicService = async (
     throw new Error("Invalid topic id");
   }
 
-  const topic = await Topic.findById(topicId);
+  const topic = await TopicVocabulary.findById(topicId);
   if (!topic) {
     throw new Error("Topic not found");
   }
@@ -42,7 +42,7 @@ export const createVocabularyService = async (vocabData: Partial<IVocabulary>, t
 
   // Nếu có topicId thì gắn vocab vào topic
   if (topicId && Types.ObjectId.isValid(topicId)) {
-    await Topic.findByIdAndUpdate(
+    await TopicVocabulary.findByIdAndUpdate(
       topicId,
       { $push: { vocabularies_id: saved._id } },
       { new: true }
@@ -58,7 +58,7 @@ export const updateVocabularyService = async (id: string, vocabData: Partial<IVo
 
 export const deleteVocabularyService = async (id: string, topicId?: string) => {
   if (topicId && Types.ObjectId.isValid(topicId)) {
-    await Topic.findByIdAndUpdate(
+    await TopicVocabulary.findByIdAndUpdate(
       topicId,
       { $pull: { vocabularies_id: id } },
       { new: true }
@@ -72,13 +72,13 @@ export const getTopicInfoService = async (topicId: string) => {
     throw new Error("Invalid topic id");
   }
 
-  const topic = await Topic.findById(topicId);
+  const topic = await TopicVocabulary.findById(topicId);
   if (!topic) {
     throw new Error("Topic not found");
   }
 
   // Đếm học viên (FlashCardPlan) theo topic
-  const totalLearner = await FlashCardPlan.countDocuments({ topic_id: topicId });
+  const totalLearner = await FlashCardPlan.countDocuments({ topic_vocabulary_id: topicId });
 
   // Lấy danh sách vocabularies của topic
   const vocabularies = await Vocabulary.find({

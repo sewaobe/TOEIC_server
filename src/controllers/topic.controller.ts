@@ -1,10 +1,10 @@
 import { NextFunction, Request, Response } from "express";
-import { 
-  getAllTopicsService, 
-  createTopicService, 
-  updateTopicService, 
-  deleteTopicService 
-} from "../services/topic.service";
+import {
+  getAllTopicsService,
+  createTopicService,
+  updateTopicService,
+  deleteTopicService
+} from "../services/topic_vocabulary.service";
 import { ApiResponse } from "../utils/ApiResponse";
 
 export const getAllTopicOfCollaborator = async (req: Request, res: Response, next: NextFunction) => {
@@ -25,7 +25,7 @@ export const getAllTopicOfCollaborator = async (req: Request, res: Response, nex
 
 export const createTopicOfCollaborator = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const userId = req.user._id; 
+    const userId = req.user._id;
     const topic = await createTopicService(req.body, userId);
     res
       .status(201)

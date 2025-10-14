@@ -15,7 +15,7 @@ export interface IUser extends Document {
     avatar: string;
   };
   badges?: Types.ObjectId[];
-  topics?: Types.ObjectId[];
+  topic_vocabularies?: Types.ObjectId[];
   master_parts: IPartAccuracy[];
   created_at: Date;
   updated_at: Date;
@@ -37,7 +37,7 @@ const UserSchema = new Schema<IUser>({
     avatar: String,
   },
   badges: [{ type: Schema.Types.ObjectId, ref: "Badge" }],
-  topics: [{ type: Schema.Types.ObjectId, ref: "Topic" }],
+  topic_vocabularies: [{ type: Schema.Types.ObjectId, ref: "TopicVocabulary" }],
   master_parts: [{
     part_name: { type: String, default: '' },
     accuracy: { type: Number, default: 0 }
