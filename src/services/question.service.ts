@@ -102,6 +102,10 @@ export const getQuestionsWithGroupInfo = async ({
               _id: 1,
               part: 1,
               type: 1,
+              test_id: 1,
+              quiz_id: 1,
+              minitest_id: 1,
+              practice_id: 1,
             },
           },
         ],
@@ -128,6 +132,43 @@ export const getQuestionsWithGroupInfo = async ({
         group_id: "$group._id",
         group_part: "$group.part",
         group_type: "$group.type",
+
+        // ✅ Thêm logic canDelete
+        canDelete: {
+          $cond: [
+            {
+              $or: [
+                {
+                  $and: [
+                    { $ifNull: ["$group.test_id", false] },
+                    { $ne: ["$group.test_id", null] },
+                  ],
+                },
+                {
+                  $and: [
+                    { $ifNull: ["$group.quiz_id", false] },
+                    { $ne: ["$group.quiz_id", null] },
+                  ],
+                },
+                {
+                  $and: [
+                    { $ifNull: ["$group.minitest_id", false] },
+                    { $ne: ["$group.minitest_id", null] },
+                  ],
+                },
+                {
+                  $and: [
+                    { $ifNull: ["$group.practice_id", false] },
+                    { $ne: ["$group.practice_id", null] },
+                  ],
+                },
+              ],
+            },
+            false,
+            true,
+          ],
+        },
+
         _id: 0,
       },
     },

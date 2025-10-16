@@ -263,21 +263,53 @@ export const getTestDetail = async (testId: string, userId?: string) => {
 };
 export const getAllTests = async (
   page: number = 1,
-  limit: number = 10
-): Promise<{ tests: Partial<ITest>[]; total: number }> => {
+  limit: number = 10,
+  search?: string,
+  status?: string,
+  topic?: string
+): Promise<{ items: Partial<ITest>[]; total: number; pageCount: number }> => {
   const skip = (page - 1) * limit;
 
+  // 🔍 Xây dựng điều kiện lọc
+  const query: any = {};
+  if (search) {
+    query.title = { $regex: search, $options: "i" }; // tìm kiếm không phân biệt hoa thường
+  }
+  if (status) {
+    query.status = status;
+  }
+  if (topic) {
+    query.topic = { $regex: topic, $options: "i" };
+  }
+
+  // 🧾 Query dữ liệu & tổng số
   const [tests, total] = await Promise.all([
-    Test.find({})
+    Test.find(query)
       .select("title type status topic countComment countSubmit created_at")
       .sort({ created_at: -1 })
       .skip(skip)
       .limit(limit)
       .lean(),
-    Test.countDocuments(),
+    Test.countDocuments(query),
   ]);
 
-  return { tests, total };
+  // ✅ Chuyển _id → id cho FE
+  const items = tests.map((t) => ({
+    id: t._id?.toString(),
+    title: t.title,
+    type: t.type,
+    status: t.status,
+    topic: t.topic,
+    countComment: t.countComment,
+    countSubmit: t.countSubmit,
+    created_at: t.created_at,
+  }));
+
+  return {
+    items,
+    total,
+    pageCount: Math.ceil(total / limit),
+  };
 };
 
 /**

@@ -26,3 +26,7 @@ export * from "./shadowing_attempt.model";
 export * from "./shadowing_plan.model";
 export * from "./group.model"
 export * from "./media_folder.model";
+
+export * from "./user_activity.model";
+export * from "./user_stat.model";
+export * from "./group_user.model";

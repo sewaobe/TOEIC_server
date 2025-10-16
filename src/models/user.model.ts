@@ -21,6 +21,9 @@ export interface IUser extends Document {
   updated_at: Date;
   banned_at?: Date;
   banned_by?: Types.ObjectId;
+
+  // 🕓 Thêm mới: lưu thời điểm hoạt động gần nhất
+  last_active?: Date;
 }
 
 // 2. Định nghĩa Schema cho User
@@ -38,14 +41,19 @@ const UserSchema = new Schema<IUser>({
   },
   badges: [{ type: Schema.Types.ObjectId, ref: "Badge" }],
   topics: [{ type: Schema.Types.ObjectId, ref: "Topic" }],
-  master_parts: [{
-    part_name: { type: String, default: '' },
-    accuracy: { type: Number, default: 0 }
-  }],
+  master_parts: [
+    {
+      part_name: { type: String, default: "" },
+      accuracy: { type: Number, default: 0 },
+    },
+  ],
   created_at: { type: Date, default: Date.now },
   updated_at: Date,
   banned_at: Date,
   banned_by: { type: Schema.Types.ObjectId, ref: "User" },
+
+  // 🕓 Thêm mới: thời điểm hoạt động gần nhất
+  last_active: { type: Date, default: null },
 });
 
 // 3. Tạo Model từ Schema

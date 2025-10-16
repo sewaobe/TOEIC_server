@@ -178,51 +178,64 @@ export const getAllTests = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
-  console.log("check");
   try {
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
-    const limit = req.query.limit
-      ? parseInt(req.query.limit as string, 10)
-      : 10;
-    const { tests, total } = await testService.getAllTests(page, limit);
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
+    const search = req.query.search ? String(req.query.search) : "";
+    const status = req.query.status ? String(req.query.status) : "";
+    const topic = req.query.topic ? String(req.query.topic) : "";
+
+    const { items, total, pageCount } = await testService.getAllTests(
+      page,
+      limit,
+      search,
+      status,
+      topic
+    );
 
     res.status(200).json(
-      ApiResponse.success<Partial<ITest>[]>(
-        tests,
-        "Lấy danh sách bài thi thành công!",
-        {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit),
-        }
+      ApiResponse.success<{ items: Partial<ITest>[]; total: number; pageCount: number }>(
+        { items, total, pageCount },
+        "Lấy danh sách đề thi thành công!"
       )
     );
   } catch (error) {
     next(error);
   }
 };
+
 export const createTestController = async (
   req: Request,
   res: Response,
   next: NextFunction
-): Promise<void> => {
-  console.log("create");
+) => {
   try {
     const payload: Partial<ITest> = req.body;
 
-    payload.created_by = new Types.ObjectId(req.user!._id);
-    console.log(payload.created_by);
+    if (!req.user._id) {
+      return res.status(401).json(ApiResponse.fail("Người dùng chưa đăng nhập!"));
+    }
+
+    payload.created_by = new Types.ObjectId(req.user._id);
+
+    if (!payload.title || payload.title.trim() === "") {
+      return res.status(400).json(ApiResponse.fail("Thiếu tiêu đề bài thi!"));
+    }
+
+    if (!payload.topic || payload.topic.trim() === "") {
+      return res.status(400).json(ApiResponse.fail("Thiếu chủ đề bài thi!"));
+    }
 
     const newTest = await testService.createTest(payload);
 
-    res
+    return res
       .status(201)
       .json(ApiResponse.success<ITest>(newTest, "Tạo đề thi thành công!"));
   } catch (error) {
     next(error);
   }
 };
+
 
 export const deleteTest = async (
   req: Request,

@@ -123,7 +123,7 @@ export const createGroupWithNewRelations = async (
   const group = await createGroup({
     test_id: data.test_id,
     part: data.part,
-    type: data.type || "TEST",
+    // type: data.type || "TEST",
     audioUrl: audioMediaId,
     imagesUrl: imageMediaIds,
     transcriptEnglish: data.transcriptEnglish || "",
@@ -273,7 +273,7 @@ export const updateGroupWithRelations = async (
     id,
     {
       part: data.part,
-      type: data.type || "TEST",
+      // type: data.type || "TEST",
       audioUrl: audioMediaId,
       imagesUrl: newImageIds,
       transcriptEnglish: data.transcriptEnglish || "",
