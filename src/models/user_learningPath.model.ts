@@ -8,6 +8,8 @@ export interface IUserLearningPath extends Document {
     time_per_day: number;
     days_per_week: number;
     target_completion_date: Date;
+    week_study_ids: Types.ObjectId[];
+    additional_week_studies?: Types.ObjectId[];
     current_week: number;
 }
 
@@ -18,6 +20,8 @@ const UserLearningPathSchema = new Schema<IUserLearningPath>({
     time_per_day: { type: Number, default: 0 },
     days_per_week: { type: Number, default: 0 },
     target_completion_date: { type: Date },
+    week_study_ids: [{ type: Schema.Types.ObjectId, ref: "WeekStudy", required: true }],
+    additional_week_studies: [{ type: Schema.Types.ObjectId, ref: "WeekStudy" }],
     current_week: { type: Number, default: 1 }
 })
 

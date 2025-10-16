@@ -103,7 +103,7 @@ export const deleteGroupController = async (
       return;
     }
 
-    const deleted = await groupService.deleteGroup(groupId);
+    const deleted = await groupService.deleteGroupWithRelations(groupId);
     if (!deleted) {
       res.status(404).json(ApiResponse.fail("Không tìm thấy group để xóa."));
       return;

@@ -1,7 +1,9 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
+import { PartType } from "./enums/PartType";
 
 export interface ILesson extends Document {
-  type: string;
+  part_type: PartType;
+  topic: Types.ObjectId;
   title: string;
   tags: string[];
   summary: string;
@@ -14,13 +16,14 @@ export interface ILesson extends Document {
 }
 
 const LessonSchema = new Schema<ILesson>({
-  type: String,
+  part_type: { type: Number, enum: Object.values(PartType), required: true },
+  topic: { type: Schema.Types.ObjectId, ref: "LessonManager", required: true },
   title: { type: String, required: true },
   tags: [{ type: String, default: "" }],
   summary: { type: String, default: "" },
   planned_completion_time: { type: Number, default: 0 },
   weight: { type: Number, default: 0.1 },
-  sections_id: [{ type: Schema.Types.ObjectId, ref: "LessonSection" }], 
+  sections_id: [{ type: Schema.Types.ObjectId, ref: "LessonSection" }],
   created_at: { type: Date, default: Date.now },
   created_by: { type: Schema.Types.ObjectId, ref: "User" },
   updated_at: { type: Date, default: Date.now },

@@ -3,19 +3,19 @@ import { WeekStudyStatus } from "./enums/WeekStudyStatus";
 
 export interface IWeekStudy extends Document {
   _id: Types.ObjectId;
-  name: number; // tuần thứ mấy
+  no: number; // tuần thứ mấy
   description: string;
   status: WeekStudyStatus;
   started_at?: Date;
   ended_at?: Date;
   accuracy_overall: number;
 
-  additional_lessons: {
+  additional_lessons?: {
     lesson_id: Types.ObjectId;   // bài học bổ sung
     completed: boolean;          // đã học xong hay chưa
   }[];
 
-  additional_tests: {
+  additional_tests?: {
     test_id: Types.ObjectId;     // mini-test hoặc full-test
     accuracy: number;            // % đúng
     completed_at?: Date;         // ngày hoàn thành test
@@ -28,7 +28,7 @@ export interface IWeekStudy extends Document {
 
 const WeekStudySchema = new Schema<IWeekStudy>(
   {
-    name: { type: Number, required: true, index: true },
+    no: { type: Number, required: true, index: true },
     description: { type: String, default: "" },
     status: {
       type: String,
@@ -42,14 +42,14 @@ const WeekStudySchema = new Schema<IWeekStudy>(
 
     additional_lessons: [
       {
-        lesson_id: { type: Schema.Types.ObjectId, ref: "Lesson", required: true },
+        lesson_id: { type: Schema.Types.ObjectId, ref: "Lesson" },
         completed: { type: Boolean, default: false },
       },
     ],
 
     additional_tests: [
       {
-        test_id: { type: Schema.Types.ObjectId, ref: "Test", required: true },
+        test_id: { type: Schema.Types.ObjectId, ref: "Test" },
         accuracy: { type: Number, default: 0 },
         completed_at: { type: Date },
       },

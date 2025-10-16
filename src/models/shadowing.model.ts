@@ -1,4 +1,4 @@
-import { Schema, model, Document } from "mongoose";
+import { Schema, model, Document, Types } from "mongoose";
 import { PartType } from "./enums/PartType";
 import { CERFLevel } from "./topic_vocabulary.model";
 
@@ -16,22 +16,23 @@ interface ISegment {
 }
 
 export interface IShadowing extends Document {
-  topic: string;
-  part_type?: PartType;
+  topic: Types.ObjectId;
+  part_type: PartType;
   level: CERFLevel;
   transcript: string;
   audio_url?: string;
-  duration?: number;
+  duration?: number; // Vừa là thời gian của video, vừa là thời gian dự kiến hoành thành.
   timings: ISegment[];
   display_mode: "sentence" | "word";
+  weight: Number;
   created_at: Date;
   updated_at?: Date;
 }
 
 const ShadowingSchema = new Schema<IShadowing>(
   {
-    topic: { type: String, required: true },
-    part_type: { type: Number, enum: Object.values(PartType) },
+    topic: { type: Schema.Types.ObjectId, ref: "LessonManager", required: true },
+    part_type: { type: Number, enum: Object.values(PartType).filter(v => typeof v === "number"), required: true },
     level: { type: String, enum: Object.values(CERFLevel), required: true },
     transcript: { type: String, required: true },
     audio_url: String,
@@ -49,6 +50,10 @@ const ShadowingSchema = new Schema<IShadowing>(
       enum: ["sentence", "word"],
       default: "sentence",
     },
+    weight: {
+      type: Number,
+      default: 0
+    }
   },
   { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
 );

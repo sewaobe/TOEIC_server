@@ -283,7 +283,7 @@ export async function createLearningPathWithWeeks(
   }
 
   // 5. Gắn các tuần vào LearningPath
-  learningPath.week_studies_id = weekIds;
+  // learningPath.week_studies_id = weekIds;
   await learningPath.save();
 
   return learningPath;

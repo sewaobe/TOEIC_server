@@ -1,13 +1,11 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
-import { LearningPathType } from './enums/LearningPathType';
+import { CERFLevel } from './topic_vocabulary.model';
 
 export interface ILearningPath extends Document {
   title: string;
   description: string;
-  level: LearningPathType;
+  level: CERFLevel;
   isActive: boolean;
-  week_studies_id: Types.ObjectId[];
-  additional_week_studies?: Types.ObjectId[];
   created_at: Date;
   created_by: Types.ObjectId;
   updated_at: Date;
@@ -16,10 +14,8 @@ export interface ILearningPath extends Document {
 const LearningPathSchema = new Schema<ILearningPath>({
   title: String,
   description: String,
-  level: String,
+  level: { type: String, enum: Object.values(CERFLevel), required: true },
   isActive: { type: Boolean, default: false },
-  week_studies_id: [{ type: Schema.Types.ObjectId, ref: "WeekStudy", default: [] }],
-  additional_week_studies: [{ type: Schema.Types.ObjectId, ref: "WeekStudy" }],
   created_at: { type: Date, default: Date.now },
   created_by: { type: Schema.Types.ObjectId, ref: 'User' },
   updated_at: Date,

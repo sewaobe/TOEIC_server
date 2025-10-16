@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import * as commentService from "../services/comment.service";
+import { ApiResponse } from "../utils/ApiResponse";
 
 export const getCommentsByTest = async (
   req: Request,
@@ -41,7 +42,7 @@ export const getRepliesByComment = async (req: Request, res: Response) => {
       limit
     );
 
-    res.status(200).json({ data:{comments, pagination }});
+    res.status(200).json({ data: { comments, pagination } });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Internal server error" });
@@ -52,19 +53,30 @@ export const createComment = async (
   req: Request,
   res: Response,
   next: NextFunction
-): Promise<void> => {
+) => {
   try {
-    const { testId } = req.params;
-    const { content, parentId } = req.body;
+    const userId = req.user._id;
 
-    // giả sử middleware auth đã gắn userId vào req.user.id
-    const userId = req.user!._id;
-
-    if (!content || content.trim() === "") {
-      res.status(400).json({ message: "Content is required" });
-      return;
+    if (!userId) {
+      return res.status(401).json(
+        ApiResponse.fail("Bạn không có quyền thực hiện chức năng tìm kiếm đề thi!")
+      )
     }
-    console.log("testId nè:", testId);
+
+    const { testId } = req.params;
+    if (!testId || testId.length !== 24) {
+      return res
+        .status(404)
+        .json(ApiResponse.fail("ID không hợp lệ hoặc thiếu ID trong request"));
+    }
+
+    const { content, parentId } = req.body;
+    if (!content || content.trim() === "") {
+      return res.status(400).json({ message: "Nội dung bình luận không được để trống" });
+    } else if (content.length > 255) {
+      return res.status(400).json({ message: "Nội dung bình luận không được dài hơn 255 ký tự" });
+    }
+
     const comment = await commentService.createComment(
       userId,
       testId,
@@ -72,8 +84,10 @@ export const createComment = async (
       parentId
     );
 
-    res.status(201).json({ data: comment });
-  } catch (err: any) {
+    res.status(201).json(
+      ApiResponse.success(comment, "Viết bình luận thành công")
+    );
+  } catch (err) {
     next(err);
   }
 };
