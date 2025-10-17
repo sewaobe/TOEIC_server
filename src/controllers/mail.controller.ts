@@ -133,7 +133,7 @@ export const resetPassword = async (
     const hashed = await bcrypt.hash(newPassword, 10);
     const user = await User.findOneAndUpdate(
       { email },
-      { password: hashed },
+      { passwordHash: hashed },
       { new: true },
     );
     if (!user)

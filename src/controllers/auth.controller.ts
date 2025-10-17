@@ -12,6 +12,8 @@ export const loginController = async (
 ): Promise<void> => {
   try {
     const loginRequest = req.body;
+    const isRemember = loginRequest.isRemember;
+    
     const { accessToken, refreshToken, role_name } = await loginService(
       loginRequest,
     );
@@ -20,14 +22,14 @@ export const loginController = async (
       httpOnly: true,
       secure: false, // đổi true nếu deploy HTTPS
       sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
+      ...(isRemember ? { maxAge: 7 * 24 * 60 * 60 * 1000 } : {}), // 7 ngày nếu nhớ đăng nhập
     });
 
     res.cookie('accessToken', accessToken, {
       httpOnly: true,
       secure: false,
       sameSite: 'lax',
-      maxAge: 15 * 60 * 1000, // 15 phút
+      ...(isRemember ? { maxAge: 15 * 60 * 1000 } : {}), // 15 phút nếu nhớ đăng nhập
     });
 
     res.status(200).json(ApiResponse.success(null, 'Login successfully', {
@@ -130,7 +132,7 @@ export const loginWithGoogleController = async (req: Request, res: Response) => 
       return res.status(400).json({ message: 'Missing idToken' });
     }
 
-    const {accessToken, refreshToken, role_name } = await loginWithGoogleService(idToken);
+    const { accessToken, refreshToken, role_name } = await loginWithGoogleService(idToken);
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
       secure: false, // đổi true nếu deploy HTTPS
