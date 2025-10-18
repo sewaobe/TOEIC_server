@@ -1,7 +1,7 @@
 import { Schema, model, Document, Types } from "mongoose";
 export interface IQuizAttempt extends Document {
     user_id: Types.ObjectId;
-    question_ids: Types.ObjectId[];
+    quiz_id: Types.ObjectId;
     answers: { question_id: Types.ObjectId; chosen: string; correct: boolean }[];
     score: number;
     started_at: Date;
@@ -11,7 +11,7 @@ export interface IQuizAttempt extends Document {
 const QuizAttemptSchema = new Schema<IQuizAttempt>(
     {
         user_id: { type: Schema.Types.ObjectId, ref: "User", required: true },
-        question_ids: [{ type: Schema.Types.ObjectId, ref: "Question", required: true }],
+        quiz_id: { type: Schema.Types.ObjectId, ref: "Quiz", required: true },
         answers: [
             {
                 question_id: { type: Schema.Types.ObjectId, ref: "Question", required: true },

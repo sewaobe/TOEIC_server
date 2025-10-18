@@ -4,10 +4,9 @@ import { WeekStudyStatus } from "./enums/WeekStudyStatus";
 export interface IShadowingPlan extends Document {
   user_id: Types.ObjectId;
   shadowing_id: Types.ObjectId;
-  status: WeekStudyStatus;
   latest_attempt?: Types.ObjectId;
-  planned_completion_time: number;
-  weight: number;
+  total_attempts: number;
+  accuracy_overall: number;
   start_date?: Date;
   end_date?: Date;
   progress?: number;
@@ -20,14 +19,9 @@ const ShadowingPlanSchema = new Schema<IShadowingPlan>(
   {
     user_id: { type: Schema.Types.ObjectId, ref: "User", required: true },
     shadowing_id: { type: Schema.Types.ObjectId, ref: "Shadowing", required: true },
-    status: {
-      type: String,
-      enum: Object.values(WeekStudyStatus),
-      default: WeekStudyStatus.LOCK,
-    },
     latest_attempt: { type: Schema.Types.ObjectId, ref: "ShadowingAttempt" },
-    planned_completion_time: { type: Number, default: 0 },
-    weight: { type: Number, default: 0.1 },
+    total_attempts: { type: Number, default: 0 },
+    accuracy_overall: { type: Number, default: 0 }, // % đúng tổng thể
     start_date: { type: Date, default: Date.now },
     end_date: { type: Date },
     progress: { type: Number },

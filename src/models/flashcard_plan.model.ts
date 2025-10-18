@@ -1,15 +1,13 @@
 import { Schema, model, Document, Types } from "mongoose";
-import { WeekStudyStatus } from "./enums/WeekStudyStatus";
-import { PartType } from "./enums/PartType";
 
 export interface IFlashCardPlan extends Document {
   user_id: Types.ObjectId;
   topic_vocabulary_id: Types.ObjectId; // trỏ tới TopicVocabulary (chứa nhiều vocabularies)
-  part_type?: PartType;
-  status: WeekStudyStatus;
   latest_attempt?: Types.ObjectId;
-  planned_completion_time: number;
-  weight: number;
+  total_attempts: number;
+  accuracy_overall: number;
+  start_date?: Date;
+  end_date?: Date;
   created_at: Date;
   updated_at?: Date;
 }
@@ -18,19 +16,11 @@ const FlashCardPlanSchema = new Schema<IFlashCardPlan>(
   {
     user_id: { type: Schema.Types.ObjectId, ref: "User", required: true },
     topic_vocabulary_id: { type: Schema.Types.ObjectId, ref: "TopicVocabulary", required: true },
-    part_type: {
-      type: Number,
-      enum: Object.values(PartType),
-      required: false,
-    },
-    status: {
-      type: String,
-      enum: Object.values(WeekStudyStatus),
-      default: WeekStudyStatus.LOCK,
-    },
     latest_attempt: { type: Schema.Types.ObjectId, ref: "FlashCardAttempt" },
-    planned_completion_time: { type: Number, default: 0 },
-    weight: { type: Number, default: 0.1 },
+    total_attempts: { type: Number, default: 0 },
+    accuracy_overall: { type: Number, default: 0 }, // % đúng tổng thể
+    start_date: { type: Date, default: Date.now },
+    end_date: { type: Date },
   },
   { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
 );

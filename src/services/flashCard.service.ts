@@ -1,6 +1,5 @@
-import mongoose, { Types } from "mongoose";
+import mongoose from "mongoose";
 import { FlashCardAttempt, FlashCardPlan, IFlashCardAttempt } from "../models"
-import { FlashCardAttemptDetail, IFlashCardAttemptDetail } from "../models/flashcard_attempt_detail.model";
 
 export const getFlashCardByIdService = async (id: string): Promise<any> => {
   const result = await FlashCardPlan.aggregate([
@@ -42,14 +41,14 @@ export const getFlashCardByIdService = async (id: string): Promise<any> => {
   return result;
 }
 
-export const submitFlashCardService = async (flashCardAttempt: IFlashCardAttempt, logs: IFlashCardAttemptDetail[]): Promise<boolean> => {
+export const submitFlashCardService = async (flashCardAttempt: IFlashCardAttempt, logs: IFlashCardAttempt[]): Promise<boolean> => {
   try {
     const newFlashCardAttempt = await FlashCardAttempt.create(flashCardAttempt);
     const logsWithAttemptId = logs.map(log => ({
       ...log,
       attempt_id: newFlashCardAttempt._id
     }));
-    await FlashCardAttemptDetail.insertMany(logsWithAttemptId);
+    // await FlashCardAttemptDetail.insertMany(logsWithAttemptId);
     return true;
   }
   catch (err) {

@@ -1,15 +1,16 @@
 import { Schema, model, Document, Types } from "mongoose";
-import { WeekStudyStatus } from "./enums/WeekStudyStatus";
 import { PartType } from "./enums/PartType";
 import { CERFLevel } from "./topic_vocabulary.model";
+import { TestStatus } from "./enums/TestStatus";
 
 // Dùng cho Reading
 export interface IQuiz extends Document {
+  topic: Types.ObjectId[];
   title: string;
   group_ids: Types.ObjectId[];
   part_type?: PartType;
   level: CERFLevel;
-  status: WeekStudyStatus;
+  status: TestStatus;
   planned_completion_time: number;
   weight: number;
   created_at: Date;
@@ -18,6 +19,8 @@ export interface IQuiz extends Document {
 
 const QuizPlanSchema = new Schema<IQuiz>(
   {
+    topic: [{ type: Schema.Types.ObjectId, ref: "LessonManager" }],
+    title: { type: String, required: true },
     group_ids: [
       { type: Schema.Types.ObjectId, ref: "Group", required: true },
     ],
@@ -27,8 +30,8 @@ const QuizPlanSchema = new Schema<IQuiz>(
     },
     status: {
       type: String,
-      enum: Object.values(WeekStudyStatus),
-      default: WeekStudyStatus.LOCK,
+      enum: Object.values(TestStatus),
+      default: TestStatus.DRAFT,
     },
     planned_completion_time: { type: Number, default: 0 },
     weight: { type: Number, default: 0.1 },

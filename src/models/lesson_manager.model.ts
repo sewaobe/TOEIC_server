@@ -10,7 +10,7 @@ export interface ILessonManager extends Document {
     level: CERFLevel;                // A1, A2, B1...
     part_type: PartType;               // Part 1,2,3,4,5,6,7
     status: TestStatus;                // Trạng thái để chờ duyệt từ Admin
-    topic_ids?: Types.ObjectId[];      // Liên kết với các chủ đề từ vựng
+    topic_vocabulary_ids?: Types.ObjectId[];      // Liên kết với các chủ đề từ vựng
     lesson_ids?: Types.ObjectId[];     // Liên kết với các bài học chính
     dictation_ids?: Types.ObjectId[];  // Liên kết bài nghe-chép
     shadowing_ids?: Types.ObjectId[];  // Liên kết bài luyện nói
@@ -30,7 +30,7 @@ const LessonManagerSchema = new Schema<ILessonManager>(
         level: { type: String, required: true },
         part_type: { type: Number, enum: Object.values(PartType).filter(v => typeof v === "number"), required: true },
         status: { type: String, enum: Object.values(TestStatus), default: TestStatus.DRAFT },
-        topic_ids: [{ type: Schema.Types.ObjectId, ref: "Topic" }],
+        topic_vocabulary_ids: [{ type: Schema.Types.ObjectId, ref: "Topic" }],
         lesson_ids: [{ type: Schema.Types.ObjectId, ref: "Lesson" }],
         dictation_ids: [{ type: Schema.Types.ObjectId, ref: "Dictation" }],
         shadowing_ids: [{ type: Schema.Types.ObjectId, ref: "Shadowing" }],

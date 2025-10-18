@@ -3,7 +3,6 @@ import { Vocabulary } from './../models/vocabulary';
 import { NextFunction, Request, Response } from "express";
 import { getFlashCardByIdService, getHistoryFlashCardByTopicService, submitFlashCardService } from "../services/flashCard.service";
 import { ApiResponse } from "../utils/ApiResponse";
-import { IFlashCardAttemptDetail } from '../models/flashcard_attempt_detail.model';
 import { completeActivityAndUnlockNext } from '../services/day_study.service';
 
 export const getFlashCardById = async (req: Request, res: Response, next: NextFunction) => {
@@ -27,7 +26,7 @@ export const submitFlashCard = async (req: Request, res: Response, next: NextFun
             ...flashCardAttempt,
             user_id
         }
-        const result = await submitFlashCardService(flashCardAttemptFull, logs as IFlashCardAttemptDetail[]);
+        const result = await submitFlashCardService(flashCardAttemptFull, logs as IFlashCardAttempt[]);
 
         if (!result) res.status(404).json(ApiResponse.fail("Submit Flash card thất bại"))
 

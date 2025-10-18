@@ -9,6 +9,7 @@ export enum CERFLevel {
   C2 = 'C2'
 }
 export interface ITopicVocabulary extends Document {
+  topic: Types.ObjectId[];
   title: string;
   description: string;
   tags: string[];
@@ -23,6 +24,7 @@ export interface ITopicVocabulary extends Document {
 }
 
 const TopicVocabularySchema = new Schema<ITopicVocabulary>({
+  topic: [{ type: Schema.Types.ObjectId, ref: "LessonManager" }],
   title: String,
   description: String,
   tags: [{ type: String, required: true }],

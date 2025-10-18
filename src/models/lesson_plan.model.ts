@@ -1,8 +1,8 @@
 import { Schema, model, Document, Types } from "mongoose";
 
-export interface IQuizPlan extends Document {
+export interface ILessonPlan extends Document {
   user_id: Types.ObjectId;
-  quiz_id: Types.ObjectId;
+  lesson_id: Types.ObjectId;
   latest_attempt?: Types.ObjectId;
   total_attempts: number;
   accuracy_overall: number;
@@ -12,11 +12,11 @@ export interface IQuizPlan extends Document {
   updated_at?: Date;
 }
 
-const QuizPlanSchema = new Schema<IQuizPlan>(
+const LessonPlanSchema = new Schema<ILessonPlan>(
   {
     user_id: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    quiz_id: { type: Schema.Types.ObjectId, ref: "Quiz", required: true },
-    latest_attempt: { type: Schema.Types.ObjectId, ref: "QuizAttempt" },
+    lesson_id: { type: Schema.Types.ObjectId, ref: "Lesson", required: true },
+    latest_attempt: { type: Schema.Types.ObjectId, ref: "LessonAttempt" },
     total_attempts: { type: Number, default: 0 },
     accuracy_overall: { type: Number, default: 0 }, // % đúng tổng thể
     start_date: { type: Date, default: Date.now },
@@ -25,4 +25,7 @@ const QuizPlanSchema = new Schema<IQuizPlan>(
   { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
 );
 
-export const QuizPlan = model<IQuizPlan>("QuizPlan", QuizPlanSchema);
+export const LessonPlan = model<ILessonPlan>(
+  "LessonPlan",
+  LessonPlanSchema
+);
