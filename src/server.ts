@@ -27,7 +27,7 @@ import ctvFolderRoutes from "./routes/ctv/ctv_media_folder.route";
 import ctvDictationRouter from "./routes/ctv/ctv_dictation.route";
 import ctvShadowingRouter from "./routes/ctv/ctv_shadowing.route";
 import ctvStudentRouter from "./routes/ctv/ctv_student.route";
-
+import ctvLessonManagerRouter from './routes/ctv/ctv_lesson_manager.route';
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
 import { verifyAccessToken } from "./middlewares/verifyAccessToken.middleware";
@@ -77,7 +77,7 @@ app.use("/api/ctv/folders", verifyAccessToken, ctvFolderRoutes);
 app.use("/api/ctv/dictation", verifyAccessToken, ctvDictationRouter);
 app.use("/api/ctv/shadowing", verifyAccessToken, ctvShadowingRouter);
 app.use("/api/ctv/students", verifyAccessToken, ctvStudentRouter);
-
+app.use("/api/ctv/lesson-manager", verifyAccessToken, ctvLessonManagerRouter);
 
 app.use(errorLogger);
 

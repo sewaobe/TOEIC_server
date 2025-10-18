@@ -18,6 +18,7 @@ interface ISegment {
 
 export interface IDictation extends Document {
   topic: Types.ObjectId[];
+  title: string;
   part_type?: PartType;
   level: CERFLevel;
   status: TestStatus;
@@ -26,6 +27,7 @@ export interface IDictation extends Document {
   duration?: number;
   timings: ISegment[];
   display_mode: "sentence" | "word";
+  weight: Number;
   created_at: Date;
   updated_at?: Date;
 }
@@ -52,6 +54,7 @@ const SegmentSchema = new Schema<ISegment>(
 const DictationSchema = new Schema<IDictation>(
   {
     topic: [{ type: Schema.Types.ObjectId, ref: "LessonManager" }],
+    title: { type: String, required: true },
     part_type: {
       type: Number,
       enum: Object.values(PartType).filter(v => typeof v === "number"),
@@ -67,6 +70,10 @@ const DictationSchema = new Schema<IDictation>(
       enum: ["sentence", "word"],
       default: "sentence",
     },
+    weight: {
+      type: Number,
+      default: 0
+    }
   },
   { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
 );

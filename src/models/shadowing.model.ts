@@ -18,6 +18,7 @@ interface ISegment {
 
 export interface IShadowing extends Document {
   topic: Types.ObjectId[];
+  title: string;
   part_type: PartType;
   level: CERFLevel;
   status: TestStatus;
@@ -34,6 +35,7 @@ export interface IShadowing extends Document {
 const ShadowingSchema = new Schema<IShadowing>(
   {
     topic: [{ type: Schema.Types.ObjectId, ref: "LessonManager" }],
+    title: { type: String, required: true },
     part_type: { type: Number, enum: Object.values(PartType).filter(v => typeof v === "number"), required: true },
     level: { type: String, enum: Object.values(CERFLevel), required: true },
     status: { type: String, enum: Object.values(TestStatus), default: TestStatus.DRAFT },
