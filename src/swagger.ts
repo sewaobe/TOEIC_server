@@ -2,6 +2,8 @@ import swaggerJSDoc from "swagger-jsdoc"
 import swaggerUi from "swagger-ui-express"
 import { Express } from "express"
 
+import "./docs/schemas";
+
 export function setupSwagger(app: Express) {
   const options = {
     definition: {
@@ -19,7 +21,7 @@ export function setupSwagger(app: Express) {
       ],
     },
     // Chỉ ra nơi chứa mô tả API
-    apis: ["./src/routes/**/*.ts", "./src/controllers/**/*.ts"],
+    apis: ["./src/routes/**/*.ts", "./src/docs/schemas/**/*.ts"],
   }
 
   const swaggerSpec = swaggerJSDoc(options)

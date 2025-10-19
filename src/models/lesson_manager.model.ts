@@ -17,6 +17,8 @@ export interface ILessonManager extends Document {
     quiz_ids?: Types.ObjectId[];       // Liên kết với các quiz thực hành
     weight: number;
     planned_completion_time: number;
+    rating?: number;
+    student_count?: number;
     created_at: Date;
     created_by: Types.ObjectId;
     updated_at?: Date;
@@ -37,6 +39,8 @@ const LessonManagerSchema = new Schema<ILessonManager>(
         quiz_ids: [{ type: Schema.Types.ObjectId, ref: "Quiz" }],
         planned_completion_time: { type: Number, default: 0 },
         weight: { type: Number, default: 0.1 },
+        rating: { type: Number, default: 0 },
+        student_count: { type: Number, default: 0 },
         created_by: { type: Schema.Types.ObjectId, ref: "User" }
     },
     { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
