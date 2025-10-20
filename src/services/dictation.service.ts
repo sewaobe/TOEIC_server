@@ -1,4 +1,6 @@
+import { Types } from "mongoose";
 import { Dictation, IDictation } from "../models/dictation.model"
+import { appEvents } from "../core/appEvents";
 
 export const getAllDictationService = async (page: number, limit: number) => {
     const skip = (page - 1) * limit;
@@ -19,10 +21,20 @@ export const getAllDictationService = async (page: number, limit: number) => {
 }
 
 export const createDictationService = async (payload: IDictation) => {
-    const data = new Dictation(payload);
-    const dictation = await data.save();
+    // Tạo mới dictation
+    const dictation = (await new Dictation(payload).save()) as IDictation & {
+        _id: Types.ObjectId;
+    };
+
+    if (!dictation) {
+        throw new Error("Failed to create dictation");
+    }
+
+    await appEvents.emitAsync("dictation.created", dictation);
+
     return dictation;
-}
+};
+
 
 export const updateDictationService = async (payload: Partial<IDictation>, dictationId: string) => {
     const updated = await Dictation.findByIdAndUpdate(dictationId, payload, {
@@ -30,10 +42,16 @@ export const updateDictationService = async (payload: Partial<IDictation>, dicta
         runValidators: true, // đảm bảo validation schema được áp dụng
     });
 
+    if (!updated) {
+        throw new Error("Dictation not found or update failed");
+    }
+
+    await appEvents.emitAsync("dictation.updated", updated);
+
     return updated;
 }
 
-export const deleteDictationService = async(dictationId: string) => {
+export const deleteDictationService = async (dictationId: string) => {
     const deleted = await Dictation.findByIdAndDelete(dictationId);
     return deleted;
 }

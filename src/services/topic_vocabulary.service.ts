@@ -1,5 +1,6 @@
 import { Types } from "mongoose";
 import { FlashCardPlan, ITopicVocabulary, TopicVocabulary } from "../models";
+import { appEvents } from "../core/appEvents";
 
 const mapTopic = async (topic_vocabulary: any) => {
     if (!topic_vocabulary) return null;
@@ -16,6 +17,7 @@ const mapTopic = async (topic_vocabulary: any) => {
         id: topic_vocabulary._id.toString(),
         title: topic_vocabulary.title,
         description: topic_vocabulary.description,
+        topic: topic_vocabulary.topic,
         level: topic_vocabulary.level,
         wordCount: topic_vocabulary.vocabularies_id?.length || 0,
         learnerCount,
@@ -62,6 +64,7 @@ export const createTopicService = async (data: any, userId: string) => {
     const newTopic = new TopicVocabulary({
         title: data.title,
         description: data.description,
+        topic: data.topic || [],
         tags: data.tags || [],
         iconName: data.iconName,
         bgColor: data.bgColor,
@@ -73,6 +76,9 @@ export const createTopicService = async (data: any, userId: string) => {
     });
 
     const saved = await newTopic.save();
+
+    await appEvents.emitAsync("topic.created", saved);
+
     return await mapTopic(saved);
 }
 
@@ -83,6 +89,7 @@ export const updateTopicService = async (id: string, data: any, userId: string) 
             $set: {
                 title: data.title,
                 description: data.description,
+                topic: data.topic,
                 tags: data.tags,
                 iconName: data.iconName,
                 bgColor: data.bgColor,
@@ -93,6 +100,8 @@ export const updateTopicService = async (id: string, data: any, userId: string) 
         },
         { new: true }
     );
+
+    await appEvents.emitAsync("topic.updated", updated);
 
     return await mapTopic(updated);
 }

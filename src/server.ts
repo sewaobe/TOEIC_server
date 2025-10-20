@@ -34,7 +34,7 @@ import { ApiResponse } from "./utils/ApiResponse";
 import { verifyAccessToken } from "./middlewares/verifyAccessToken.middleware";
 import { initSocket } from "./socket";
 import { setupSwagger } from "./swagger";
-
+import './listeners'
 
 
 connectDB();

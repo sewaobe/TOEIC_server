@@ -19,6 +19,7 @@ export const getAllLessonManagerService = async (page: number, limit: number, us
             .skip(skip)
             .limit(pageSize)
             .sort({ createdAt: -1 })
+            .select("-lesson_ids -dictation_ids -shadowing_ids -quiz_ids -topic_vocabulary_ids")
             .exec(),
         LessonManager.countDocuments({ created_by: userId }).exec(),
     ]);
@@ -34,6 +35,15 @@ export const getAllLessonManagerService = async (page: number, limit: number, us
             hasPrev: currentPage > 1,
         },
     };
+}
+
+export const getLessonManagerByIdService = async (lessonManagerId: string, userId: string) => {
+    const lessonManager = await LessonManager.findOne({
+        _id: lessonManagerId,
+        created_by: userId
+    }).exec();
+
+    return lessonManager;
 }
 
 export const createLessonManagerService = async (payload: Partial<ILessonManager>, userId: string) => {

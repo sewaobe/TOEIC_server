@@ -1,6 +1,6 @@
 import Router from 'express';
 import { verifyAccessToken } from '../../middlewares/verifyAccessToken.middleware';
-import { createLessonManagerController, deleteLessonManagerController, getAllLessonManagerController, getAllTopicTitlesController, updateLessonManagerController } from '../../controllers/lesson_manager.controller';
+import { createLessonManagerController, deleteLessonManagerController, getAllLessonManagerController, getAllTopicTitlesController, getLessonManagerByIdController, updateLessonManagerController } from '../../controllers/lesson_manager.controller';
 
 const router = Router();
 
@@ -102,6 +102,78 @@ router.get("/titles", verifyAccessToken, getAllTopicTitlesController);
  */
 router.get("/", verifyAccessToken, getAllLessonManagerController);
 
+/**
+ * @openapi
+ * /ctv/lesson-manager/{id}:
+ *   get:
+ *     tags:
+ *       - CTV Lesson Manager
+ *     summary: Get a lesson manager by ID
+ *     description: Retrieve detailed information about a specific lesson manager created by the authenticated CTV user.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The ID of the lesson manager to retrieve
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved the lesson manager.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/LessonManager'
+ *                 message:
+ *                   type: string
+ *                   example: "Fetched lesson manager successfully."
+ *       400:
+ *         description: Invalid ID format.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Invalid lesson manager ID format."
+ *       404:
+ *         description: Lesson manager not found.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Lesson manager not found."
+ *       500:
+ *         description: Internal server error.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Internal server error."
+ */
+router.get("/:id", verifyAccessToken, getLessonManagerByIdController);
 
 /**
  * @openapi

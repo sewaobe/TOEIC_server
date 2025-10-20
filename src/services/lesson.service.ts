@@ -3,6 +3,7 @@ import { Lesson,ILesson } from "../models/lesson.model";
 import { LessonSection } from "../models/lesson_section.model";
 import { PartType } from "../models/enums/PartType";
 import { TestStatus } from "../models/enums/TestStatus";
+import { appEvents } from "../core/appEvents";
 
 // 🟢 CREATE LESSON RỖNG
 export const createLesson = async (
@@ -23,6 +24,7 @@ export const createLesson = async (
     // 🔹 Các trường cơ bản
     title: data.title || "Bài học mới",
     summary: data.summary || "",
+    topic: data.topic || [],
     part_type: data.part_type || PartType.PART_1,
     status: data.status || TestStatus.DRAFT,
     planned_completion_time: data.planned_completion_time || 0,
@@ -34,6 +36,12 @@ export const createLesson = async (
     created_at: new Date(),
     updated_at: new Date(),
   });
+
+  if(!newLesson) {
+    throw new Error("Tạo bài học thất bại");
+  }
+
+  await appEvents.emitAsync("lesson.created", newLesson);
 
   return newLesson;
 };
@@ -84,7 +92,7 @@ export const getLessons = async ({
       .sort({ created_at: -1 })
       .skip(skip)
       .limit(limit)
-      .select("title summary status part_type created_at updated_at"),
+      .select("title summary topic status part_type created_at updated_at"),
     Lesson.countDocuments(filter),
   ]);
 
@@ -121,6 +129,7 @@ export const updateLessonBasic = async (
   const allowedFields: (keyof ILesson)[] = [
     "title",
     "summary",
+    "topic",
     "status",
     "part_type",
     "planned_completion_time",
@@ -135,6 +144,8 @@ export const updateLessonBasic = async (
 
   lesson.updated_at = new Date();
   await lesson.save();
+
+  await appEvents.emitAsync("lesson.updated", lesson);
 
   return lesson;
 };

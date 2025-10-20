@@ -1,4 +1,7 @@
+import { Types } from "mongoose";
+import { LessonManager } from "../models/lesson_manager.model";
 import { IShadowing, Shadowing } from "../models/shadowing.model";
+import { appEvents } from "../core/appEvents";
 
 export const getAllShadowingService = async (page: number, limit: number) => {
     const skip = (page - 1) * limit;
@@ -19,8 +22,17 @@ export const getAllShadowingService = async (page: number, limit: number) => {
 }
 
 export const createShadowingService = async (payload: IShadowing) => {
-    const data = new Shadowing(payload);
-    const shadowing = await data.save();
+    // Tạo mới shadowing
+    const shadowing = (await new Shadowing(payload).save()) as IShadowing & {
+        _id: Types.ObjectId;
+    };
+
+    if (!shadowing) {
+        throw new Error("Failed to create shadowing");
+    }
+
+    await appEvents.emitAsync("shadowing.created", shadowing);
+    
     return shadowing;
 }
 
@@ -29,6 +41,12 @@ export const updateShadowingService = async (payload: Partial<IShadowing>, shado
         new: true, // trả về document mới sau khi update
         runValidators: true, // đảm bảo validation schema được áp dụng
     });
+
+    if (!updated) {
+        throw new Error("Shadowing not found or update failed");
+    }
+
+    await appEvents.emitAsync("shadowing.updated", updated);
 
     return updated;
 }

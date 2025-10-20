@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { ApiResponse } from "../utils/ApiResponse";
-import { createLessonManagerService, deleteLessonManagerService, getAllLessonManagerService, getAllTopicTitlesService, updateLessonManagerService } from "../services/lesson_manager.service";
+import { createLessonManagerService, deleteLessonManagerService, getAllLessonManagerService, getAllTopicTitlesService, getLessonManagerByIdService, updateLessonManagerService } from "../services/lesson_manager.service";
 
 export const getAllTopicTitlesController = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -24,6 +24,20 @@ export const getAllLessonManagerController = async (req: Request, res: Response,
 
         res.status(200).json(
             ApiResponse.success(result.data, "Fetched lesson managers successfully", result.pagination)
+        );
+    }
+    catch (err) {
+        next(err);
+    }
+}
+
+export const getLessonManagerByIdController = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const lessonManagerId = req.params.id;
+        const userId = req.user._id;
+        const lessonManager = await getLessonManagerByIdService(lessonManagerId, userId);
+        res.status(200).json(
+            ApiResponse.success(lessonManager, "Fetched lesson manager successfully")
         );
     }
     catch (err) {
