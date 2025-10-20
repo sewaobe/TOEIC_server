@@ -6,7 +6,7 @@ export interface ILesson extends Document {
   part_type: PartType;
   topic: Types.ObjectId[];
   title: string;
-  status: TestStatus;                // Trạng thái để chờ duyệt từ Admin
+  status: TestStatus; // Trạng thái để chờ duyệt từ Admin
   summary: string;
   planned_completion_time: number;
   weight: number;
@@ -17,10 +17,19 @@ export interface ILesson extends Document {
 }
 
 const LessonSchema = new Schema<ILesson>({
-  part_type: { type: Number, enum: Object.values(PartType), required: true },
+  part_type: {
+    type: Number,
+    enum: Object.values(PartType).filter((v) => typeof v === "number"),
+    required: true,
+  },
+
   topic: [{ type: Schema.Types.ObjectId, ref: "LessonManager" }],
   title: { type: String, required: true },
-  status: { type: String, enum: Object.values(TestStatus), default: TestStatus.DRAFT },
+  status: {
+    type: String,
+    enum: Object.values(TestStatus),
+    default: TestStatus.DRAFT,
+  },
   summary: { type: String, default: "" },
   planned_completion_time: { type: Number, default: 0 },
   weight: { type: Number, default: 0.1 },

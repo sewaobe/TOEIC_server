@@ -1,6 +1,5 @@
 import {
   User,
-  UserStat,
   UserActivity,
   UserTest,
   GroupUser,
@@ -96,7 +95,7 @@ export const getStudentsService = async (
 
   // 5️⃣ Tổng số kết quả
   const totalCountPipeline = [...pipeline, { $count: "total" }];
-  const totalResult = await UserStat.aggregate(totalCountPipeline);
+  const totalResult = await UserProgress.aggregate(totalCountPipeline);
   const total = totalResult[0]?.total || 0;
 
   // 6️⃣ Phân trang
@@ -104,7 +103,7 @@ export const getStudentsService = async (
   pipeline.push({ $limit: limit });
 
   // 7️⃣ Thực thi
-  const stats = await UserStat.aggregate(pipeline);
+  const stats = await UserProgress.aggregate(pipeline);
 
   // 8️⃣ Format kết quả
   const items = stats.map((s: any) => {
@@ -156,7 +155,7 @@ export const getStudentsService = async (
  */
 export const getStudentDetailService = async (id: string) => {
   const user = await User.findById(id).lean();
-  const stat = await UserStat.findOne({ user_id: id })
+  const stat = await UserProgress.findOne({ user_id: id })
     .populate("learningPath_id")
     .populate("mentor_id")
     .lean();

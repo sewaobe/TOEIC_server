@@ -4,6 +4,7 @@ export * from "./comment.model";
 export * from "./day_study.model";
 export * from "./learning_path.model";
 export * from "./lesson.model";
+export * from "./lesson_section.model";
 export * from "./media.model";
 export * from "./message.model";
 export * from "./question.model";
@@ -24,9 +25,8 @@ export * from "./quiz_attempt.model";
 export * from "./quiz_plan.model";
 export * from "./shadowing_attempt.model";
 export * from "./shadowing_plan.model";
-export * from "./group.model"
+export * from "./group.model";
 export * from "./media_folder.model";
 
 export * from "./user_activity.model";
-export * from "./user_stat.model";
 export * from "./group_user.model";
