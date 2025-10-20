@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from "express"
 import { ApiResponse } from "../utils/ApiResponse";
-import { createDictationService, deleteDictationService, getAllDictationService, updateDictationService } from "../services/dictation.service";
+import { createDictationService, deleteDictationService, getAllDictationService, getDictationByIdService, updateDictationService } from "../services/dictation.service";
 import { IDictation } from "../models/dictation.model";
 
 
@@ -15,6 +15,22 @@ export const getAllDictationController = async (req: Request, res: Response, nex
             ApiResponse.success(result, "Lấy danh sách nghe chép chỉnh tả thành công!")
         )
     } catch (err) {
+        next(err)
+    }
+}
+
+export const getDictationByIdController = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        
+        const dictationId = req.params.id;
+
+        const result = await getDictationByIdService(dictationId);
+
+        res.status(200).json(
+            ApiResponse.success(result, "Lấy nghe chép chính tả theo ID thành công")
+        )
+    }
+    catch (err) {
         next(err)
     }
 }

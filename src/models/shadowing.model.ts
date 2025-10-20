@@ -60,7 +60,9 @@ const ShadowingSchema = new Schema<IShadowing>(
       default: 0
     }
   },
-  { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
+  {
+    timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
+  }
 );
 
 export const Shadowing = model<IShadowing>("Shadowing", ShadowingSchema);

@@ -20,6 +20,14 @@ export const getAllDictationService = async (page: number, limit: number) => {
     }
 }
 
+export const getDictationByIdService = async (dictationId: string) => {
+    const objectId = new Types.ObjectId(dictationId);
+
+    const dictation = await Dictation.findById(objectId)
+        .sort({ created_at: -1 });
+    return dictation;
+}
+
 export const createDictationService = async (payload: IDictation) => {
     // Tạo mới dictation
     const dictation = (await new Dictation(payload).save()) as IDictation & {

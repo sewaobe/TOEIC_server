@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from "express"
 import { ApiResponse } from "../utils/ApiResponse";
 import { IShadowing } from "../models/shadowing.model";
-import { createShadowingService, deleteShadowingService, getAllShadowingService, updateShadowingService } from "../services/shadowing.service";
+import { createShadowingService, deleteShadowingService, getAllShadowingService, getShadowingByIdService, updateShadowingService } from "../services/shadowing.service";
 
 
 export const getAllShadowingController = async (req: Request, res: Response, next: NextFunction) => {
@@ -13,6 +13,18 @@ export const getAllShadowingController = async (req: Request, res: Response, nex
 
         res.status(200).json(
             ApiResponse.success(result, "Lấy danh sách shadowing thành công!")
+        )
+    } catch (err) {
+        next(err)
+    }
+}
+
+export const getShadowingByIdController = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const shadowingId = req.params.id;
+        const result = await getShadowingByIdService(shadowingId);
+        res.status(200).json(
+            ApiResponse.success(result, "Lấy shadowing theo ID thành công")
         )
     } catch (err) {
         next(err)

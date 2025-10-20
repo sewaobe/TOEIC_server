@@ -1,5 +1,4 @@
 import { Types } from "mongoose";
-import { LessonManager } from "../models/lesson_manager.model";
 import { IShadowing, Shadowing } from "../models/shadowing.model";
 import { appEvents } from "../core/appEvents";
 
@@ -19,6 +18,12 @@ export const getAllShadowingService = async (page: number, limit: number) => {
         page,
         pageCount: Math.ceil(total / limit)
     }
+}
+
+export const getShadowingByIdService = async (shadowingId: string) => {
+    const objectId = new Types.ObjectId(shadowingId);
+    const shadowing = await Shadowing.findById(objectId)
+    return shadowing;
 }
 
 export const createShadowingService = async (payload: IShadowing) => {

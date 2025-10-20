@@ -21,6 +21,8 @@ export interface ITopicVocabulary extends Document {
   created_at: Date;
   created_by: Types.ObjectId;
   updated_at: Date;
+
+  totalWords?: number;
 }
 
 const TopicVocabularySchema = new Schema<ITopicVocabulary>({
@@ -36,6 +38,7 @@ const TopicVocabularySchema = new Schema<ITopicVocabulary>({
   created_at: { type: Date, default: Date.now },
   created_by: { type: Schema.Types.ObjectId, ref: "User" },
   updated_at: Date,
-});
+},
+);
 
 export const TopicVocabulary = mongoose.model<ITopicVocabulary>('TopicVocabulary', TopicVocabularySchema);

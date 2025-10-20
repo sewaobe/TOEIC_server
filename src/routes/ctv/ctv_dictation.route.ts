@@ -3,7 +3,8 @@ import {
     getAllDictationController,
     createDictationController,
     updateDictationController,
-    deleteDictationController
+    deleteDictationController,
+    getDictationByIdController
 } from '../../controllers/dictation.controller';
 
 const router = Router();
@@ -52,6 +53,67 @@ const router = Router();
  *                   example: 13
  */
 router.get("/", getAllDictationController);
+
+/**
+ * @openapi
+ * /ctv/dictation/{id}:
+ *   get:
+ *     summary: Lấy thông tin chi tiết của một bài nghe chép chính tả
+ *     description: API trả về thông tin chi tiết của một Dictation dựa trên ID được cung cấp trong URL.
+ *     tags:
+ *       - Dictation
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: 671ab10df8f8d0a23b6a7b14
+ *         description: ID của bài nghe chép chính tả cần lấy thông tin
+ *     responses:
+ *       200:
+ *         description: Lấy thông tin Dictation thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/Dictation'
+ *                 message:
+ *                   type: string
+ *                   example: "Lấy thông tin nghe chép chính tả thành công"
+ *       404:
+ *         description: Không tìm thấy Dictation với ID tương ứng
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Không tìm thấy bài nghe chép chính tả"
+ *       400:
+ *         description: ID không hợp lệ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "ID không hợp lệ"
+ */
+router.get("/:id", getDictationByIdController);
 
 /**
  * @openapi

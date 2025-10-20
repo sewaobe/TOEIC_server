@@ -17,7 +17,6 @@ interface ISegment {
 }
 
 export interface IDictation extends Document {
-  _id: Types.ObjectId;
   topic: Types.ObjectId[];
   title: string;
   part_type?: PartType;

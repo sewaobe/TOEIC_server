@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createShadowingController, deleteShadowingController, getAllShadowingController, updateShadowingController } from '../../controllers/shadowing.controller';
+import { createShadowingController, deleteShadowingController, getAllShadowingController, getShadowingByIdController, updateShadowingController } from '../../controllers/shadowing.controller';
 
 
 const router = Router();
@@ -11,7 +11,7 @@ const router = Router();
  *     summary: Lấy danh sách bài nghe (shadowing) có phân trang
  *     description: API trả về danh sách shadowing, hỗ trợ phân trang bằng query `page` và `limit`
  *     tags:
- *       - shadowing
+ *       - Shadowing
  *     parameters:
  *       - in: query
  *         name: page
@@ -51,6 +51,67 @@ router.get("/", getAllShadowingController);
 
 /**
  * @openapi
+ * /ctv/shadowing/{id}:
+ *   get:
+ *     summary: Lấy chi tiết bài luyện nói (Shadowing) theo ID
+ *     description: API trả về thông tin chi tiết của một bài Shadowing dựa trên ID được cung cấp trong URL.
+ *     tags:
+ *       - Shadowing
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: 671ac1bdf8f8d0a23b6a7b44
+ *         description: ID của bài Shadowing cần lấy thông tin
+ *     responses:
+ *       200:
+ *         description: Lấy thông tin Shadowing thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/Shadowing'
+ *                 message:
+ *                   type: string
+ *                   example: "Lấy thông tin bài Shadowing thành công"
+ *       400:
+ *         description: ID không hợp lệ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "ID không hợp lệ"
+ *       404:
+ *         description: Không tìm thấy bài Shadowing tương ứng
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Không tìm thấy bài luyện nói"
+ */
+router.get("/:id", getShadowingByIdController);
+
+/**
+ * @openapi
  * /ctv/shadowing:
  *   post:
  *     summary: Tạo mới bài nghe chép chính tả (shadowing)
@@ -59,7 +120,7 @@ router.get("/", getAllShadowingController);
  *       Các trường `part_type` và `level` hỗ trợ lựa chọn qua dropdown.  
  *       Dưới đây là ví dụ dữ liệu mẫu.
  *     tags:
- *       - shadowing
+ *       - Shadowing
  *     requestBody:
  *       required: true
  *       content:
@@ -215,7 +276,7 @@ router.post("/", createShadowingController);
  *     summary: Cập nhật bài nghe chép chính tả
  *     description: Sửa thông tin một bài nghe theo ID. Các trường không gửi sẽ giữ nguyên.
  *     tags:
- *       - shadowing
+ *       - Shadowing
  *     parameters:
  *       - in: path
  *         name: id
@@ -339,7 +400,7 @@ router.put("/:id", updateShadowingController);
  *     summary: Xóa bài nghe chép chính tả theo ID
  *     description: Xóa bài nghe khỏi hệ thống dựa trên ID. Chỉ admin hoặc cộng tác viên có quyền mới được thao tác.
  *     tags:
- *       - shadowing
+ *       - Shadowing
  *     parameters:
  *       - in: path
  *         name: id

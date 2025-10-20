@@ -17,7 +17,7 @@ export interface IQuiz extends Document {
   updated_at?: Date;
 }
 
-const QuizPlanSchema = new Schema<IQuiz>(
+const QuizSchema = new Schema<IQuiz>(
   {
     topic: [{ type: Schema.Types.ObjectId, ref: "LessonManager" }],
     title: { type: String, required: true },
@@ -39,4 +39,4 @@ const QuizPlanSchema = new Schema<IQuiz>(
   { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
 );
 
-export const QuizPlan = model<IQuiz>("Quiz", QuizPlanSchema);
+export const Quiz = model<IQuiz>("Quiz", QuizSchema);

@@ -30,3 +30,6 @@ export * from "./media_folder.model";
 
 export * from "./user_activity.model";
 export * from "./group_user.model";
+export * from './quiz.model';
+export * from './lesson_manager.model';
+

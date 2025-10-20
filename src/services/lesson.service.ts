@@ -185,8 +185,8 @@ export const updateLessonWithSections = async (
         content: s.content,
         example: s.example,
         error: s.error,
-        medias_id: s.mediaId ? [new mongoose.Types.ObjectId(s.mediaId)] : [],
-        tableData: s.tableData ?? [],
+        medias_id: s.mediaId,
+        tableData: s.tableData,
       }))
     );
     newSectionIds = newSections.map((s) => s._id as mongoose.Types.ObjectId);

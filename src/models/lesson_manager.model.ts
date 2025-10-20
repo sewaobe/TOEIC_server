@@ -32,7 +32,7 @@ const LessonManagerSchema = new Schema<ILessonManager>(
         level: { type: String, required: true },
         part_type: { type: Number, enum: Object.values(PartType).filter(v => typeof v === "number"), required: true },
         status: { type: String, enum: Object.values(TestStatus), default: TestStatus.DRAFT },
-        topic_vocabulary_ids: [{ type: Schema.Types.ObjectId, ref: "Topic" }],
+        topic_vocabulary_ids: [{ type: Schema.Types.ObjectId, ref: "TopicVocabulary" }],
         lesson_ids: [{ type: Schema.Types.ObjectId, ref: "Lesson" }],
         dictation_ids: [{ type: Schema.Types.ObjectId, ref: "Dictation" }],
         shadowing_ids: [{ type: Schema.Types.ObjectId, ref: "Shadowing" }],
