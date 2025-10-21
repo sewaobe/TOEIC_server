@@ -4,6 +4,7 @@ import { createGroupWithNewRelations, updateGroupWithRelations, deleteGroupWithR
 import { PartType } from "../models/enums/PartType";
 import { TestStatus } from "../models/enums/TestStatus";
 import { CERFLevel } from "../models/topic_vocabulary.model";
+import { appEvents } from "../core/appEvents";
 
 /**
  * 🟢 Tạo quiz mới (kèm group)
@@ -12,8 +13,8 @@ export const createQuizService = async (data: any) => {
   // ✅ Chuẩn hóa topic → ObjectId[]
   const topicIds: Types.ObjectId[] = Array.isArray(data.topic)
     ? data.topic
-        .filter((id: string) => Types.ObjectId.isValid(id))
-        .map((id: string) => new Types.ObjectId(id))
+      .filter((id: string) => Types.ObjectId.isValid(id))
+      .map((id: string) => new Types.ObjectId(id))
     : [];
 
   // ✅ Chuẩn hóa part_type (nếu FE gửi dạng "PART_5" hoặc string)
@@ -64,6 +65,8 @@ export const createQuizService = async (data: any) => {
     .populate("topic", "title")
     .lean();
 
+
+  await appEvents.emitAsync("quiz.created", newQuiz);
   return populatedQuiz;
 };
 
@@ -113,6 +116,8 @@ export const updateQuizService = async (id: string, data: any) => {
   // 4️⃣ Gán lại danh sách group mới
   quiz.group_ids = newGroupIds;
   await quiz.save();
+
+  await appEvents.emitAsync("quiz.updated", quiz);
 
   // 5️⃣ Trả về bản cập nhật
   return await Quiz.findById(quiz._id)
