@@ -1,9 +1,10 @@
 import mongoose from "mongoose";
-import { Lesson,ILesson } from "../models/lesson.model";
+import { Lesson, ILesson } from "../models/lesson.model";
 import { LessonSection } from "../models/lesson_section.model";
 import { PartType } from "../models/enums/PartType";
 import { TestStatus } from "../models/enums/TestStatus";
 import { appEvents } from "../core/appEvents";
+import { createMedia, getMediaById } from "./media.service";
 
 // 🟢 CREATE LESSON RỖNG
 export const createLesson = async (
@@ -11,7 +12,10 @@ export const createLesson = async (
   userId: mongoose.Types.ObjectId
 ) => {
   // ✅ Convert "PART_X" → number nếu FE hoặc dữ liệu cũ gửi sai
-  if (typeof data.part_type === "string" && data.part_type.startsWith("PART_")) {
+  if (
+    typeof data.part_type === "string" &&
+    data.part_type.startsWith("PART_")
+  ) {
     data.part_type = Number(data.part_type.replace("PART_", ""));
   }
 
@@ -37,7 +41,7 @@ export const createLesson = async (
     updated_at: new Date(),
   });
 
-  if(!newLesson) {
+  if (!newLesson) {
     throw new Error("Tạo bài học thất bại");
   }
 
@@ -77,7 +81,11 @@ export const getLessons = async ({
   }
 
   // 🧠 Lọc theo part_type (ví dụ: Part 1 → 7)
-  if (part_type !== undefined && part_type !== null && !isNaN(Number(part_type))) {
+  if (
+    part_type !== undefined &&
+    part_type !== null &&
+    !isNaN(Number(part_type))
+  ) {
     filter.part_type = Number(part_type);
   }
 
@@ -151,52 +159,82 @@ export const updateLessonBasic = async (
 };
 
 // 🔵 UPDATE BÀI HỌC (THÊM / SỬA SECTIONS)
-export const updateLessonWithSections = async (
-  lessonId: string,
-  data: any
-) => {
-  const { title, summary, status, part_type, planned_completion_time, weight, sections } = data;
+export const updateLessonWithSections = async (lessonId: string, data: any) => {
+  const {
+    title,
+    summary,
+    status,
+    part_type,
+    planned_completion_time,
+    weight,
+    sections,
+  } = data;
 
-  // 🔍 Kiểm tra bài học tồn tại
   const lesson = await Lesson.findById(lessonId);
   if (!lesson) throw new Error("Không tìm thấy bài học!");
 
-  // 🟢 Cập nhật thông tin cơ bản
   lesson.title = title ?? lesson.title;
   lesson.summary = summary ?? lesson.summary;
   lesson.status = status ?? lesson.status;
-  lesson.part_type = part_type ?? lesson.part_type;
-  lesson.planned_completion_time = planned_completion_time ?? lesson.planned_completion_time;
+  lesson.planned_completion_time =
+    planned_completion_time ?? lesson.planned_completion_time;
   lesson.weight = weight ?? lesson.weight;
   lesson.updated_at = new Date();
 
-  // 🗑️ Xóa section cũ (nếu có)
-  await LessonSection.deleteMany({ lesson_id: lesson._id });
-
-  // 🆕 Tạo section mới (nếu FE gửi)
-  let newSectionIds: mongoose.Types.ObjectId[] = [];
-  if (Array.isArray(sections) && sections.length > 0) {
-    const newSections = await LessonSection.insertMany(
-      sections.map((s: any, index: number) => ({
-        lesson_id: lesson._id,
-        order: s.order ?? index,
-        title: s.title,
-        type: s.type,
-        content: s.content,
-        example: s.example,
-        error: s.error,
-        medias_id: s.mediaId,
-        tableData: s.tableData,
-      }))
-    );
-    newSectionIds = newSections.map((s) => s._id as mongoose.Types.ObjectId);
+  // Chuẩn hóa part_type
+  if (typeof part_type === "string" && part_type.startsWith("PART_")) {
+    lesson.part_type = Number(part_type.replace("PART_", ""));
+  } else if (typeof part_type === "string" && !isNaN(Number(part_type))) {
+    lesson.part_type = Number(part_type);
+  } else {
+    lesson.part_type = part_type ?? lesson.part_type;
   }
 
-  // 🔗 Gán lại danh sách section
-  lesson.sections_id = newSectionIds;
+  if (Array.isArray(sections)) {
+    await LessonSection.deleteMany({ lesson_id: lesson._id });
+    const newSections: any[] = [];
+
+    for (let i = 0; i < sections.length; i++) {
+      const s = sections[i];
+      let mediaIds: mongoose.Types.ObjectId[] = [];
+
+      if (s.mediaUrl && !s.mediaId) {
+        const newMedia = await createMedia({
+          topic: s.title || "Media mới", // ✅ dùng topic thay title
+          url: s.mediaUrl,
+          type: "VIDEO",
+          transcript: "",
+        });
+
+        mediaIds = [newMedia._id as mongoose.Types.ObjectId]; // ✅ fix type
+      } else if (s.mediaId) {
+        const existing = await getMediaById(s.mediaId);
+        if (existing) {
+          mediaIds = [existing._id as mongoose.Types.ObjectId]; // ✅ fix type
+        } else {
+          console.warn(`⚠️ mediaId ${s.mediaId} không tồn tại, bỏ qua`);
+        }
+      }
+
+      newSections.push({
+        lesson_id: lesson._id,
+        order: s.order ?? i,
+        title: s.title ?? `Section ${i + 1}`,
+        type: s.type ?? "text",
+        content: s.content ?? "",
+        example: s.example ?? undefined,
+        error: s.error ?? undefined,
+        tableData: s.tableData ?? [],
+        medias_id: mediaIds,
+      });
+    }
+
+    const insertedSections = await LessonSection.insertMany(newSections);
+    lesson.sections_id = insertedSections.map((sec) => sec._id);
+  }
+
   await lesson.save();
 
-  // 🧩 Populate để trả về FE đầy đủ
   const updatedLesson = await Lesson.findById(lesson._id)
     .populate({
       path: "sections_id",
@@ -206,7 +244,6 @@ export const updateLessonWithSections = async (
 
   return updatedLesson;
 };
-
 
 // 🔴 DELETE BÀI HỌC
 export const deleteLesson = async (lessonId: string) => {
@@ -222,4 +259,3 @@ export const deleteLesson = async (lessonId: string) => {
     throw error;
   }
 };
-
