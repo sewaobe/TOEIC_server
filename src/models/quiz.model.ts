@@ -3,7 +3,7 @@ import { PartType } from "./enums/PartType";
 import { CERFLevel } from "./topic_vocabulary.model";
 import { TestStatus } from "./enums/TestStatus";
 
-// Dùng cho Reading
+// 🧩 Interface định nghĩa
 export interface IQuiz extends Document {
   topic: Types.ObjectId[];
   title: string;
@@ -17,6 +17,7 @@ export interface IQuiz extends Document {
   updated_at?: Date;
 }
 
+// 🧠 Schema Mongoose
 const QuizSchema = new Schema<IQuiz>(
   {
     topic: [{ type: Schema.Types.ObjectId, ref: "LessonManager" }],
@@ -26,8 +27,17 @@ const QuizSchema = new Schema<IQuiz>(
     ],
     part_type: {
       type: Number,
-      enum: Object.values(PartType).filter(v => typeof v === "number"),
+      enum: Object.values(PartType).filter((v) => typeof v === "number"),
     },
+
+    // ✅ Thêm trường level bị thiếu
+    level: {
+      type: String,
+      enum: Object.values(CERFLevel),
+      required: true,
+      default: CERFLevel.A2,
+    },
+
     status: {
       type: String,
       enum: Object.values(TestStatus),
@@ -36,7 +46,10 @@ const QuizSchema = new Schema<IQuiz>(
     planned_completion_time: { type: Number, default: 0 },
     weight: { type: Number, default: 0.1 },
   },
-  { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
+  {
+    timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
+  }
 );
 
+// 🟢 Xuất model
 export const Quiz = model<IQuiz>("Quiz", QuizSchema);
