@@ -1,6 +1,7 @@
 import { Types } from "mongoose";
 import { FlashCardPlan, ITopicVocabulary, TopicVocabulary } from "../models";
 import { appEvents } from "../core/appEvents";
+import { Role } from "../models/enums/Role";
 
 const mapTopic = async (topic_vocabulary: any) => {
     if (!topic_vocabulary) return null;
@@ -35,32 +36,49 @@ export const getTopicByIdService = async (id: string): Promise<ITopicVocabulary[
     const topicVocabularies: ITopicVocabulary[] | null = await TopicVocabulary.findById(idObject);
     return topicVocabularies;
 }
-export const getAllTopicsService = async (page = 1, limit = 6) => {
+
+/**
+ * 
+ * @param page 
+ * @param limit 
+ * @param userId
+ * @param roleName
+ * @returns 
+ */
+export const getAllTopicsService = async (page = 1, limit = 6, userId: string, roleName: Role) => {
     const skip = (page - 1) * limit;
 
     // tổng số bản ghi
-    const total = await TopicVocabulary.countDocuments();
+    const total = await TopicVocabulary.countDocuments({ created_by: userId });
 
     // query dữ liệu phân trang
-    const topicVocabularies = await TopicVocabulary.find()
+    const topicVocabularies = await TopicVocabulary.find({ created_by: userId })
         .populate("vocabularies_id")
         .skip(skip)
         .limit(limit)
         .sort({ created_at: -1 }); // sort mới nhất
 
-    const mapped = await Promise.all(
-        topicVocabularies.map(async (topicVocabulary) => mapTopic(topicVocabulary))
-    );
+    if (roleName === "collaborator") {
+        const mapped = await Promise.all(
+            topicVocabularies.map(async (topicVocabulary) => mapTopic(topicVocabulary))
+        );
+        return {
+            items: mapped,
+            total,
+            page,
+            pageCount: Math.ceil(total / limit),
+        };
+    }
 
     return {
-        items: mapped,
+        items: topicVocabularies,
         total,
         page,
         pageCount: Math.ceil(total / limit),
     };
 };
 
-export const createTopicService = async (data: any, userId: string) => {
+export const createTopicService = async (data: any, userId: string, roleName: Role) => {
     const newTopic = new TopicVocabulary({
         title: data.title,
         description: data.description,
@@ -71,18 +89,28 @@ export const createTopicService = async (data: any, userId: string) => {
         gradient: data.gradient,
         level: data.level,
         vocabularies_id: [],
+        isCollaborator: roleName === "collaborator",
         created_by: userId,
         created_at: new Date(),
     });
 
     const saved = await newTopic.save();
 
-    await appEvents.emitAsync("topic.created", saved);
+    if (roleName === "collaborator") {
+        await appEvents.emitAsync("topic.created", saved);
+        const mapped = await mapTopic(saved);
+        return mapped;
+    }
 
-    return await mapTopic(saved);
+    return saved;
 }
 
-export const updateTopicService = async (id: string, data: any, userId: string) => {
+export const updateTopicService = async (id: string, data: any, userId: string, roleName: Role) => {
+    const topicVocabulary = await TopicVocabulary.findOne({ _id: id, created_by: userId });
+    if (!topicVocabulary) {
+        throw new Error("Chủ đề không tồn tại hoặc bạn không có quyền chỉnh sửa");
+    }
+
     const updated = await TopicVocabulary.findByIdAndUpdate(
         id,
         {
@@ -101,18 +129,32 @@ export const updateTopicService = async (id: string, data: any, userId: string) 
         { new: true }
     );
 
-    await appEvents.emitAsync("topic.updated", updated);
+    if (!updated) {
+        throw new Error("Không thể cập nhật chủ đề, vui lòng thử lại");
+    }
 
-    return await mapTopic(updated);
+    if (roleName === "collaborator") {
+        await appEvents.emitAsync("topic.updated", updated);
+        const mapped = await mapTopic(updated);
+        return mapped;
+    }
+
+    return updated;
 }
 
 
-export const deleteTopicService = async (id: string) => {
+export const deleteTopicService = async (id: string, userId: string) => {
     // Kiểm tra xem có learner nào đang học topic này không
     const learnerCount = await FlashCardPlan.countDocuments({ topic_vocabulary_id: id });
 
     if (learnerCount > 0) {
         throw new Error("Không thể xóa chủ đề đã có học viên tham gia");
+    }
+
+    const topicVocabulary = await TopicVocabulary.findOne({ _id: id, created_by: userId });
+
+    if (!topicVocabulary) {
+        throw new Error("Chủ đề không tồn tại hoặc bạn không có quyền xóa");
     }
 
     const deleted = await TopicVocabulary.findByIdAndDelete(id);

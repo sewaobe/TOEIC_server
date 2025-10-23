@@ -5,7 +5,7 @@ import { Types } from 'mongoose';
 
 export interface UserPayload {
   _id: string;
-  role: string;
+  roleName: string;
   email: string;
   username: string;
   fullname: string;
@@ -20,10 +20,9 @@ const buildSafePayload = (payload: MaybeMongooseDoc<IUser>): UserPayload => {
   if (typeof payload.toObject === 'function') {
     payload = payload.toObject() as IUser;
   }
-
   return {
     _id: (payload._id as Types.ObjectId).toString(),
-    role: payload.role_id.toString(),
+    roleName: (payload.role_id as any).name.toString(),
     email: payload.email,
     username: payload.username,
     fullname: payload.profile.fullname,
