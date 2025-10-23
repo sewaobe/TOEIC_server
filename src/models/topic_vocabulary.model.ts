@@ -18,23 +18,25 @@ export interface ITopicVocabulary extends Document {
   bgColor: string;
   gradient: string;
   vocabularies_id: Types.ObjectId[];
+  isCollaborator: boolean;
+  isPublic: boolean;
   created_at: Date;
   created_by: Types.ObjectId;
   updated_at: Date;
-
-  totalWords?: number;
 }
 
 const TopicVocabularySchema = new Schema<ITopicVocabulary>({
   topic: [{ type: Schema.Types.ObjectId, ref: "LessonManager" }],
   title: String,
   description: String,
-  tags: [{ type: String, required: true }],
+  tags: [{ type: String}],
   iconName: { type: String },
   bgColor: { type: String, default: "ffffff" },
   gradient: { type: String },
   level: { type: String, enum: Object.values(CERFLevel), default: CERFLevel.A1 },
   vocabularies_id: [{ type: Schema.Types.ObjectId, ref: 'Vocabulary' }],
+  isCollaborator: { type: Boolean, default: false },
+  isPublic: { type: Boolean, default: false },
   created_at: { type: Date, default: Date.now },
   created_by: { type: Schema.Types.ObjectId, ref: "User" },
   updated_at: Date,

@@ -5,7 +5,7 @@ import jwt, { JwtPayload } from 'jsonwebtoken';
 // Tùy chỉnh JwtPayload
 export interface JwtUserPayload extends JwtPayload {
   _id: string;
-  role: string;
+  roleName: string;
   email: string;
   username: string;
   fullname: string;

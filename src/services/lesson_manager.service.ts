@@ -42,19 +42,30 @@ export const getLessonManagerByIdService = async (lessonManagerId: string, userI
         _id: lessonManagerId,
         created_by: userId
     })
-        .populate({ 
-            path: "topic_vocabulary_ids", 
-            select: "title level iconName vocabularies_id", 
-            populate: { path: "vocabularies_id", select: "word definition" } 
+        .populate({
+            path: "topic_vocabulary_ids",
+            select: "title level topic description bgColor gradient iconName vocabularies_id",
+            populate: { path: "vocabularies_id", select: "word definition" }
         })
-        .populate({ 
-            path: "lesson_ids", 
-            select: "title part_type summary planned_completion_time sections_id",
+        .populate({
+            path: "lesson_ids",
+            select: "title part_type topic summary planned_completion_time sections_id",
             populate: { path: "sections_id", select: "-created_at -updated_at -__v -lesson_id" }
         })
-        .populate({ path: "dictation_ids", select: "title part_type level duration transcript audio_url" })
-        .populate({ path: "shadowing_ids", select: "title part_type level duration transcript audio_url" })
-        .populate({ path: "quiz_ids", select: "title part_type level planned_completion_time" })
+        .populate({ path: "dictation_ids", select: "-created_at -updated_at -__v" })
+        .populate({ path: "shadowing_ids", select: "-created_at -updated_at -__v" })
+        .populate({
+            path: "quiz_ids",
+            select: "title part_type level planned_completion_time group_ids",
+            populate: {
+                path: "group_ids",
+                select: "part questions",
+                populate: {
+                    path: "questions",
+                    select: "name textQuestion choices correctAnswer"
+                }
+            }
+        })
 
     return lessonManager;
 }

@@ -18,6 +18,7 @@ export interface IVocabulary extends Document {
   audio: string;
   part_type: VocabularyType;
   tags: string[]; // Các tag gắn kèm (ví dụ: TOEIC, Travel, Business)
+  notes: string; // Ghi chú thêm
   created_at: Date; // Ngày tạo
   updated_at: Date; // Ngày cập nhật
 }
@@ -27,9 +28,9 @@ const VocabularySchema = new Schema<IVocabulary>(
     word: { type: String, required: true, trim: true },
     phonetic: { type: String, trim: true },
     type: { type: String, trim: true },
-    part_type: { type: String, default: VocabularyType.LC },
+    part_type: { type: String },
     weight: { type: Number, default: 0 },
-    definition: { type: String, required: true },
+    definition: { type: String },
     examples: [{
       en: { type: String },
       vi: { type: String }
@@ -37,6 +38,7 @@ const VocabularySchema = new Schema<IVocabulary>(
     image: { type: String, trim: true },
     audio: { type: String, trim: true },
     tags: [{ type: String, trim: true }],
+    notes: { type: String, trim: true },
     created_at: { type: Date, default: Date.now },
     updated_at: { type: Date, default: Date.now },
   },

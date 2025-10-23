@@ -15,7 +15,10 @@ export const createQuizService = async (data: any) => {
     : [];
 
   // 🧩 Chuẩn hóa part_type
-  if (typeof data.part_type === "string" && data.part_type.startsWith("PART_")) {
+  if (
+    typeof data.part_type === "string" &&
+    data.part_type.startsWith("PART_")
+  ) {
     data.part_type = Number(data.part_type.replace("PART_", ""));
   }
   if (typeof data.part_type === "string" && !isNaN(Number(data.part_type))) {
@@ -99,7 +102,8 @@ export const updateQuizService = async (id: string, data: any) => {
   quiz.part_type = data.part_type ?? quiz.part_type;
   quiz.level = data.level ?? quiz.level;
   quiz.status = data.status ?? quiz.status;
-  quiz.planned_completion_time = data.planned_completion_time ?? quiz.planned_completion_time;
+  quiz.planned_completion_time =
+    data.planned_completion_time ?? quiz.planned_completion_time;
   quiz.weight = data.weight ?? quiz.weight;
   quiz.updated_at = new Date();
   quiz.question_ids = createdQuestions;

@@ -36,20 +36,26 @@ export const getVocabulariesByTopicService = async (
   };
 };
 
-export const createVocabularyService = async (vocabData: Partial<IVocabulary>, topicId?: string) => {
-  const vocab = new Vocabulary(vocabData);
-  const saved = await vocab.save();
+export const createVocabularyService = async (
+  vocabData: Partial<IVocabulary> | Partial<IVocabulary[]>,
+  topicId?: string
+) => {
+  const isArray = Array.isArray(vocabData);
+  const dataArray = isArray ? vocabData : [vocabData];
+
+  const savedVocabs = await Vocabulary.insertMany(dataArray);
 
   // Nếu có topicId thì gắn vocab vào topic
   if (topicId && Types.ObjectId.isValid(topicId)) {
+    const vocabIds = savedVocabs.map((v) => v._id);
     await TopicVocabulary.findByIdAndUpdate(
       topicId,
-      { $push: { vocabularies_id: saved._id } },
+      { $push: { vocabularies_id: { $each: vocabIds } } },
       { new: true }
     );
   }
 
-  return saved;
+  return isArray ? savedVocabs : savedVocabs[0];
 };
 
 export const updateVocabularyService = async (id: string, vocabData: Partial<IVocabulary>) => {

@@ -24,7 +24,14 @@ export const getVocabulariesByTopic = async (
 
 export const createVocabulary = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { topicId } = req.body; // FE gửi kèm topicId (nếu có)
+    let topicId: string | undefined;
+    if (Array.isArray(req.body)) {
+      topicId = req.body[0]?.topicId;
+    } else {
+      topicId = req.body.topicId;
+    }
+
+    console.log(req.body);
     const vocab = await createVocabularyService(req.body, topicId);
     return res.status(201).json(ApiResponse.success(vocab, "Thêm từ vựng thành công"));
   } catch (err) {
