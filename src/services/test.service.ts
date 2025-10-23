@@ -11,7 +11,11 @@ import {
 } from "../models";
 import { Types } from "mongoose";
 import { TestStatus } from "../models/enums/TestStatus";
-import { createGroupWithNewRelations, updateGroupWithRelations, deleteGroupWithRelations } from "./group.service";
+import {
+  createGroupWithNewRelations,
+  updateGroupWithRelations,
+  deleteGroupWithRelations,
+} from "./group.service";
 
 export const getFullTest = async (testId: string): Promise<any | null> => {
   const test = await Test.findById(testId)
@@ -218,7 +222,6 @@ export const getTestsWithScoreAndSearch = async (
   return { tests, totalTests, totalPages };
 };
 
-
 export const getLatestTest = async (limit: number = 5): Promise<ITest[]> => {
   return await Test.find({ status: TestStatus.OPEN })
     .select("title type status topic countComment countSubmit create_at")
@@ -266,23 +269,20 @@ export const getAllTests = async (
   limit: number = 10,
   search?: string,
   status?: string,
-  topic?: string
+  topic?: string,
+  type?: string // ✅ thêm tham số filter loại test
 ): Promise<{ items: Partial<ITest>[]; total: number; pageCount: number }> => {
   const skip = (page - 1) * limit;
 
-  // 🔍 Xây dựng điều kiện lọc
+  // 🔍 Xây dựng điều kiện lọc động
   const query: any = {};
-  if (search) {
-    query.title = { $regex: search, $options: "i" }; // tìm kiếm không phân biệt hoa thường
-  }
-  if (status) {
-    query.status = status;
-  }
-  if (topic) {
-    query.topic = { $regex: topic, $options: "i" };
-  }
+  if (search) query.title = { $regex: search, $options: "i" }; // tìm kiếm không phân biệt hoa thường
+  if (status) query.status = status;
+  if (topic) query.topic = { $regex: topic, $options: "i" };
+  if (type) query.type = type;
+  else query.type = "full-test";
 
-  // 🧾 Query dữ liệu & tổng số
+  // 🧾 Lấy danh sách test + tổng số
   const [tests, total] = await Promise.all([
     Test.find(query)
       .select("title type status topic countComment countSubmit created_at")
@@ -293,7 +293,7 @@ export const getAllTests = async (
     Test.countDocuments(query),
   ]);
 
-  // ✅ Chuyển _id → id cho FE
+  // ✅ Chuẩn hóa dữ liệu trả về cho FE
   const items = tests.map((t) => ({
     id: t._id?.toString(),
     title: t.title,
@@ -467,6 +467,3 @@ export const updateTest = async (
   // 5 + 6. Gán lại groups, save và populate (refactor ra hàm riêng)
   return await finalizeTestWithGroups(test, newGroupIds);
 };
-
-
-

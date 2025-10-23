@@ -103,7 +103,13 @@ export const getTestsWithScoreAndSearch = async (
   try {
     const userId = req.user._id;
     if (!userId) {
-      return res.status(401).json(ApiResponse.fail("Bạn không có quyền thực hiện chức năng tìm kiếm đề thi!"));
+      return res
+        .status(401)
+        .json(
+          ApiResponse.fail(
+            "Bạn không có quyền thực hiện chức năng tìm kiếm đề thi!"
+          )
+        );
     }
     // const page = parseInt(req.query.page?.toString() || "1");
     // const limit = parseInt(req.query.limit?.toString() || "6");
@@ -127,10 +133,14 @@ export const getTestsWithScoreAndSearch = async (
     const { tests, totalTests, totalPages } =
       await testService.getTestsWithScoreAndSearch(userId, page, limit, search);
 
-    res.status(200).json(
-      ApiResponse.success({ page, limit, totalPages, totalTests, tests },
-        "Tìm kiếm đề thi thành công")
-    );
+    res
+      .status(200)
+      .json(
+        ApiResponse.success(
+          { page, limit, totalPages, totalTests, tests },
+          "Tìm kiếm đề thi thành công"
+        )
+      );
   } catch (err) {
     next(err);
   }
@@ -195,25 +205,33 @@ export const getAllTests = async (
 ): Promise<void> => {
   try {
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
+    const limit = req.query.limit
+      ? parseInt(req.query.limit as string, 10)
+      : 10;
     const search = req.query.search ? String(req.query.search) : "";
     const status = req.query.status ? String(req.query.status) : "";
     const topic = req.query.topic ? String(req.query.topic) : "";
+    const type = req.query.type ? String(req.query.type) : ""; // ✅ thêm dòng này
 
+    // Gọi service có filter type mới
     const { items, total, pageCount } = await testService.getAllTests(
       page,
       limit,
       search,
       status,
-      topic
+      topic,
+      type // ✅ truyền thêm type vào
     );
 
-    res.status(200).json(
-      ApiResponse.success<{ items: Partial<ITest>[]; total: number; pageCount: number }>(
-        { items, total, pageCount },
-        "Lấy danh sách đề thi thành công!"
-      )
-    );
+    res
+      .status(200)
+      .json(
+        ApiResponse.success<{
+          items: Partial<ITest>[];
+          total: number;
+          pageCount: number;
+        }>({ items, total, pageCount }, "Lấy danh sách đề thi thành công!")
+      );
   } catch (error) {
     next(error);
   }
@@ -228,7 +246,9 @@ export const createTestController = async (
     const payload: Partial<ITest> = req.body;
 
     if (!req.user._id) {
-      return res.status(401).json(ApiResponse.fail("Người dùng chưa đăng nhập!"));
+      return res
+        .status(401)
+        .json(ApiResponse.fail("Người dùng chưa đăng nhập!"));
     }
 
     payload.created_by = new Types.ObjectId(req.user._id);
@@ -250,7 +270,6 @@ export const createTestController = async (
     next(error);
   }
 };
-
 
 export const deleteTest = async (
   req: Request,

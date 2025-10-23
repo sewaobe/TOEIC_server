@@ -3,11 +3,10 @@ import { PartType } from "./enums/PartType";
 import { CERFLevel } from "./topic_vocabulary.model";
 import { TestStatus } from "./enums/TestStatus";
 
-// 🧩 Interface định nghĩa
 export interface IQuiz extends Document {
   topic: Types.ObjectId[];
   title: string;
-  group_ids: Types.ObjectId[];
+  question_ids: Types.ObjectId[];
   part_type?: PartType;
   level: CERFLevel;
   status: TestStatus;
@@ -17,27 +16,23 @@ export interface IQuiz extends Document {
   updated_at?: Date;
 }
 
-// 🧠 Schema Mongoose
 const QuizSchema = new Schema<IQuiz>(
   {
     topic: [{ type: Schema.Types.ObjectId, ref: "LessonManager" }],
     title: { type: String, required: true },
-    group_ids: [
-      { type: Schema.Types.ObjectId, ref: "Group", required: true },
+    question_ids: [
+      { type: Schema.Types.ObjectId, ref: "Question", required: true },
     ],
     part_type: {
       type: Number,
       enum: Object.values(PartType).filter((v) => typeof v === "number"),
     },
-
-    // ✅ Thêm trường level bị thiếu
     level: {
       type: String,
       enum: Object.values(CERFLevel),
       required: true,
       default: CERFLevel.A2,
     },
-
     status: {
       type: String,
       enum: Object.values(TestStatus),
@@ -51,5 +46,4 @@ const QuizSchema = new Schema<IQuiz>(
   }
 );
 
-// 🟢 Xuất model
 export const Quiz = model<IQuiz>("Quiz", QuizSchema);

@@ -1,22 +1,20 @@
 import { Types } from "mongoose";
 import { Quiz } from "../models/quiz.model";
-import { createGroupWithNewRelations, updateGroupWithRelations, deleteGroupWithRelations } from "./group.service";
+import { Question } from "../models/question.model";
 import { PartType } from "../models/enums/PartType";
 import { TestStatus } from "../models/enums/TestStatus";
 import { CERFLevel } from "../models/topic_vocabulary.model";
+import { appEvents } from "../core/appEvents"; // ✅ import event system
 
-/**
- * 🟢 Tạo quiz mới (kèm group)
- */
+/* 🟢 TẠO QUIZ MỚI */
 export const createQuizService = async (data: any) => {
-  // ✅ Chuẩn hóa topic → ObjectId[]
   const topicIds: Types.ObjectId[] = Array.isArray(data.topic)
     ? data.topic
         .filter((id: string) => Types.ObjectId.isValid(id))
         .map((id: string) => new Types.ObjectId(id))
     : [];
 
-  // ✅ Chuẩn hóa part_type (nếu FE gửi dạng "PART_5" hoặc string)
+  // 🧩 Chuẩn hóa part_type
   if (typeof data.part_type === "string" && data.part_type.startsWith("PART_")) {
     data.part_type = Number(data.part_type.replace("PART_", ""));
   }
@@ -24,8 +22,28 @@ export const createQuizService = async (data: any) => {
     data.part_type = Number(data.part_type);
   }
 
-  // 1️⃣ Tạo quiz cơ bản
-  const newQuiz = new Quiz({
+  // ✅ Tạo danh sách câu hỏi trong DB
+  const createdQuestions: Types.ObjectId[] = [];
+  if (Array.isArray(data.question_ids)) {
+    for (let i = 0; i < data.question_ids.length; i++) {
+      const q = data.question_ids[i];
+      const newQ = await Question.create({
+        name: q.name || `Question ${i + 1}`,
+        textQuestion: q.textQuestion || "",
+        choices: q.choices || {},
+        correctAnswer: q.correctAnswer || "",
+        explanation: q.explanation || "",
+        tags: q.tags || [],
+        planned_time: q.planned_time || 0,
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+      createdQuestions.push(newQ._id);
+    }
+  }
+
+  // ✅ Tạo quiz
+  const newQuiz = await Quiz.create({
     title: data.title?.trim() || "Quiz mới",
     topic: topicIds,
     part_type: data.part_type ?? PartType.PART_5,
@@ -33,48 +51,49 @@ export const createQuizService = async (data: any) => {
     status: data.status ?? TestStatus.DRAFT,
     planned_completion_time: data.planned_completion_time ?? 0,
     weight: data.weight ?? 0.1,
-    group_ids: [],
+    question_ids: createdQuestions,
   });
 
-  await newQuiz.save();
+  // 🔔 Phát event "quiz.created"
+  await appEvents.emitAsync("quiz.created", newQuiz);
 
-  // 2️⃣ Nếu có group thì tạo mới
-  const groupIds: Types.ObjectId[] = [];
-  if (Array.isArray(data.group_ids) && data.group_ids.length > 0) {
-    for (const g of data.group_ids) {
-      const group = await createGroupWithNewRelations({
-        ...(g as any),
-        topic: topicIds[0]?.toString() ?? "", // 🔹 Nếu cần gắn topic đầu tiên vào group
-        test_id: newQuiz._id, // ⚠️ Tạm dùng test_id nếu Group yêu cầu, sau này nên tách field quiz_id riêng
-      });
-      groupIds.push(group._id as Types.ObjectId);
-    }
-  }
-
-  // 3️⃣ Cập nhật quiz với danh sách group
-  newQuiz.group_ids = groupIds;
-  await newQuiz.save();
-
-  // 4️⃣ Populate dữ liệu đầy đủ để trả về FE
-  const populatedQuiz = await Quiz.findById(newQuiz._id)
-    .populate({
-      path: "group_ids",
-      populate: ["audioUrl", "imagesUrl", "questions"],
-    })
+  return await Quiz.findById(newQuiz._id)
+    .populate("question_ids")
     .populate("topic", "title")
     .lean();
-
-  return populatedQuiz;
 };
 
-/**
- * 🟡 Cập nhật quiz (và đồng bộ group)
- */
+/* 🟡 CẬP NHẬT QUIZ */
 export const updateQuizService = async (id: string, data: any) => {
   const quiz = await Quiz.findById(id);
   if (!quiz) return null;
 
-  // 1️⃣ Update các trường cơ bản
+  // 🔴 Xóa các câu hỏi cũ
+  if (quiz.question_ids?.length) {
+    await Question.deleteMany({ _id: { $in: quiz.question_ids } });
+  }
+
+  // ✅ Tạo lại các câu hỏi mới
+  const createdQuestions: Types.ObjectId[] = [];
+  if (Array.isArray(data.question_ids)) {
+    for (let i = 0; i < data.question_ids.length; i++) {
+      const q = data.question_ids[i];
+      const newQ = await Question.create({
+        name: q.name || `Question ${i + 1}`,
+        textQuestion: q.textQuestion || "",
+        choices: q.choices || {},
+        correctAnswer: q.correctAnswer || "",
+        explanation: q.explanation || "",
+        tags: q.tags || [],
+        planned_time: q.planned_time || 0,
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+      createdQuestions.push(newQ._id);
+    }
+  }
+
+  // ✅ Cập nhật thông tin quiz
   quiz.title = data.title ?? quiz.title;
   quiz.topic = data.topic ?? quiz.topic;
   quiz.part_type = data.part_type ?? quiz.part_type;
@@ -83,64 +102,39 @@ export const updateQuizService = async (id: string, data: any) => {
   quiz.planned_completion_time = data.planned_completion_time ?? quiz.planned_completion_time;
   quiz.weight = data.weight ?? quiz.weight;
   quiz.updated_at = new Date();
+  quiz.question_ids = createdQuestions;
+
   await quiz.save();
 
-  // 2️⃣ Đồng bộ group nếu có
-  const newGroupIds: Types.ObjectId[] = [];
-  for (const g of data.group_ids ?? []) {
-    if (g._id) {
-      const updatedGroup = await updateGroupWithRelations(g._id, g as any);
-      if (updatedGroup) newGroupIds.push(updatedGroup._id);
-    } else {
-      const newGroup = await createGroupWithNewRelations({
-        ...(g as any),
-        test_id: quiz._id,
-        topic: quiz.topic?.[0] ?? "",
-      });
-      newGroupIds.push(newGroup._id);
-    }
-  }
+  // 🔔 Phát event "quiz.updated"
+  await appEvents.emitAsync("quiz.updated", quiz);
 
-  // 3️⃣ Xóa group không còn trong danh sách mới
-  const existingIds = quiz.group_ids.map((id) => id.toString());
-  for (const oldId of existingIds) {
-    const stillExists = newGroupIds.find((id) => id.toString() === oldId);
-    if (!stillExists) {
-      await deleteGroupWithRelations(new Types.ObjectId(oldId));
-    }
-  }
-
-  // 4️⃣ Gán lại danh sách group mới
-  quiz.group_ids = newGroupIds;
-  await quiz.save();
-
-  // 5️⃣ Trả về bản cập nhật
   return await Quiz.findById(quiz._id)
-    .populate({
-      path: "group_ids",
-      populate: ["audioUrl", "imagesUrl", "questions"],
-    })
+    .populate("question_ids")
+    .populate("topic", "title")
     .lean();
 };
 
-/**
- * 🔴 Xóa quiz (và toàn bộ group, question, media liên quan)
- */
+/* 🔴 XÓA QUIZ */
 export const deleteQuizService = async (id: string) => {
   const quiz = await Quiz.findById(id);
   if (!quiz) return false;
 
-  for (const g of quiz.group_ids) {
-    await deleteGroupWithRelations(g);
+  // ✅ Xóa tất cả câu hỏi thuộc quiz này
+  if (quiz.question_ids?.length) {
+    await Question.deleteMany({ _id: { $in: quiz.question_ids } });
   }
 
+  // ✅ Xóa quiz
   await Quiz.findByIdAndDelete(id);
+
+  // 🔔 (tuỳ chọn) Phát event "quiz.deleted"
+  await appEvents.emitAsync("quiz.deleted", quiz._id);
+
   return true;
 };
 
-/**
- * 📋 Lấy danh sách quiz (phân trang + lọc + tìm kiếm)
- */
+/* 📋 LẤY DANH SÁCH QUIZ */
 export const getAllQuizService = async (
   page: number,
   limit: number,
@@ -153,29 +147,16 @@ export const getAllQuizService = async (
   const skip = (page - 1) * limit;
   const filter: any = {};
 
-  // 🔍 Tìm kiếm theo tiêu đề
   if (query) filter.title = { $regex: query, $options: "i" };
-
-  // 🎯 Lọc theo topic (mảng)
   if (topicId) filter.topic = { $in: [new Types.ObjectId(topicId)] };
-
-  // 📘 Lọc theo trình độ
   if (level) filter.level = level;
-
-  // ⚙️ Lọc theo trạng thái
   if (status) filter.status = status;
-
-  // 🧩 Lọc theo part
   if (part_type) filter.part_type = part_type;
 
-  // 📚 Truy vấn DB
   const [items, total] = await Promise.all([
     Quiz.find(filter)
+      .populate("question_ids")
       .populate("topic", "title")
-      .populate({
-        path: "group_ids",
-        populate: ["audioUrl", "imagesUrl", "questions"],
-      })
       .sort({ created_at: -1 })
       .skip(skip)
       .limit(limit)
@@ -190,16 +171,10 @@ export const getAllQuizService = async (
   };
 };
 
-
-/**
- * 🔍 Lấy chi tiết quiz theo ID
- */
+/* 🔍 LẤY CHI TIẾT QUIZ */
 export const getQuizByIdService = async (id: string) => {
   return await Quiz.findById(id)
-    .populate({
-      path: "group_ids",
-      populate: ["audioUrl", "imagesUrl", "questions"],
-    })
+    .populate("question_ids")
     .populate("topic", "title")
     .lean();
 };
