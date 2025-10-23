@@ -4,6 +4,7 @@ import { NextFunction, Request, Response } from "express";
 import { getFlashCardByIdService, getHistoryFlashCardByTopicService, submitFlashCardService } from "../services/flashCard.service";
 import { ApiResponse } from "../utils/ApiResponse";
 import { completeActivityAndUnlockNext } from '../services/day_study.service';
+import { Types } from 'mongoose';
 
 export const getFlashCardById = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -19,21 +20,33 @@ export const getFlashCardById = async (req: Request, res: Response, next: NextFu
 export const submitFlashCard = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { flashCardAttempt, logs, dayStudyId, activityId } = req.body;
-        console.log(dayStudyId, activityId)
         const user_id = req.user._id;
-        console.log(user_id);
+
+        // Chuyển logs về đúng cấu trúc của field "results"
+        const results = logs.map((log: any) => ({
+            vocabulary_id: new Types.ObjectId(log.vocab_id),
+            eval_type: log.eval_type,
+            response_time: log.response_time
+        }));
+
+        // Gom dữ liệu đúng theo IFlashCardAttempt
         const flashCardAttemptFull: IFlashCardAttempt = {
-            ...flashCardAttempt,
-            user_id
-        }
-        const result = await submitFlashCardService(flashCardAttemptFull, logs as IFlashCardAttempt[]);
+            user_id: new Types.ObjectId(user_id),
+            topic_vocabulary_id: new Types.ObjectId(flashCardAttempt.topic_id),
+            results,
+            accuracy: flashCardAttempt.accuracy,
+            started_at: new Date(flashCardAttempt.started_at),
+            finished_at: flashCardAttempt.finished_at ? new Date(flashCardAttempt.finished_at) : undefined
+        } as IFlashCardAttempt;
+
+        const result = await submitFlashCardService(flashCardAttemptFull);
 
         if (!result) res.status(404).json(ApiResponse.fail("Submit Flash card thất bại"))
 
         // Unlock bài tiếp theo
-        await completeActivityAndUnlockNext(dayStudyId, activityId)
+        // await completeActivityAndUnlockNext(dayStudyId, activityId)
 
-        res.status(201).json(ApiResponse.success(null, "Submit Flash card thành công"));
+        res.status(201).json(ApiResponse.success(result, "Submit Flash card thành công"));
     } catch (err) {
         next(err)
     }
