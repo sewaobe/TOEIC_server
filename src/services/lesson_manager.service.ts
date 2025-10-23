@@ -56,14 +56,10 @@ export const getLessonManagerByIdService = async (lessonManagerId: string, userI
         .populate({ path: "shadowing_ids", select: "-created_at -updated_at -__v" })
         .populate({
             path: "quiz_ids",
-            select: "title part_type level planned_completion_time group_ids",
+            select: "-created_at -updated_at -__v",
             populate: {
-                path: "group_ids",
-                select: "part questions",
-                populate: {
-                    path: "questions",
-                    select: "name textQuestion choices correctAnswer"
-                }
+                path: "question_ids",
+                select: "name textQuestion choices correctAnswer",
             }
         })
 
