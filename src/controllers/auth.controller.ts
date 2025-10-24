@@ -144,7 +144,7 @@ export const loginWithGoogleController = async (req: Request, res: Response) => 
       httpOnly: true,
       secure: false,
       sameSite: 'lax',
-      maxAge: 2 * 60 * 1000, // 2 phút (ở code của bạn ghi comment 15 phút nhưng config 2 phút, bạn check lại)
+      maxAge: 15 * 60 * 1000, // 15 phút
     });
 
     res.status(200).json(ApiResponse.success(null, 'Login successfully', {

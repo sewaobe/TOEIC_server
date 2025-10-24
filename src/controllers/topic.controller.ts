@@ -3,7 +3,8 @@ import {
   getAllTopicsService,
   createTopicService,
   updateTopicService,
-  deleteTopicService
+  deleteTopicService,
+  getTopicExploreService
 } from "../services/topic_vocabulary.service";
 import { ApiResponse } from "../utils/ApiResponse";
 import { Role } from "../models/enums/Role";
@@ -25,6 +26,19 @@ export const getAllTopicOfCollaborator = async (req: Request, res: Response, nex
   }
 };
 
+export const getTopicExploresController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 6;
+
+    const topics = await getTopicExploreService(page, limit);
+    res.status(200).json(
+      ApiResponse.success(topics, "Lấy danh sách chủ đề khám phá thành công")
+    );
+  } catch (err) {
+    next(err);
+  }
+};
 
 export const createTopicOfCollaborator = async (req: Request, res: Response, next: NextFunction) => {
   try {

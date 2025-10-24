@@ -1,5 +1,5 @@
 import { Types } from "mongoose";
-import { FlashCardPlan, ITopicVocabulary, TopicVocabulary } from "../models";
+import { FlashCardAttempt, FlashCardPlan, ITopicVocabulary, IUser, TopicVocabulary, User } from "../models";
 import { appEvents } from "../core/appEvents";
 import { Role } from "../models/enums/Role";
 
@@ -31,10 +31,86 @@ const mapTopic = async (topic_vocabulary: any) => {
     };
 };
 
-export const getTopicByIdService = async (id: string): Promise<ITopicVocabulary[] | null> => {
-    const idObject = new Types.ObjectId(id);
-    const topicVocabularies: ITopicVocabulary[] | null = await TopicVocabulary.findById(idObject);
-    return topicVocabularies;
+export const getTopicExploreService = async (page = 1, limit = 6) => {
+    const skip = (page - 1) * limit;
+
+    const total = await TopicVocabulary.countDocuments({
+        $or: [
+            {
+                tags: { $in: ['explore'] }
+            },
+            {
+                isCollaborator: false,
+                isPublic: true,
+            }
+        ]
+    });
+
+
+    const topicVocabularies: ITopicVocabulary[] | null = await TopicVocabulary.find({
+        $or: [
+            {
+                tags: { $in: ['explore'] }
+            },
+            {
+                isCollaborator: false,
+                isPublic: true,
+            }
+        ]
+    })
+        .skip(skip)
+        .limit(limit)
+        .sort({ created_at: -1 });
+
+    if (!topicVocabularies) {
+        throw new Error("Không tìm thấy chủ đề nào");
+    }
+
+    const mappedTopics = await Promise.all(
+        topicVocabularies.map(async (topicVocabulary) => {
+            const uniqueUsers = await FlashCardAttempt.distinct("user_id", {
+                topic_vocabulary_id: topicVocabulary._id,
+            });
+
+            const learnerCount = uniqueUsers.length;
+            const userLearned = await User.find({
+                _id: { $in: uniqueUsers }
+            })
+                .limit(5)
+                .select("profile.avatar profile.fullname");
+
+            const isNew =
+                (Date.now() - new Date(topicVocabulary.created_at).getTime()) /
+                (1000 * 60 * 60 * 24) <= 7;
+
+            return {
+                _id: topicVocabulary._id,
+                title: topicVocabulary.title,
+                description: topicVocabulary.description,
+                tags: topicVocabulary.tags,
+                level: topicVocabulary.level,
+                iconName: topicVocabulary.iconName || "Book",
+                gradient: topicVocabulary.gradient || "from-blue-500 to-cyan-500",
+                bgColor: topicVocabulary.bgColor || "#ffffff",
+                wordCount: topicVocabulary.vocabularies_id?.length || 0,
+                learnerCount,
+                isNew: isNew,
+                userLearned: userLearned.map(user => {
+                    return {
+                        avatar: user?.profile?.avatar || '',
+                        fullname: user?.profile?.fullname || '',
+                    }
+                })
+            }
+        })
+    );
+
+    return {
+        items: mappedTopics,
+        total,
+        page,
+        pageCount: Math.ceil(total / limit),
+    };
 }
 
 /**

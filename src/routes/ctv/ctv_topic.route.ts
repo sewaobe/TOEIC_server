@@ -3,7 +3,8 @@ import {
   createTopicOfCollaborator,
   getAllTopicOfCollaborator,
   updateTopicOfCollaborator,
-  deleteTopicOfCollaborator
+  deleteTopicOfCollaborator,
+  getTopicExploresController
 } from "../../controllers/topic.controller";
 import { getVocabulariesByTopic } from "../../controllers/vocabulary.controller";
 
@@ -63,6 +64,64 @@ const router = Router();
  *         description: Lỗi máy chủ nội bộ
  */
 router.get('/', getAllTopicOfCollaborator);
+
+/**
+ * @openapi
+ * /ctv/topics/explore:
+ *   get:
+ *     summary: Lấy danh sách chủ đề từ vựng để khám phá
+ *     description: |
+ *       Trả về danh sách các **chủ đề từ vựng** dành cho người học khám phá.  
+ *       Bao gồm các chủ đề được công khai (`isPublic = true`, `isCollaborator = false`) **hoặc** được gắn thẻ `explore`.  
+ *       Có hỗ trợ **phân trang** thông qua query `page` và `limit`.
+ *     tags:
+ *       - Topic Vocabulary
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *         description: Số trang hiện tại (mặc định là 1)
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           example: 6
+ *         description: Số lượng chủ đề trên mỗi trang (mặc định là 6)
+ *     responses:
+ *       200:
+ *         description: Lấy danh sách chủ đề khám phá thành công
+ *         content:
+ *           application/json:
+ *             example:
+ *               status: "success"
+ *               message: "Lấy danh sách chủ đề khám phá thành công"
+ *               data:
+ *                 currentPage: 1
+ *                 totalPages: 2
+ *                 totalItems: 12
+ *                 items:
+ *                   - _id: "6718b4e2f1a2c4d9bde92a45"
+ *                     title: "Chủ đề: Môi trường"
+ *                     description: "Các từ vựng liên quan đến bảo vệ môi trường và khí hậu"
+ *                     tags: ["explore", "environment", "climate"]
+ *                     level: "B2"
+ *                     iconName: "eco"
+ *                     bgColor: "#4CAF50"
+ *                     gradient: "linear-gradient(90deg, #4CAF50, #81C784)"
+ *                     vocabularies_id: ["6718b4e2f1a2c4d9bde92a99"]
+ *                     isCollaborator: false
+ *                     isPublic: true
+ *                     created_by: "6718b4e2f1a2c4d9bde92001"
+ *                     created_at: "2025-10-22T10:00:00.000Z"
+ *                     updated_at: "2025-10-23T09:15:00.000Z"
+ *       401:
+ *         description: Không có quyền truy cập hoặc chưa đăng nhập
+ *       500:
+ *         description: Lỗi máy chủ nội bộ
+ */
+router.get('/explore', getTopicExploresController);
 
 /**
  * @openapi
