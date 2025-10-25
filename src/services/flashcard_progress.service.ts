@@ -135,3 +135,13 @@ export const finalizeFlashcardSessionService = async (
 
     return attempt;
 }
+
+export const removeFlashcardSessionService = async (sessionId: string, userId: string) => {
+    const session = await FlashCardProgress.findOne({ session_id: sessionId, user_id: userId });
+    if (!session) throw new Error("Flashcard session not found");
+
+    session.status = "archived";
+    session.archive_reason = "abandoned";
+    const saved = await session.save();
+    return saved;
+}   

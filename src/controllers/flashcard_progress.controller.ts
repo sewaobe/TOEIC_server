@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from "express";
-import { createFlashcardSessionService, finalizeFlashcardSessionService, getAllSessionActiveByUserService, getSession, updateFlashcardProgressService } from "../services/flashcard_progress.service";
+import { createFlashcardSessionService, finalizeFlashcardSessionService, getAllSessionActiveByUserService, getSession, removeFlashcardSessionService, updateFlashcardProgressService } from "../services/flashcard_progress.service";
 import { ApiResponse } from "../utils/ApiResponse";
 
 export const createSessionFlashcardController = async (req: Request, res: Response, next: NextFunction) => {
@@ -105,6 +105,23 @@ export const finalizeFlashcardSessionController = async (req: Request, res: Resp
             ApiResponse.success({
                 finalizedSession,
             }, "Flashcard session finalized successfully")
+        );
+    } catch (err) {
+        next(err);
+    }
+}
+
+export const removeFlashcardSessionController = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const userId = req.user._id;
+        const { session_id } = req.params;
+
+        const removedSession = await removeFlashcardSessionService(session_id, userId);
+
+        res.status(200).json(
+            ApiResponse.success({
+                removedSession,
+            }, "Flashcard session removed successfully")
         );
     } catch (err) {
         next(err);
