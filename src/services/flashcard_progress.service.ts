@@ -66,7 +66,7 @@ export const getAllSessionActiveByUserService = async (
         .select("session_id topic_vocabulary_id last_activity status logs")
         .populate({
             path: "topic_vocabulary_id",
-            select: "_id title description",
+            select: "_id title description isPublic",
         })
         .lean();
 
@@ -87,6 +87,7 @@ export const getAllSessionActiveByUserService = async (
                 _id: topic._id?.toString?.() || "unknown",
                 title: topic.title || "Danh sách chưa đặt tên",
                 description: topic.description || "",
+                isPublic: topic.isPublic || false,
             },
             last_activity: s.last_activity,
             status: s.status,
