@@ -32,6 +32,7 @@ import ctvStudentRouter from "./routes/ctv/ctv_student.route";
 import ctvLessonManagerRouter from './routes/ctv/ctv_lesson_manager.route';
 import ctvLessonRouter from './routes/ctv/ctv_lesson.route'
 import ctvQuizRouteRouter from "./routes/ctv/ctv_quiz.route";
+import adminRequestCollaboratorRouter from "./routes/admin/admin_request_collaborator.route";
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
 import { verifyAccessToken } from "./middlewares/verifyAccessToken.middleware";
@@ -86,6 +87,9 @@ app.use("/api/ctv/students", verifyAccessToken, ctvStudentRouter);
 app.use("/api/ctv/lesson-manager", verifyAccessToken, ctvLessonManagerRouter);
 app.use("/api/ctv/lesson", verifyAccessToken, ctvLessonRouter);
 app.use("/api/ctv/quiz", verifyAccessToken, ctvQuizRouteRouter);
+
+// ======== Admin Request Collaborator ========
+app.use("/api/admin/request-collaborators", adminRequestCollaboratorRouter);
 
 
 app.use(errorLogger);

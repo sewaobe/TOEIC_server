@@ -3,3 +3,4 @@ import "./Dictation.schema";
 import './Shadowing.schema';
 import "./TopicVocabulary.schema";
 import './FlashCardProgress.schema';
+import './RequestCollaborator.schema';
