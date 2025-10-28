@@ -40,7 +40,6 @@ const UserSchema = new Schema<IUser>({
     avatar: String,
   },
   badges: [{ type: Schema.Types.ObjectId, ref: "Badge" }],
-  topic_vocabularies: [{ type: Schema.Types.ObjectId, ref: "TopicVocabulary" }],
   master_parts: [
     {
       part_name: { type: String, default: "" },

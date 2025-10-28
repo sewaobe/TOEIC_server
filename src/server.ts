@@ -19,6 +19,8 @@ import flashCardRouter from "./routes/flashCard.route";
 import demoRouter from "./routes/demo.route";
 import notificationRouter from "./routes/notification.route";
 import subscriptionRouter from "./routes/subscription.route";
+import flashcardProgressRouter from "./routes/flashcard_progress.route";
+import questionRouter from "./routes/question.route";
 import ctvTestRouter from "./routes/ctv/ctv_test.route";
 import ctvTopicRouter from "./routes/ctv/ctv_topic.route";
 import ctvVocabularyRouter from "./routes/ctv/ctv_vocabulary.route";
@@ -33,6 +35,7 @@ import ctvQuizRouteRouter from "./routes/ctv/ctv_quiz.route";
 import adminUsersRouter from "./routes/admin/admin.users.route";
 import adminTestsRouter from "./routes/admin/admin.tests.route";
 import adminLessonsRouter from "./routes/admin/admin.lessons.route";
+import adminRequestCollaboratorRouter from "./routes/admin/admin_request_collaborator.route";
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
 import { verifyAccessToken } from "./middlewares/verifyAccessToken.middleware";
@@ -69,6 +72,8 @@ app.use("/api/flash-card", verifyAccessToken, flashCardRouter);
 app.use("/api/demo", demoRouter);
 app.use("/api/notifications", notificationRouter);
 app.use("/api/subscriptions", subscriptionRouter);
+app.use("/api/flashcard-progress", verifyAccessToken, flashcardProgressRouter);
+app.use("/api/questions", verifyAccessToken, questionRouter);
 
 // ========= CTV ============
 app.use("/api/ctv", ctvTestRouter);
@@ -90,6 +95,8 @@ app.use("/api/admin/users", verifyAccessToken, adminUsersRouter);
 app.use("/api/admin/tests", verifyAccessToken, adminTestsRouter);
 // Admin lesson approval routes
 app.use("/api/admin/lessons", verifyAccessToken, adminLessonsRouter);
+// ======== Admin Request Collaborator ========
+app.use("/api/admin/request-collaborators", adminRequestCollaboratorRouter);
 
 app.use(errorLogger);
 

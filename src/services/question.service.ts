@@ -1,5 +1,5 @@
 import { Types, FilterQuery, PipelineStage } from "mongoose";
-import { Question, IQuestion } from "../models";
+import { Question, IQuestion, Group } from "../models";
 
 /**
  * CREATE - thêm Question mới
@@ -210,4 +210,39 @@ export const getQuestionsWithGroupInfo = async ({
   const pageCount = Math.ceil(total / limit);
 
   return { items, total, pageCount };
+};
+
+export const getQuestionDetailById = async (
+  question_id: string,
+  test_id: string
+) => {
+  const testObjectId = new Types.ObjectId(test_id);
+  const questionObjectId = new Types.ObjectId(question_id);
+
+  const group = await Group.findOne({
+    test_id: testObjectId,
+    questions: questionObjectId,
+  })
+    .populate([
+      {
+        path: "questions",
+        model: "Question",
+        select:
+          "name textQuestion choices correctAnswer explanation tags",
+      },
+      {
+        path: "audioUrl",
+        model: "Media",
+        select: "url -_id",
+      },
+      {
+        path: "imagesUrl",
+        model: "Media",
+        select: "url -_id",
+      },
+    ])
+    .lean()
+    .exec();
+
+  return group;
 };

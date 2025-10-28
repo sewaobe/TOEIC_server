@@ -184,6 +184,7 @@ const mapAnswer = (ans: any, idx: number) => {
         question_no: ans.question_id.name.split(" ")[1],
         selectedOption: ans.selectedOption,
         isCorrect: ans.isCorrect,
+        correctAnswer: ans.question_id.correctAnswer,
         tags: ans.question_id.tags || [],
     }
 };
@@ -196,7 +197,7 @@ export const getTestHistoryDetailService = async (historyId: string) => {
     const history = await UserTest.findById(historyObjectId)
         .populate({
             path: "answers.question_id",
-            select: "name tags", // chỉ lấy trường tags để tối ưu
+            select: "name tags correctAnswer", // chỉ lấy trường tags để tối ưu
         })
         .lean<IUserTest & { answers: any[] }>()
         .exec();
