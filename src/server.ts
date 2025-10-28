@@ -27,16 +27,18 @@ import ctvFolderRoutes from "./routes/ctv/ctv_media_folder.route";
 import ctvDictationRouter from "./routes/ctv/ctv_dictation.route";
 import ctvShadowingRouter from "./routes/ctv/ctv_shadowing.route";
 import ctvStudentRouter from "./routes/ctv/ctv_student.route";
-import ctvLessonManagerRouter from './routes/ctv/ctv_lesson_manager.route';
-import ctvLessonRouter from './routes/ctv/ctv_lesson.route'
+import ctvLessonManagerRouter from "./routes/ctv/ctv_lesson_manager.route";
+import ctvLessonRouter from "./routes/ctv/ctv_lesson.route";
 import ctvQuizRouteRouter from "./routes/ctv/ctv_quiz.route";
+import adminUsersRouter from "./routes/admin/admin.users.route";
+import adminTestsRouter from "./routes/admin/admin.tests.route";
+import adminLessonsRouter from "./routes/admin/admin.lessons.route";
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
 import { verifyAccessToken } from "./middlewares/verifyAccessToken.middleware";
 import { initSocket } from "./socket";
 import { setupSwagger } from "./swagger";
-import './listeners'
-
+import "./listeners";
 
 connectDB();
 
@@ -48,7 +50,6 @@ app.use(
     credentials: true,
   })
 );
-
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -66,7 +67,7 @@ app.use("/api/learning-path", learningPathRouter);
 app.use("/api/day-study", dayStudyRouter);
 app.use("/api/flash-card", verifyAccessToken, flashCardRouter);
 app.use("/api/demo", demoRouter);
-app.use("/api/notifications", notificationRouter)
+app.use("/api/notifications", notificationRouter);
 app.use("/api/subscriptions", subscriptionRouter);
 
 // ========= CTV ============
@@ -83,6 +84,12 @@ app.use("/api/ctv/lesson-manager", verifyAccessToken, ctvLessonManagerRouter);
 app.use("/api/ctv/lesson", verifyAccessToken, ctvLessonRouter);
 app.use("/api/ctv/quiz", verifyAccessToken, ctvQuizRouteRouter);
 
+// Admin user management routes (list/detail/ban/unban)
+app.use("/api/admin/users", verifyAccessToken, adminUsersRouter);
+// Admin test approval routes
+app.use("/api/admin/tests", verifyAccessToken, adminTestsRouter);
+// Admin lesson approval routes
+app.use("/api/admin/lessons", verifyAccessToken, adminLessonsRouter);
 
 app.use(errorLogger);
 

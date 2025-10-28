@@ -279,8 +279,8 @@ export const getAllTests = async (
   if (search) query.title = { $regex: search, $options: "i" }; // tìm kiếm không phân biệt hoa thường
   if (status) query.status = status;
   if (topic) query.topic = { $regex: topic, $options: "i" };
+  // Nếu client truyền `type` thì filter theo type, nếu không truyền thì không giới hạn loại
   if (type) query.type = type;
-  else query.type = "full-test";
 
   // 🧾 Lấy danh sách test + tổng số
   const [tests, total] = await Promise.all([
