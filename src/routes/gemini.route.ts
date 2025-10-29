@@ -38,6 +38,9 @@ const router = Router();
  *               video: "Ngữ pháp, lý thuyết, chiến lược"
  *               flashcard: "Từ vựng, collocation"
  *               dictation: "Nghe - chép chính tả"
+ *               shadowing: "Bắt chước phát âm, ngữ điệu người bản xứ"
+ *               quiz: "Trắc nghiệm ngắn ôn từ và cấu trúc"
+ *               mini_test: "Làm đề TOEIC ngắn, đánh giá phản xạ"
  *     responses:
  *       200:
  *         description: Tạo kế hoạch TOEIC thành công
