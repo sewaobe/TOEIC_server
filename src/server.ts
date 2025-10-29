@@ -36,6 +36,7 @@ import adminUsersRouter from "./routes/admin/admin.users.route";
 import adminTestsRouter from "./routes/admin/admin.tests.route";
 import adminLessonsRouter from "./routes/admin/admin.lessons.route";
 import adminRequestCollaboratorRouter from "./routes/admin/admin_request_collaborator.route";
+import geminiRouter from "./routes/gemini.route";
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
 import { verifyAccessToken } from "./middlewares/verifyAccessToken.middleware";
@@ -97,6 +98,10 @@ app.use("/api/admin/tests", verifyAccessToken, adminTestsRouter);
 app.use("/api/admin/lessons", verifyAccessToken, adminLessonsRouter);
 // ======== Admin Request Collaborator ========
 app.use("/api/admin/request-collaborators", adminRequestCollaboratorRouter);
+
+// AI 
+app.use("/api/gemini", verifyAccessToken, geminiRouter);
+
 
 app.use(errorLogger);
 

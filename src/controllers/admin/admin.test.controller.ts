@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import * as testService from "../../services/test.service";
 import { TestStatus } from "../../models/enums/TestStatus";
+import { pushNotification } from "../../utils/pushNotification";
 
 const isAdminPayload = (payload: any) => {
   if (!payload) return false;
@@ -67,6 +68,7 @@ export const approveTestController = async (
   next: NextFunction
 ) => {
   try {
+    const userId = req.user._id;
     const payload: any = req.user;
     if (!isAdminPayload(payload))
       return res.status(403).json({ message: "Forbidden: admin only" });
@@ -77,6 +79,12 @@ export const approveTestController = async (
     } as any);
     if (!updated) return res.status(404).json({ message: "Test not found" });
 
+    pushNotification({
+      senderId: userId,
+      recipientId: updated.created_by.toString(),
+      message: `📝 Bài thi "${updated.title}" đã được phê duyệt.`,
+      type: "test"
+    })
     return res.status(200).json({ data: updated });
   } catch (err) {
     next(err);
@@ -89,6 +97,7 @@ export const rejectTestController = async (
   next: NextFunction
 ) => {
   try {
+    const userId = req.user._id;
     const payload: any = req.user;
     if (!isAdminPayload(payload))
       return res.status(403).json({ message: "Forbidden: admin only" });
@@ -100,6 +109,13 @@ export const rejectTestController = async (
     } as any);
     if (!updated) return res.status(404).json({ message: "Test not found" });
 
+    pushNotification({
+      senderId: userId,
+      recipientId: updated.created_by.toString(),
+      message: `📝 Bài thi "${updated.title}" đã bị từ chối.`,
+      description: req.body?.reason,
+      type: "test"
+    })
     return res.status(200).json({ data: updated });
   } catch (err) {
     next(err);

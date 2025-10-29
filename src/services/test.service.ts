@@ -16,6 +16,8 @@ import {
   updateGroupWithRelations,
   deleteGroupWithRelations,
 } from "./group.service";
+import { pushNotification } from "../utils/pushNotification";
+import { pushNotificationToAdmin } from "../utils/pushNotificationToAdmin";
 
 export const getFullTest = async (testId: string): Promise<any | null> => {
   const test = await Test.findById(testId)
@@ -28,6 +30,10 @@ export const getFullTest = async (testId: string): Promise<any | null> => {
         { path: "imagesUrl", select: "url" },
         { path: "questions" }, // populate Question
       ],
+    })
+    .populate({
+      path: "created_by",
+      select: "profile.fullname"
     })
     .lean();
 
@@ -466,4 +472,23 @@ export const updateTest = async (
 
   // 5 + 6. Gán lại groups, save và populate (refactor ra hàm riêng)
   return await finalizeTestWithGroups(test, newGroupIds);
+};
+
+export const updateStatusTest = async (testId: string, status: TestStatus, userId: string) => {
+  const test = await Test.findByIdAndUpdate(
+    testId,
+    { status, updated_at: new Date() },
+    { new: true }
+  );
+  if (!test) {
+    throw new Error("Test not found");
+  }
+
+  pushNotificationToAdmin(userId, {
+    message: `📝 Bài thi "${test.title}" đã được chuyển sang trạng thái "${status}".`,
+    type: "test",
+    url: `http://localhost:5174/admin/tests/${test._id}`
+  })
+
+  return test;
 };

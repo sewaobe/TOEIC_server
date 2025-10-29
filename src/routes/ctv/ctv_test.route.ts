@@ -5,6 +5,7 @@ import {
   createTestController,
   updateTest, // ✅ thêm controller
   deleteTest,
+  updateTestStatusController,
 } from "../../controllers/test.controller";
 import { verifyAccessToken } from "../../middlewares/verifyAccessToken.middleware";
 
@@ -14,10 +15,11 @@ router.get("/tests/get-all", verifyAccessToken, getAllTests);
 router.post("/tests/create", verifyAccessToken, createTestController);
 router.get("/tests/:testId", verifyAccessToken, getTest);
 
-// ✅ Sửa đề thi
+// Sửa đề thi
+router.put("/tests/:testId/status", verifyAccessToken, updateTestStatusController);
 router.put("/tests/:testId", verifyAccessToken, updateTest);
 
-// ✅ Xóa đề thi
+// Xóa đề thi
 router.delete("/tests/:testId", verifyAccessToken, deleteTest);
 
 export default router;

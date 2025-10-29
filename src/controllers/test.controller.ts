@@ -323,3 +323,25 @@ export const updateTest = async (
     next(err);
   }
 };
+
+export const updateTestStatusController = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { testId } = req.params;
+    const { status } = req.body;
+    const userId = req.user._id;
+    if (!Types.ObjectId.isValid(testId)) {
+      res.status(400).json(ApiResponse.fail("ID không hợp lệ"));
+      return;
+    }
+    const updatedTest = await testService.updateStatusTest(testId, status, userId);
+    if (!updatedTest) {
+      res.status(404).json(ApiResponse.fail("Không tìm thấy đề thi"));
+      return;
+    }
+    res
+      .status(200)
+      .json(ApiResponse.success(updatedTest, "Cập nhật trạng thái đề thi thành công!"));
+  } catch (err) {
+    next(err)
+  }
+}

@@ -5,6 +5,7 @@ export async function createNotification(data: {
     recipientId: string;
     message: string;
     type?: string;
+    description?: string;
 }) {
     const notification = await Notification.create({
         ...data,

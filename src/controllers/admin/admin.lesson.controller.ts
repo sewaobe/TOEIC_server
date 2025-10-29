@@ -3,6 +3,8 @@ import { LessonManager } from "../../models/lesson_manager.model";
 import { Types } from "mongoose";
 import { ApiResponse } from "../../utils/ApiResponse";
 import { TestStatus } from "../../models/enums/TestStatus";
+import { pushNotification } from "../../utils/pushNotification";
+import { onlineUsers } from "../../socket";
 
 const isAdminPayload = (payload: any) => {
   if (!payload) return false;
@@ -91,6 +93,7 @@ export const approveLessonController = async (
   next: NextFunction
 ) => {
   try {
+    const userId = req.user._id;
     const payload: any = req.user;
     if (!isAdminPayload(payload))
       return res.status(403).json({ message: "Forbidden: admin only" });
@@ -102,6 +105,14 @@ export const approveLessonController = async (
       { new: true }
     ).lean();
     if (!updated) return res.status(404).json({ message: "Lesson not found" });
+
+    console.log("??????????", updated.created_by, onlineUsers);
+    await pushNotification({
+      senderId: userId,
+      recipientId: updated.created_by.toString(),
+      message: `✅ Bài học "${updated.title}" của bạn đã được duyệt thành công.`,
+      type: "lesson",
+    })
     return res.status(200).json({ data: updated });
   } catch (err) {
     next(err);
@@ -114,6 +125,7 @@ export const rejectLessonController = async (
   next: NextFunction
 ) => {
   try {
+    const userId = req.user._id;
     const payload: any = req.user;
     if (!isAdminPayload(payload))
       return res.status(403).json({ message: "Forbidden: admin only" });
@@ -127,7 +139,13 @@ export const rejectLessonController = async (
     ).lean();
     if (!updated) return res.status(404).json({ message: "Lesson not found" });
 
-    // Optionally we could log reason into a separate collection; skipped for now.
+    await pushNotification({
+      senderId: userId,
+      recipientId: updated.created_by.toString(),
+      message: `❌ Bài học "${updated.title}" của bạn đã bị từ chối. Lý do: ${reason}`,
+      description: reason,
+      type: "lesson",
+    })
 
     return res.status(200).json({ data: updated });
   } catch (err) {
