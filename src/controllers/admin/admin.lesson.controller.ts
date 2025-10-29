@@ -134,7 +134,7 @@ export const rejectLessonController = async (
     const reason = req.body?.reason || "";
     const updated = await LessonManager.findByIdAndUpdate(
       id,
-      { status: TestStatus.CLOSED },
+      { status: TestStatus.REJECTED },
       { new: true }
     ).lean();
     if (!updated) return res.status(404).json({ message: "Lesson not found" });
@@ -142,7 +142,7 @@ export const rejectLessonController = async (
     await pushNotification({
       senderId: userId,
       recipientId: updated.created_by.toString(),
-      message: `❌ Bài học "${updated.title}" của bạn đã bị từ chối. Lý do: ${reason}`,
+      message: `❌ Bài học "${updated.title}" của bạn đã bị từ chối.`,
       description: reason,
       type: "lesson",
     })

@@ -1,6 +1,6 @@
 import Router from 'express';
 import { verifyAccessToken } from '../../middlewares/verifyAccessToken.middleware';
-import { createLessonManagerController, deleteLessonManagerController, getAllLessonManagerController, getAllTopicTitlesController, getLessonManagerByIdController, updateLessonManagerController } from '../../controllers/lesson_manager.controller';
+import { createLessonManagerController, deleteLessonManagerController, getAllLessonManagerController, getAllTopicTitlesController, getLessonManagerByIdController, updateLessonManagerController, updateStatusLessonManagerController } from '../../controllers/lesson_manager.controller';
 
 const router = Router();
 
@@ -208,6 +208,118 @@ router.get("/:id", verifyAccessToken, getLessonManagerByIdController);
  */
 router.post("/", verifyAccessToken, createLessonManagerController);
 
+/**
+ * @openapi
+ * /ctv/lesson-manager/{id}/status:
+ *   put:
+ *     tags:
+ *       - CTV Lesson Manager
+ *     summary: Cập nhật trạng thái của Lesson Manager
+ *     description: |
+ *       Cập nhật trạng thái bài học trong Lesson Manager theo ID.
+ *       Chỉ người tạo hoặc quản trị viên mới có quyền thay đổi trạng thái.
+ *       Các giá trị hợp lệ của status bao gồm:
+ *         - **draft**: Bản nháp (chưa gửi duyệt)
+ *         - **pending**: Đang chờ admin duyệt
+ *         - **approved**: Đã được admin duyệt
+ *         - **open**: Đang mở cho học viên
+ *         - **closed**: Đã đóng, không thể truy cập
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID của Lesson Manager cần cập nhật trạng thái
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - status
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 description: Trạng thái mới của bài học
+ *                 enum:
+ *                   - draft
+ *                   - pending
+ *                   - approved
+ *                   - open
+ *                   - closed
+ *                 example: pending
+ *     responses:
+ *       200:
+ *         description: Cập nhật trạng thái thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/LessonManager'
+ *                 message:
+ *                   type: string
+ *                   example: "Cập nhật trạng thái Lesson Manager thành công."
+ *       400:
+ *         description: Giá trị trạng thái không hợp lệ hoặc request sai định dạng.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Trạng thái không hợp lệ. Vui lòng chọn một trong: draft, pending, approved, open, closed."
+ *       403:
+ *         description: Người dùng không có quyền cập nhật trạng thái này.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Forbidden: chỉ người tạo hoặc admin mới được cập nhật trạng thái."
+ *       404:
+ *         description: Không tìm thấy Lesson Manager tương ứng với ID.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Không tìm thấy Lesson Manager."
+ *       500:
+ *         description: Lỗi máy chủ nội bộ.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Lỗi máy chủ nội bộ."
+ */
+router.put("/:id/status", verifyAccessToken, updateStatusLessonManagerController);
 
 /**
  * @openapi

@@ -1,6 +1,9 @@
 import { ILessonManager, LessonManager } from "../models/lesson_manager.model";
 import { PaginationResult } from '../dto/PaginationResult';
 import mongoose from "mongoose";
+import { TestStatus } from "../models/enums/TestStatus";
+import { pushNotificationToAdmin } from "../utils/pushNotificationToAdmin";
+import { pushNotification } from "../utils/pushNotification";
 
 export const getAllTopicTitlesService = async () => {
     const topics = await LessonManager.find({}, "title").exec();
@@ -107,3 +110,17 @@ export const deleteLessonManagerService = async (lessonManagerId: string, userId
     return lessonManager;
 };
 
+export const updateStatusLessonManagerService = async (
+    lessonManagerId: string,
+    status: TestStatus,
+) => {
+    const updated = await LessonManager.findOneAndUpdate(
+        { _id: lessonManagerId },
+        { status },
+        { new: true }
+    );
+    if (!updated) {
+        throw new Error("Không tìm thấy Lesson Manager hoặc bạn không có quyền cập nhật");
+    }
+    return updated;
+}

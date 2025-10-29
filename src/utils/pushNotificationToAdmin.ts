@@ -1,9 +1,10 @@
 import { Role, User } from "../models";
-import { pushNotification} from "./pushNotification";
+import { pushNotification } from "./pushNotification";
 
 export const pushNotificationToAdmin = async (user_id: string, data: {
     message: string;
-    type?: "system" | "comment" | "error" | "chat" | "test";
+    type?: "system" | "comment" | "error" | "chat" | "test" | "lesson";
+    description?: string;
     url?: string;
 }) => {
     // Tìm tất cả admin trong hệ thống
@@ -18,6 +19,7 @@ export const pushNotificationToAdmin = async (user_id: string, data: {
                 recipientId: admin._id.toString(),
                 message: data.message,
                 type: data.type || "system",
+                description: data.description || "",
                 url: data.url || "", // có thể dẫn tới trang quản trị
             });
         }

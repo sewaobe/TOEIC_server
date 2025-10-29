@@ -105,7 +105,7 @@ export const rejectTestController = async (
     const { id } = req.params;
     // Không có trạng thái "rejected" trong enum hiện tại, dùng CLOSED để biểu thị từ chối
     const updated = await testService.updateTest(id, {
-      status: TestStatus.CLOSED,
+      status: TestStatus.REJECTED,
     } as any);
     if (!updated) return res.status(404).json({ message: "Test not found" });
 

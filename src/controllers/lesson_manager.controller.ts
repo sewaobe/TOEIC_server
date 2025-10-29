@@ -1,6 +1,9 @@
 import { NextFunction, Request, Response } from "express";
 import { ApiResponse } from "../utils/ApiResponse";
-import { createLessonManagerService, deleteLessonManagerService, getAllLessonManagerService, getAllTopicTitlesService, getLessonManagerByIdService, updateLessonManagerService } from "../services/lesson_manager.service";
+import { createLessonManagerService, deleteLessonManagerService, getAllLessonManagerService, getAllTopicTitlesService, getLessonManagerByIdService, updateLessonManagerService, updateStatusLessonManagerService } from "../services/lesson_manager.service";
+import { TestStatus } from "../models/enums/TestStatus";
+import { pushNotificationToAdmin } from "../utils/pushNotificationToAdmin";
+import { pushNotification } from "../utils/pushNotification";
 
 export const getAllTopicTitlesController = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -84,6 +87,30 @@ export const deleteLessonManagerController = async (req: Request, res: Response,
 
         res.status(200).json(
             ApiResponse.success(result, "Deleted lesson manager successfully")
+        );
+    }
+    catch (err) {
+        next(err);
+    }
+}
+
+export const updateStatusLessonManagerController = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const lessonManagerId = req.params.id;
+        const { status } = req.body;
+        const userId = req.user._id;
+        const result = await updateStatusLessonManagerService(lessonManagerId, status);
+
+        if (result.status === TestStatus.PENDING) {
+            await pushNotificationToAdmin(userId, {
+                message: `🆕 Bài học "${result.title}" đang chờ duyệt.`,
+                description: `Người tạo: ${req.user.name}`,
+                url: "http://localhost:5174/admin/lessons",
+            });
+        }
+
+        res.status(200).json(
+            ApiResponse.success(result, "Updated lesson manager status successfully")
         );
     }
     catch (err) {

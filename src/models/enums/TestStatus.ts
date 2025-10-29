@@ -4,4 +4,5 @@ export enum TestStatus {
   APPROVED = 'approved',
   OPEN = 'open',
   CLOSED = 'closed',
+  REJECTED = 'rejected',
 }
