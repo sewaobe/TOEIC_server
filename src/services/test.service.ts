@@ -161,6 +161,11 @@ export const submitTest = async (
 
   await userTest.save();
 
+  // Cập nhật thống kê cho test
+  await Test.findByIdAndUpdate(testId, {
+    $inc: { countSubmit: 1 },
+  });
+
   return { score, answers: detailedAnswers };
 };
 
@@ -176,10 +181,9 @@ export const getTestsWithScoreAndSearch = async (
     ? { title: { $regex: new RegExp(search, "i") } }
     : {};
 
+  // 1️⃣ Truy vấn danh sách test theo trang
   const tests = await Test.aggregate([
     { $match: matchStage },
-
-    // Lấy kết quả cá nhân (cao nhất)
     {
       $lookup: {
         from: "usertests",
@@ -202,11 +206,9 @@ export const getTestsWithScoreAndSearch = async (
         as: "userResult",
       },
     },
-
     { $sort: { created_at: -1, _id: 1 } },
     { $skip: skip },
     { $limit: limit },
-
     {
       $project: {
         _id: 0,
@@ -214,14 +216,42 @@ export const getTestsWithScoreAndSearch = async (
         title: 1,
         details: "chưa có",
         score: { $ifNull: [{ $arrayElemAt: ["$userResult.score", 0] }, null] },
-
-        // dùng field có sẵn thay vì $lookup
         totalComments: "$countComment",
         totalUsers: "$countSubmit",
       },
     },
   ]);
 
+  // 2️⃣ Lấy danh sách _id test để cập nhật countSubmit
+  const testIds = tests.map((t) => new Types.ObjectId(t.id));
+  if (testIds.length > 0) {
+    // Đếm thực tế trong UserTest
+    const submitCounts = await UserTest.aggregate([
+      {
+        $match: {
+          test_id: { $in: testIds },
+        },
+      },
+      {
+        $group: {
+          _id: "$test_id",
+          total: { $sum: 1 },
+        },
+      },
+    ]);
+
+    // Cập nhật countSubmit vào bảng Test
+    await Promise.all(
+      submitCounts.map(async (s) => {
+        await Test.updateOne(
+          { _id: s._id },
+          { $set: { countSubmit: s.total } }
+        );
+      })
+    );
+  }
+
+  // 3️⃣ Phân trang tổng số
   const totalTests = await Test.countDocuments(matchStage);
   const totalPages = Math.ceil(totalTests / limit);
 
