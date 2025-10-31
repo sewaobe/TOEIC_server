@@ -3,9 +3,10 @@ import * as cookie from "cookie";
 import jwt from "jsonwebtoken";
 import { SocketWithUser } from "./types";
 import { registerNotificationHandlers } from "./notification.socket";
+import { registerChatHandlers } from "./chat.socket";
 
 export const onlineUsers = new Map<string, string>(); // userId → socketId
-export let io: Server; 
+export let io: Server;
 
 export function initSocket(server: any) {
   io = new Server(server, {
@@ -55,7 +56,7 @@ export function initSocket(server: any) {
 
     // Kích hoạt các module socket
     registerNotificationHandlers(io, socket, onlineUsers);
-    // registerChatHandlers(io, socket, onlineUsers);
+    registerChatHandlers(socket);
 
     // ===========================
     // 🔌 Khi socket ngắt kết nối
