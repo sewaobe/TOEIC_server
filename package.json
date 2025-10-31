@@ -14,8 +14,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@google/genai": "^1.27.0",
+    "@chroma-core/huggingface-server": "^0.1.7",
+    "@google/genai": "^1.28.0",
+    "@google/generative-ai": "^0.24.1",
     "bcrypt": "^6.0.0",
+    "chromadb": "^3.1.0",
     "cookie": "^1.0.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",

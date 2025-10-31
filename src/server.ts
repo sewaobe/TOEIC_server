@@ -37,6 +37,9 @@ import adminTestsRouter from "./routes/admin/admin.tests.route";
 import adminLessonsRouter from "./routes/admin/admin.lessons.route";
 import adminRequestCollaboratorRouter from "./routes/admin/admin_request_collaborator.route";
 import geminiRouter from "./routes/gemini.route";
+import ragRouter from "./routes/rag.route";
+import chatRouter from './routes/chat.route';
+import chatFeedbackRouter from './routes/chat_feedback.route';
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
 import { verifyAccessToken } from "./middlewares/verifyAccessToken.middleware";
@@ -101,7 +104,9 @@ app.use("/api/admin/request-collaborators", adminRequestCollaboratorRouter);
 
 // AI 
 app.use("/api/gemini", verifyAccessToken, geminiRouter);
-
+app.use("/api/rag", verifyAccessToken, ragRouter);
+app.use('/api/chat', verifyAccessToken, chatRouter);
+app.use('/api/chat-feedback', verifyAccessToken, chatFeedbackRouter);
 
 app.use(errorLogger);
 
