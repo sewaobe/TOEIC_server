@@ -21,6 +21,7 @@ import notificationRouter from "./routes/notification.route";
 import subscriptionRouter from "./routes/subscription.route";
 import flashcardProgressRouter from "./routes/flashcard_progress.route";
 import questionRouter from "./routes/question.route";
+import reportRouter from "./routes/report.route";
 import ctvTestRouter from "./routes/ctv/ctv_test.route";
 import ctvTopicRouter from "./routes/ctv/ctv_topic.route";
 import ctvVocabularyRouter from "./routes/ctv/ctv_vocabulary.route";
@@ -36,10 +37,11 @@ import adminUsersRouter from "./routes/admin/admin.users.route";
 import adminTestsRouter from "./routes/admin/admin.tests.route";
 import adminLessonsRouter from "./routes/admin/admin.lessons.route";
 import adminRequestCollaboratorRouter from "./routes/admin/admin_request_collaborator.route";
+import adminReportsRouter from "./routes/admin/admin.report.route";
 import geminiRouter from "./routes/gemini.route";
 import ragRouter from "./routes/rag.route";
-import chatRouter from './routes/chat.route';
-import chatFeedbackRouter from './routes/chat_feedback.route';
+import chatRouter from "./routes/chat.route";
+import chatFeedbackRouter from "./routes/chat_feedback.route";
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
 import { verifyAccessToken } from "./middlewares/verifyAccessToken.middleware";
@@ -78,6 +80,7 @@ app.use("/api/notifications", notificationRouter);
 app.use("/api/subscriptions", subscriptionRouter);
 app.use("/api/flashcard-progress", verifyAccessToken, flashcardProgressRouter);
 app.use("/api/questions", verifyAccessToken, questionRouter);
+app.use("/api/reports", verifyAccessToken, reportRouter);
 
 // ========= CTV ============
 app.use("/api/ctv", ctvTestRouter);
@@ -101,12 +104,13 @@ app.use("/api/admin/tests", verifyAccessToken, adminTestsRouter);
 app.use("/api/admin/lessons", verifyAccessToken, adminLessonsRouter);
 // ======== Admin Request Collaborator ========
 app.use("/api/admin/request-collaborators", adminRequestCollaboratorRouter);
+app.use("/api/admin/reports", verifyAccessToken, adminReportsRouter);
 
-// AI 
+// AI
 app.use("/api/gemini", verifyAccessToken, geminiRouter);
 app.use("/api/rag", verifyAccessToken, ragRouter);
-app.use('/api/chat', verifyAccessToken, chatRouter);
-app.use('/api/chat-feedback', verifyAccessToken, chatFeedbackRouter);
+app.use("/api/chat", verifyAccessToken, chatRouter);
+app.use("/api/chat-feedback", verifyAccessToken, chatFeedbackRouter);
 
 app.use(errorLogger);
 
