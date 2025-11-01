@@ -1,5 +1,5 @@
 import Router from "express";
-import { dictionaryController, generateToeicPlanController } from "../controllers/gemini.controller";
+import { dictionaryController, generateToeicPlanController, translateController } from "../controllers/gemini.controller";
 
 const router = Router();
 
@@ -133,5 +133,69 @@ router.post("/generate-toeic-plan", generateToeicPlanController);
  */
 router.post("/dictionary", dictionaryController);
 
+/**
+ * @openapi
+ * /gemini/translate:
+ *   post:
+ *     summary: Dịch văn bản giữa hai ngôn ngữ bằng Gemini AI
+ *     description: |
+ *       API dịch đoạn văn hoặc câu giữa hai ngôn ngữ bằng **Gemini 2.5 Flash**.  
+ *       Kết quả trả về bao gồm bản dịch chính xác, tự nhiên và phần ghi chú (translationNotes) giúp người dùng hiểu rõ các sắc thái hoặc cụm từ cần chú ý.
+ *     tags:
+ *       - Gemini
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - text
+ *               - sourceLang
+ *               - targetLang
+ *             properties:
+ *               text:
+ *                 type: string
+ *                 description: "Đoạn văn hoặc cụm từ cần dịch"
+ *               sourceLang:
+ *                 type: string
+ *                 description: "Mã ngôn ngữ gốc (ví dụ: en, vi, ja, fr)"
+ *               targetLang:
+ *                 type: string
+ *                 description: "Mã ngôn ngữ đích (ví dụ: vi, en, ko, de)"
+ *             example:
+ *               text: "Consistency is the key to mastering any skill."
+ *               sourceLang: "en"
+ *               targetLang: "vi"
+ *     responses:
+ *       200:
+ *         description: Dịch thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 sourceLang:
+ *                   type: string
+ *                   example: "en"
+ *                 targetLang:
+ *                   type: string
+ *                   example: "vi"
+ *                 originalText:
+ *                   type: string
+ *                   example: "Consistency is the key to mastering any skill."
+ *                 translatedText:
+ *                   type: string
+ *                   example: "Sự kiên định là chìa khóa để thành thạo bất kỳ kỹ năng nào."
+ *                 translationNotes:
+ *                   type: string
+ *                   example: |
+ *                     "Consistency" mang ý nghĩa duy trì đều đặn và kiên trì, không chỉ là sự lặp lại máy móc.
+ *       400:
+ *         description: Dữ liệu đầu vào không hợp lệ
+ *       500:
+ *         description: Lỗi hệ thống hoặc model không phản hồi hợp lệ
+ */
+router.post("/translate", translateController);
 
 export default router;

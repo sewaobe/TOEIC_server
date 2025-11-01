@@ -73,60 +73,60 @@ export async function generateToeicPlan(userInput: any) {
 }
 
 export const DictionarySchema = {
-  type: Type.OBJECT,
-  properties: {
-    englishWord: { type: Type.STRING },
-    phonetic: { type: Type.STRING },
-    phonetics: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          text: { type: Type.STRING },
-          audio: { type: Type.STRING },
-        },
-      },
-    },
-    translations: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          partOfSpeech: { type: Type.STRING }, // N, V, Adj, Adv...
-          translatedDefinitions: {
+    type: Type.OBJECT,
+    properties: {
+        englishWord: { type: Type.STRING },
+        phonetic: { type: Type.STRING },
+        phonetics: {
             type: Type.ARRAY,
             items: {
-              type: Type.OBJECT,
-              properties: {
-                en: { type: Type.STRING },
-                vi: { type: Type.STRING },
-              },
+                type: Type.OBJECT,
+                properties: {
+                    text: { type: Type.STRING },
+                    audio: { type: Type.STRING },
+                },
             },
-          },
-          examples: {
+        },
+        translations: {
             type: Type.ARRAY,
             items: {
-              type: Type.OBJECT,
-              properties: {
-                en: { type: Type.STRING },
-                vi: { type: Type.STRING },
-              },
+                type: Type.OBJECT,
+                properties: {
+                    partOfSpeech: { type: Type.STRING }, // N, V, Adj, Adv...
+                    translatedDefinitions: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                en: { type: Type.STRING },
+                                vi: { type: Type.STRING },
+                            },
+                        },
+                    },
+                    examples: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                en: { type: Type.STRING },
+                                vi: { type: Type.STRING },
+                            },
+                        },
+                    },
+                    synonyms: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    antonyms: { type: Type.ARRAY, items: { type: Type.STRING } },
+                },
             },
-          },
-          synonyms: { type: Type.ARRAY, items: { type: Type.STRING } },
-          antonyms: { type: Type.ARRAY, items: { type: Type.STRING } },
         },
-      },
+        imageKeywords: { type: Type.ARRAY, items: { type: Type.STRING } },
     },
-    imageKeywords: { type: Type.ARRAY, items: { type: Type.STRING } },
-  },
-  propertyOrdering: [
-    "englishWord",
-    "phonetic",
-    "phonetics",
-    "translations",
-    "imageKeywords",
-  ],
+    propertyOrdering: [
+        "englishWord",
+        "phonetic",
+        "phonetics",
+        "translations",
+        "imageKeywords",
+    ],
 };
 
 // Fetch data from dictionary API
@@ -256,4 +256,97 @@ export async function dictionaryLookup(query: string) {
     }
 
     throw new Error("Tất cả model đều quá tải hoặc lỗi xử lý.");
+}
+
+export const TranslateSchema = {
+    type: Type.OBJECT,
+    properties: {
+        sourceLang: { type: Type.STRING },
+        targetLang: { type: Type.STRING },
+        originalText: { type: Type.STRING },
+        translatedText: { type: Type.STRING },
+        translationNotes: { type: Type.STRING },
+    },
+    propertyOrdering: [
+        "sourceLang",
+        "targetLang",
+        "originalText",
+        "translatedText",
+        "translationNotes",
+    ],
+};
+
+/**
+ * Dịch văn bản giữa hai ngôn ngữ bằng Gemini (chuẩn style backend)
+ * - Có fallback giữa các model
+ * - Đọc prompt từ file /configs/translate.txt
+ * - Trả về { model, json }
+ */
+export async function translateText(
+    text: string,
+    sourceLang: string,
+    targetLang: string
+) {
+    if (!text?.trim()) throw new Error("Missing text for translation.");
+
+    // Đọc prompt từ file cấu hình
+    const promptPath = path.resolve(__dirname, "../configs/translate.txt");
+    if (!fs.existsSync(promptPath))
+        throw new Error(`Missing prompt file: ${promptPath}`);
+
+    const promptTemplate = fs.readFileSync(promptPath, "utf8");
+
+    // Thay placeholder
+    const prompt = promptTemplate
+        .replace("{{SOURCE_LANG}}", sourceLang)
+        .replace("{{TARGET_LANG}}", targetLang)
+        .replace("{{TEXT}}", text);
+
+
+    // thu lần lượt qua các model
+    for (const model of MODELS) {
+        try {
+            console.log(`🧠 Translating with model: ${model}`);
+
+            const result = await ai.models.generateContent({
+                model,
+                contents: prompt,
+                config: {
+                    temperature: 0.4,
+                    maxOutputTokens: 4096,
+                    responseMimeType: "application/json",
+                    responseSchema: TranslateSchema,
+                },
+            });
+
+            // Kiem tra và parse kết quả an toàn
+            const output = result.text?.trim();
+            if (!output) throw new Error("Empty structured response from Gemini.");
+
+            let parsed: any = null;
+            try {
+                parsed = JSON.parse(output);
+            } catch {
+                console.warn("⚠️ Không parse được JSON, trả về text thô.");
+                parsed = { translatedText: output };
+            }
+
+            console.log("📦 Translation result:", parsed);
+            return { model, json: parsed };
+        } catch (err: any) {
+            const msg = err?.message || err?.error?.message || "";
+            if (
+                msg.includes("503") ||
+                msg.includes("UNAVAILABLE") ||
+                msg.includes("overloaded")
+            ) {
+                console.warn(`🚧 ${model} bị quá tải, thử model kế tiếp...`);
+                continue;
+            }
+            console.error(`❌ Lỗi khi gọi ${model}:`, msg);
+            throw err;
+        }
+    }
+
+    throw new Error("Tất cả model Gemini đều quá tải hoặc lỗi xử lý.");
 }
