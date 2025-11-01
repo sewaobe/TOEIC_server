@@ -1,0 +1,4445 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "TOEIC API",
+    "version": "1.0.0",
+    "description": "Tài liệu API cho hệ thống TOEIC (Express + TypeScript)"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5000/api",
+      "description": "Local Server"
+    }
+  ],
+  "paths": {
+    "/admin/request-collaborators": {
+      "get": {
+        "summary": "Lấy danh sách biểu mẫu đăng ký cộng tác viên",
+        "description": "Chỉ admin có quyền xem danh sách yêu cầu cộng tác viên, hỗ trợ phân trang.",
+        "tags": [
+          "Request Collaborator"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            },
+            "description": "Trang hiện tại"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 6
+            },
+            "description": "Giới hạn số lượng mỗi trang"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lấy danh sách yêu cầu thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Fetched collaborator requests successfully."
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/RequestCollaborator"
+                          }
+                        },
+                        "pagination": {
+                          "type": "object",
+                          "properties": {
+                            "page": {
+                              "type": "integer",
+                              "example": 1
+                            },
+                            "totalPages": {
+                              "type": "integer",
+                              "example": 3
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Không có quyền truy cập"
+          }
+        }
+      },
+      "post": {
+        "summary": "Gửi biểu mẫu đăng ký cộng tác viên",
+        "description": "Người dùng gửi form đăng ký cộng tác viên với thông tin cá nhân và CV.",
+        "tags": [
+          "Request Collaborator"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestCollaborator"
+              },
+              "example": {
+                "fullName": "Nguyễn Minh Học",
+                "email": "hoc.nguyen@example.com",
+                "experience": "1-2 năm",
+                "expertise": [
+                  "Listening",
+                  "Reading"
+                ],
+                "motivation": "Muốn trở thành cộng tác viên hỗ trợ học viên luyện TOEIC.",
+                "availability": "part-time",
+                "cv_url": "https://res.cloudinary.com/demo/cv_nguyenminhhoc.pdf"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Gửi biểu mẫu thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Collaborator request submitted successfully."
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/RequestCollaborator"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/request-collaborators/by-user": {
+      "get": {
+        "summary": "Lấy biểu mẫu đăng ký cộng tác viên của người dùng hiện tại",
+        "description": "Người dùng đã đăng nhập có thể xem lại biểu mẫu cộng tác viên mà họ đã gửi. Trả về thông tin chi tiết của biểu mẫu tương ứng với `user_id` trong token.",
+        "tags": [
+          "Request Collaborator"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lấy biểu mẫu thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Fetched collaborator request by user successfully."
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/RequestCollaborator"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai token truy cập"
+          },
+          "404": {
+            "description": "Người dùng chưa gửi biểu mẫu đăng ký cộng tác viên"
+          }
+        }
+      }
+    },
+    "/admin/request-collaborators/{id}/status": {
+      "put": {
+        "summary": "Cập nhật trạng thái duyệt đơn đăng ký cộng tác viên",
+        "description": "Admin chấp nhận (approved) hoặc từ chối (rejected) yêu cầu cộng tác viên.",
+        "tags": [
+          "Request Collaborator"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID của biểu mẫu cần cập nhật"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "approved",
+                      "rejected"
+                    ],
+                    "example": "approved"
+                  },
+                  "rejection_reason": {
+                    "type": "string",
+                    "example": "Chưa đủ kinh nghiệm yêu cầu."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cập nhật trạng thái thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Updated collaborator request status successfully."
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/RequestCollaborator"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy biểu mẫu"
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "summary": "Đăng nhập tài khoản người dùng",
+        "description": "Gửi email và mật khẩu để đăng nhập. API sẽ trả về accessToken và refreshToken được lưu trong cookie, cùng role_name trong response body.",
+        "tags": [
+          "Auth"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "password"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "example": "user@example.com"
+                  },
+                  "password": {
+                    "type": "string",
+                    "example": 123456
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đăng nhập thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Login successfully"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "role_name": {
+                          "type": "string",
+                          "example": "student"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sai thông tin đăng nhập hoặc tài khoản bị khóa"
+          }
+        }
+      }
+    },
+    "/auth/google": {
+      "post": {
+        "summary": "Đăng nhập bằng Google",
+        "description": "Gửi Google ID token để xác thực và nhận cookie accessToken, refreshToken.",
+        "tags": [
+          "Auth"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "idToken"
+                ],
+                "properties": {
+                  "idToken": {
+                    "type": "string",
+                    "example": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImE1YTAwNWU5N2NiMWU0MjczMDBlNTJjZGQ1MGYwYjM2Y2Q4MDYyOWIiLCJ0eXAiOiJKV1QifQ.eyJuYW1lIjoiTmd1eWVuIFBodWMgQmFvIiwicGljdHVyZSI6Imh0dHBzOi8vbGgzLmdvb2dsZXVzZXJjb250ZW50LmNvbS9hL0FDZzhvY0pwMDltQ2dzelBXOEY0bGZ4UHlfcFVkWlJNcTRZekhyaWxKZ0M2UU8zVmR2WFRtdz1zOTYtYyIsImlzcyI6Imh0dHBzOi8vc2VjdXJldG9rZW4uZ29vZ2xlLmNvbS90b2VpYy1hdXRoIiwiYXVkIjoidG9laWMtYXV0aCIsImF1dGhfdGltZSI6MTc2MDI4NjM1NSwidXNlcl9pZCI6InhaYWxLMHUzcWVmdnB5aWdER3JrbzFYQk9wSDIiLCJzdWIiOiJ4WmFsSzB1M3FlZnZweWlnREdya28xWEJPcEgyIiwiaWF0IjoxNzYwMjg2MzU1LCJleHAiOjE3NjAyODk5NTUsImVtYWlsIjoiMjIxMTAyODVAc3R1ZGVudC5oY211dGUuZWR1LnZuIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsImZpcmViYXNlIjp7ImlkZW50aXRpZXMiOnsiZ29vZ2xlLmNvbSI6WyIxMTYxNjg1OTU4NTkzMDAxMDg4MjYiXSwiZW1haWwiOlsiMjIxMTAyODVAc3R1ZGVudC5oY211dGUuZWR1LnZuIl19LCJzaWduX2luX3Byb3ZpZGVyIjoiZ29vZ2xlLmNvbSJ9fQ.DpDjcY4Pjuzwo-nDSeixvUKtfUbLIgPXjBe6eDMosMxv7lfyeoSvh17uqyuMppGXVCC5XBuGw4LFZcQEgnlkbPkDTs7nd7yE-M_L-IIdYmksuFGLzV8kYPCLsnyq5oyOHOjCdogtn-BS_pMGxp1sC0AfqPsdAHGcskBX9r3pYoBeGwlfmqfjkm1v-JvrkwVUwRWzFQecf27GUMNZfS16YoYzuZyPy8mRgaroXeocig1ToAO5_jIA-OD7rKGjzkTa_mDgLs6vdpnDsppkCLMCdWi1kkkkQR0F5cmSBf-giQl1gDDvGkufjGzvW4ZP1vqPBKNrVphxNY26fc85KWm1Iw"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đăng nhập Google thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "role_name": {
+                          "type": "string",
+                          "example": "student"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Thiếu idToken"
+          },
+          "401": {
+            "description": "Xác thực Google thất bại"
+          }
+        }
+      }
+    },
+    "/auth/register": {
+      "post": {
+        "summary": "Đăng ký tài khoản mới",
+        "description": "Gửi thông tin người dùng mới để đăng ký tài khoản.",
+        "tags": [
+          "Auth"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "password",
+                  "full_name"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "example": "newuser@example.com"
+                  },
+                  "password": {
+                    "type": "string",
+                    "example": 123456
+                  },
+                  "full_name": {
+                    "type": "string",
+                    "example": "Nguyen Van A"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Đăng ký thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Register successfully"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Email đã tồn tại hoặc dữ liệu không hợp lệ"
+          }
+        }
+      }
+    },
+    "/auth/refresh-token": {
+      "get": {
+        "summary": "Làm mới accessToken bằng refreshToken",
+        "description": "API đọc refreshToken từ cookie, kiểm tra hợp lệ và trả về accessToken mới (cũng set trong cookie).",
+        "tags": [
+          "Auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "Làm mới accessToken thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Refresh token successfully"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu refreshToken trong cookie"
+          },
+          "403": {
+            "description": "RefreshToken hết hạn hoặc không hợp lệ"
+          }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "summary": "Đăng xuất tài khoản",
+        "description": "Xóa cookie accessToken và refreshToken.",
+        "tags": [
+          "Auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "Đăng xuất thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Logged out successfully"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/request-otp": {
+      "post": {
+        "summary": "Gửi mã OTP đến email người dùng",
+        "description": "Dùng để yêu cầu mã OTP phục vụ quên mật khẩu.",
+        "tags": [
+          "Password Reset"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "example": "user@example.com"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Gửi OTP thành công"
+          },
+          "400": {
+            "description": "Email không tồn tại"
+          }
+        }
+      }
+    },
+    "/auth/verify-otp": {
+      "post": {
+        "summary": "Xác minh mã OTP",
+        "description": "Kiểm tra OTP người dùng nhập để xác thực reset mật khẩu.",
+        "tags": [
+          "Password Reset"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "otp"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "example": "user@example.com"
+                  },
+                  "otp": {
+                    "type": "string",
+                    "example": 123456
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OTP hợp lệ"
+          },
+          "400": {
+            "description": "OTP sai hoặc hết hạn"
+          }
+        }
+      }
+    },
+    "/auth/reset-password": {
+      "post": {
+        "summary": "Đặt lại mật khẩu mới",
+        "description": "Gửi email và mật khẩu mới để đặt lại mật khẩu sau khi xác minh OTP thành công.",
+        "tags": [
+          "Password Reset"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "newPassword"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "example": "user@example.com"
+                  },
+                  "newPassword": {
+                    "type": "string",
+                    "example": "newpassword123"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đặt lại mật khẩu thành công"
+          }
+        }
+      }
+    },
+    "/ctv/dictation": {
+      "get": {
+        "summary": "Lấy danh sách bài nghe (Dictation) có phân trang",
+        "description": "API trả về danh sách dictation, hỗ trợ phân trang bằng query `page` và `limit`",
+        "tags": [
+          "Dictation"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "example": 0
+            },
+            "description": "Trang hiện tại (bắt đầu từ 0)"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "example": 10
+            },
+            "description": "Số lượng dictation mỗi trang"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Danh sách dictation được trả về thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Dictation"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "example": 125
+                    },
+                    "page": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "pageCount": {
+                      "type": "integer",
+                      "example": 13
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Tạo mới bài nghe chép chính tả (Dictation)",
+        "description": "API dùng để thêm mới một bài nghe chép chính tả.  \nCác trường `part_type` và `level` hỗ trợ lựa chọn qua dropdown.  \nDưới đây là ví dụ dữ liệu mẫu.\n",
+        "tags": [
+          "Dictation"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "topic",
+                  "level",
+                  "transcript",
+                  "timings",
+                  "answer_key",
+                  "display_mode"
+                ],
+                "properties": {
+                  "topic": {
+                    "type": "string",
+                    "example": "Daily Conversation - Ordering Coffee"
+                  },
+                  "part_type": {
+                    "type": "integer",
+                    "description": "Loại phần thi (theo định dạng TOEIC):\n- 1: PART_1 (Photo)\n- 2: PART_2 (Question-Response)\n- 3: PART_3 (Conversation)\n- 4: PART_4 (Talk)\n- 5: PART_5 (Incomplete Sentences)\n- 6: PART_6 (Text Completion)\n- 7: PART_7 (Reading Comprehension)\n",
+                    "enum": [
+                      1,
+                      2,
+                      3,
+                      4,
+                      5,
+                      6,
+                      7
+                    ],
+                    "example": 2
+                  },
+                  "level": {
+                    "type": "string",
+                    "description": "Trình độ người học (CEFR)",
+                    "enum": [
+                      "A1",
+                      "A2",
+                      "B1",
+                      "B2",
+                      "C1",
+                      "C2"
+                    ],
+                    "example": "A1"
+                  },
+                  "transcript": {
+                    "type": "string",
+                    "example": "Good morning. I'd like a cup of cappuccino, please."
+                  },
+                  "audio_url": {
+                    "type": "string",
+                    "example": "https://cdn.example.com/audio/cappuccino.mp3"
+                  },
+                  "duration": {
+                    "type": "number",
+                    "example": 28.5
+                  },
+                  "timings": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "text",
+                        "startTime",
+                        "endTime"
+                      ],
+                      "properties": {
+                        "text": {
+                          "type": "string",
+                          "example": "Good morning."
+                        },
+                        "startTime": {
+                          "type": "number",
+                          "example": 0
+                        },
+                        "endTime": {
+                          "type": "number",
+                          "example": 2.5
+                        },
+                        "words": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "word": {
+                                "type": "string",
+                                "example": "Good"
+                              },
+                              "start": {
+                                "type": "number",
+                                "example": 0
+                              },
+                              "end": {
+                                "type": "number",
+                                "example": 0.4
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "answer_key": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "text": {
+                          "type": "string",
+                          "example": "cappuccino"
+                        },
+                        "hint": {
+                          "type": "string",
+                          "example": "coffee drink with milk foam"
+                        }
+                      }
+                    }
+                  },
+                  "display_mode": {
+                    "type": "string",
+                    "enum": [
+                      "sentence",
+                      "word"
+                    ],
+                    "example": "sentence"
+                  }
+                }
+              },
+              "example": {
+                "topic": "Daily Conversation - Ordering Coffee",
+                "part_type": 2,
+                "level": "A1",
+                "transcript": "Good morning. I'd like a cup of cappuccino, please.",
+                "audio_url": "https://cdn.example.com/audio/cappuccino.mp3",
+                "duration": 28.5,
+                "timings": [
+                  {
+                    "text": "Good morning.",
+                    "startTime": 0,
+                    "endTime": 2.5,
+                    "words": [
+                      {
+                        "word": "Good",
+                        "start": 0,
+                        "end": 0.4
+                      },
+                      {
+                        "word": "morning",
+                        "start": 0.4,
+                        "end": 1.2
+                      }
+                    ]
+                  },
+                  {
+                    "text": "I'd like a cup of cappuccino, please.",
+                    "startTime": 2.6,
+                    "endTime": 6.5
+                  }
+                ],
+                "answer_key": [
+                  {
+                    "text": "cappuccino",
+                    "hint": "coffee drink with milk foam"
+                  }
+                ],
+                "display_mode": "sentence"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tạo mới bài nghe chép chính tả thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Thêm nghe chép chính tả thành công"
+                    },
+                    "data": {
+                      "type": "object",
+                      "example": {
+                        "_id": "670abf10a9b9a2cbd8a55a22",
+                        "topic": "Daily Conversation - Ordering Coffee",
+                        "part_type": 2,
+                        "level": "A1",
+                        "transcript": "Good morning. I'd like a cup of cappuccino, please.",
+                        "audio_url": "https://cdn.example.com/audio/cappuccino.mp3",
+                        "duration": 28.5,
+                        "display_mode": "sentence",
+                        "created_at": "2025-10-12T08:15:30.000Z",
+                        "updated_at": "2025-10-12T08:20:45.000Z"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dữ liệu không hợp lệ hoặc thiếu thông tin bắt buộc"
+          }
+        }
+      }
+    },
+    "/ctv/dictation/{id}": {
+      "get": {
+        "summary": "Lấy thông tin chi tiết của một bài nghe chép chính tả",
+        "description": "API trả về thông tin chi tiết của một Dictation dựa trên ID được cung cấp trong URL.",
+        "tags": [
+          "Dictation"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "671ab10df8f8d0a23b6a7b14"
+            },
+            "description": "ID của bài nghe chép chính tả cần lấy thông tin"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lấy thông tin Dictation thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Dictation"
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Lấy thông tin nghe chép chính tả thành công"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ID không hợp lệ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "ID không hợp lệ"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy Dictation với ID tương ứng",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Không tìm thấy bài nghe chép chính tả"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Cập nhật bài nghe chép chính tả",
+        "description": "Sửa thông tin một bài nghe theo ID. Các trường không gửi sẽ giữ nguyên.",
+        "tags": [
+          "Dictation"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID của bài nghe cần cập nhật"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DictationCreateRequest"
+              },
+              "example": {
+                "topic": "Daily Conversation - Ordering Coffee",
+                "part_type": 2,
+                "level": "A1",
+                "transcript": "Good morning. I'd like a cup of cappuccino, please.",
+                "audio_url": "https://cdn.example.com/audio/cappuccino.mp3",
+                "duration": 28.5,
+                "timings": [
+                  {
+                    "text": "Good morning.",
+                    "startTime": 0,
+                    "endTime": 2.5,
+                    "words": [
+                      {
+                        "word": "Good",
+                        "start": 0,
+                        "end": 0.4
+                      },
+                      {
+                        "word": "morning",
+                        "start": 0.4,
+                        "end": 1.2
+                      }
+                    ]
+                  },
+                  {
+                    "text": "I'd like a cup of cappuccino, please.",
+                    "startTime": 2.6,
+                    "endTime": 6.5,
+                    "words": []
+                  }
+                ],
+                "answer_key": [
+                  {
+                    "text": "cappuccino",
+                    "hint": "coffee drink with milk foam"
+                  }
+                ],
+                "display_mode": "sentence"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cập nhật thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Sửa nghe chép chính tả thành công"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Dictation"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "message": "Sửa nghe chép chính tả thành công",
+                  "data": {
+                    "_id": "68ec5ac7d0c569ca949a86a7",
+                    "topic": "Daily Conversation - Ordering Coffee",
+                    "part_type": 2,
+                    "level": "A1",
+                    "transcript": "Good morning. I'd like a cup of cappuccino, please.",
+                    "audio_url": "https://cdn.example.com/audio/cappuccino.mp3",
+                    "duration": 28.5,
+                    "timings": [
+                      {
+                        "text": "Good morning.",
+                        "startTime": 0,
+                        "endTime": 2.5,
+                        "words": [
+                          {
+                            "word": "Good",
+                            "start": 0,
+                            "end": 0.4
+                          },
+                          {
+                            "word": "morning",
+                            "start": 0.4,
+                            "end": 1.2
+                          }
+                        ]
+                      },
+                      {
+                        "text": "I'd like a cup of cappuccino, please.",
+                        "startTime": 2.6,
+                        "endTime": 6.5,
+                        "words": []
+                      }
+                    ],
+                    "answer_key": [
+                      {
+                        "text": "cappuccino",
+                        "hint": "coffee drink with milk foam"
+                      }
+                    ],
+                    "display_mode": "sentence",
+                    "created_at": "2025-10-13T01:49:59.169Z",
+                    "updated_at": "2025-10-13T09:20:11.512Z"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dữ liệu không hợp lệ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Dữ liệu không hợp lệ hoặc sai định dạng"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy bài nghe",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Không tìm thấy bài nghe cần cập nhật"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Xóa bài nghe chép chính tả theo ID",
+        "description": "Xóa bài nghe khỏi hệ thống dựa trên ID. Chỉ admin hoặc cộng tác viên có quyền mới được thao tác.",
+        "tags": [
+          "Dictation"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID của bài nghe cần xóa"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Xóa bài nghe thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Xóa bài nghe chép chính tả thành công"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ID không hợp lệ hoặc thiếu trong request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "ID không hợp lệ hoặc thiếu trong request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy bài nghe cần xóa",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Không tìm thấy bài nghe cần xóa"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ctv/lesson-manager/titles": {
+      "get": {
+        "tags": [
+          "CTV Lesson Manager"
+        ],
+        "summary": "Get all topic titles",
+        "description": "Retrieve a list of all topic titles available in the lesson manager.",
+        "responses": {
+          "200": {
+            "description": "A list of topic titles.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "example": "64a7b2f4c25e4b3f9c8e4d2a"
+                          },
+                          "title": {
+                            "type": "string",
+                            "example": "Basic Grammar"
+                          }
+                        }
+                      }
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Fetched topic titles successfully."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ctv/lesson-manager": {
+      "get": {
+        "tags": [
+          "CTV Lesson Manager"
+        ],
+        "summary": "Get all lesson managers with pagination",
+        "description": "Retrieve a paginated list of lesson managers created by the authenticated CTV user.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Page number for pagination (default is 1)"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Number of items per page (default is 10)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A paginated list of lesson managers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/LessonManager"
+                      }
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Fetched lesson managers successfully."
+                    },
+                    "pagination": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "totalPages": {
+                          "type": "integer"
+                        },
+                        "hasNext": {
+                          "type": "boolean"
+                        },
+                        "hasPrev": {
+                          "type": "boolean"
+                        }
+                      },
+                      "example": {
+                        "page": 1,
+                        "limit": 10,
+                        "total": 25,
+                        "totalPages": 3,
+                        "hasNext": true,
+                        "hasPrev": false
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "CTV Lesson Manager"
+        ],
+        "summary": "Create a new lesson manager",
+        "description": "Create a new lesson manager with the provided details.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LessonManager"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Lesson manager created successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/LessonManager"
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Created lesson manager successfully."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ctv/lesson-manager/{id}": {
+      "get": {
+        "tags": [
+          "CTV Lesson Manager"
+        ],
+        "summary": "Get a lesson manager by ID",
+        "description": "Retrieve detailed information about a specific lesson manager created by the authenticated CTV user.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ID of the lesson manager to retrieve"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved the lesson manager.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/LessonManager"
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Fetched lesson manager successfully."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid ID format.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Invalid lesson manager ID format."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Lesson manager not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Lesson manager not found."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "CTV Lesson Manager"
+        ],
+        "summary": "Update an existing lesson manager",
+        "description": "Update the details of an existing lesson manager by its ID.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ID of the lesson manager to update."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LessonManager"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Lesson manager updated successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/LessonManager"
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Updated lesson manager successfully."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "CTV Lesson Manager"
+        ],
+        "summary": "Delete an existing lesson manager",
+        "description": "Delete an existing lesson manager by its ID.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ID of the lesson manager to delete."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lesson manager deleted successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "example": {}
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Deleted lesson manager successfully."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ctv/lesson-manager/{id}/status": {
+      "put": {
+        "tags": [
+          "CTV Lesson Manager"
+        ],
+        "summary": "Cập nhật trạng thái của Lesson Manager",
+        "description": "Cập nhật trạng thái bài học trong Lesson Manager theo ID.\nChỉ người tạo hoặc quản trị viên mới có quyền thay đổi trạng thái.\nCác giá trị hợp lệ của status bao gồm:\n  - **draft**: Bản nháp (chưa gửi duyệt)\n  - **pending**: Đang chờ admin duyệt\n  - **approved**: Đã được admin duyệt\n  - **open**: Đang mở cho học viên\n  - **closed**: Đã đóng, không thể truy cập\n",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID của Lesson Manager cần cập nhật trạng thái"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "description": "Trạng thái mới của bài học",
+                    "enum": [
+                      "draft",
+                      "pending",
+                      "approved",
+                      "open",
+                      "closed"
+                    ],
+                    "example": "pending"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cập nhật trạng thái thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/LessonManager"
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Cập nhật trạng thái Lesson Manager thành công."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Giá trị trạng thái không hợp lệ hoặc request sai định dạng.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Trạng thái không hợp lệ. Vui lòng chọn một trong: draft, pending, approved, open, closed."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Người dùng không có quyền cập nhật trạng thái này.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden: chỉ người tạo hoặc admin mới được cập nhật trạng thái."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy Lesson Manager tương ứng với ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Không tìm thấy Lesson Manager."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Lỗi máy chủ nội bộ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Lỗi máy chủ nội bộ."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ctv/shadowing": {
+      "get": {
+        "summary": "Lấy danh sách bài nghe (shadowing) có phân trang",
+        "description": "API trả về danh sách shadowing, hỗ trợ phân trang bằng query `page` và `limit`",
+        "tags": [
+          "Shadowing"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "example": 0
+            },
+            "description": "Trang hiện tại (bắt đầu từ 0)"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "example": 10
+            },
+            "description": "Số lượng shadowing mỗi trang"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Danh sách shadowing được trả về thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/shadowing"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "example": 125
+                    },
+                    "page": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "pageCount": {
+                      "type": "integer",
+                      "example": 13
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Tạo mới bài nghe chép chính tả (shadowing)",
+        "description": "API dùng để thêm mới một bài nghe chép chính tả.  \nCác trường `part_type` và `level` hỗ trợ lựa chọn qua dropdown.  \nDưới đây là ví dụ dữ liệu mẫu.\n",
+        "tags": [
+          "Shadowing"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "topic",
+                  "level",
+                  "transcript",
+                  "timings",
+                  "answer_key",
+                  "display_mode"
+                ],
+                "properties": {
+                  "topic": {
+                    "type": "string",
+                    "example": "Daily Conversation - Ordering Coffee"
+                  },
+                  "part_type": {
+                    "type": "integer",
+                    "description": "Loại phần thi (theo định dạng TOEIC):\n- 1: PART_1 (Photo)\n- 2: PART_2 (Question-Response)\n- 3: PART_3 (Conversation)\n- 4: PART_4 (Talk)\n- 5: PART_5 (Incomplete Sentences)\n- 6: PART_6 (Text Completion)\n- 7: PART_7 (Reading Comprehension)\n",
+                    "enum": [
+                      1,
+                      2,
+                      3,
+                      4,
+                      5,
+                      6,
+                      7
+                    ],
+                    "example": 2
+                  },
+                  "level": {
+                    "type": "string",
+                    "description": "Trình độ người học (CEFR)",
+                    "enum": [
+                      "A1",
+                      "A2",
+                      "B1",
+                      "B2",
+                      "C1",
+                      "C2"
+                    ],
+                    "example": "A1"
+                  },
+                  "transcript": {
+                    "type": "string",
+                    "example": "Good morning. I'd like a cup of cappuccino, please."
+                  },
+                  "audio_url": {
+                    "type": "string",
+                    "example": "https://cdn.example.com/audio/cappuccino.mp3"
+                  },
+                  "duration": {
+                    "type": "number",
+                    "example": 28.5
+                  },
+                  "timings": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "text",
+                        "startTime",
+                        "endTime"
+                      ],
+                      "properties": {
+                        "text": {
+                          "type": "string",
+                          "example": "Good morning."
+                        },
+                        "startTime": {
+                          "type": "number",
+                          "example": 0
+                        },
+                        "endTime": {
+                          "type": "number",
+                          "example": 2.5
+                        },
+                        "words": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "word": {
+                                "type": "string",
+                                "example": "Good"
+                              },
+                              "start": {
+                                "type": "number",
+                                "example": 0
+                              },
+                              "end": {
+                                "type": "number",
+                                "example": 0.4
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "answer_key": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "text": {
+                          "type": "string",
+                          "example": "cappuccino"
+                        },
+                        "hint": {
+                          "type": "string",
+                          "example": "coffee drink with milk foam"
+                        }
+                      }
+                    }
+                  },
+                  "display_mode": {
+                    "type": "string",
+                    "enum": [
+                      "sentence",
+                      "word"
+                    ],
+                    "example": "sentence"
+                  }
+                }
+              },
+              "example": {
+                "topic": "Daily Conversation - Ordering Coffee",
+                "part_type": 2,
+                "level": "A1",
+                "transcript": "Good morning. I'd like a cup of cappuccino, please.",
+                "audio_url": "https://cdn.example.com/audio/cappuccino.mp3",
+                "duration": 28.5,
+                "timings": [
+                  {
+                    "text": "Good morning.",
+                    "startTime": 0,
+                    "endTime": 2.5,
+                    "words": [
+                      {
+                        "word": "Good",
+                        "start": 0,
+                        "end": 0.4
+                      },
+                      {
+                        "word": "morning",
+                        "start": 0.4,
+                        "end": 1.2
+                      }
+                    ]
+                  },
+                  {
+                    "text": "I'd like a cup of cappuccino, please.",
+                    "startTime": 2.6,
+                    "endTime": 6.5
+                  }
+                ],
+                "answer_key": [
+                  {
+                    "text": "cappuccino",
+                    "hint": "coffee drink with milk foam"
+                  }
+                ],
+                "display_mode": "sentence"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tạo mới bài nghe chép chính tả thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Thêm nghe chép chính tả thành công"
+                    },
+                    "data": {
+                      "type": "object",
+                      "example": {
+                        "_id": "670abf10a9b9a2cbd8a55a22",
+                        "topic": "Daily Conversation - Ordering Coffee",
+                        "part_type": 2,
+                        "level": "A1",
+                        "transcript": "Good morning. I'd like a cup of cappuccino, please.",
+                        "audio_url": "https://cdn.example.com/audio/cappuccino.mp3",
+                        "duration": 28.5,
+                        "display_mode": "sentence",
+                        "created_at": "2025-10-12T08:15:30.000Z",
+                        "updated_at": "2025-10-12T08:20:45.000Z"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dữ liệu không hợp lệ hoặc thiếu thông tin bắt buộc"
+          }
+        }
+      }
+    },
+    "/ctv/shadowing/{id}": {
+      "get": {
+        "summary": "Lấy chi tiết bài luyện nói (Shadowing) theo ID",
+        "description": "API trả về thông tin chi tiết của một bài Shadowing dựa trên ID được cung cấp trong URL.",
+        "tags": [
+          "Shadowing"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "671ac1bdf8f8d0a23b6a7b44"
+            },
+            "description": "ID của bài Shadowing cần lấy thông tin"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lấy thông tin Shadowing thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Shadowing"
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Lấy thông tin bài Shadowing thành công"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ID không hợp lệ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "ID không hợp lệ"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy bài Shadowing tương ứng",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Không tìm thấy bài luyện nói"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Cập nhật bài nghe chép chính tả",
+        "description": "Sửa thông tin một bài nghe theo ID. Các trường không gửi sẽ giữ nguyên.",
+        "tags": [
+          "Shadowing"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID của bài nghe cần cập nhật"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/shadowingCreateRequest"
+              },
+              "example": {
+                "topic": "Daily Conversation - Ordering Coffee",
+                "part_type": 2,
+                "level": "A1",
+                "transcript": "Good morning. I'd like a cup of cappuccino, please.",
+                "audio_url": "https://cdn.example.com/audio/cappuccino.mp3",
+                "duration": 28.5,
+                "timings": [
+                  {
+                    "text": "Good morning.",
+                    "startTime": 0,
+                    "endTime": 2.5,
+                    "words": [
+                      {
+                        "word": "Good",
+                        "start": 0,
+                        "end": 0.4
+                      },
+                      {
+                        "word": "morning",
+                        "start": 0.4,
+                        "end": 1.2
+                      }
+                    ]
+                  },
+                  {
+                    "text": "I'd like a cup of cappuccino, please.",
+                    "startTime": 2.6,
+                    "endTime": 6.5,
+                    "words": []
+                  }
+                ],
+                "answer_key": [
+                  {
+                    "text": "cappuccino",
+                    "hint": "coffee drink with milk foam"
+                  }
+                ],
+                "display_mode": "sentence"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cập nhật thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Sửa nghe chép chính tả thành công"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Dictation"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "message": "Sửa nghe chép chính tả thành công",
+                  "data": {
+                    "_id": "68ec5ac7d0c569ca949a86a7",
+                    "topic": "Daily Conversation - Ordering Coffee",
+                    "part_type": 2,
+                    "level": "A1",
+                    "transcript": "Good morning. I'd like a cup of cappuccino, please.",
+                    "audio_url": "https://cdn.example.com/audio/cappuccino.mp3",
+                    "duration": 28.5,
+                    "timings": [
+                      {
+                        "text": "Good morning.",
+                        "startTime": 0,
+                        "endTime": 2.5,
+                        "words": [
+                          {
+                            "word": "Good",
+                            "start": 0,
+                            "end": 0.4
+                          },
+                          {
+                            "word": "morning",
+                            "start": 0.4,
+                            "end": 1.2
+                          }
+                        ]
+                      },
+                      {
+                        "text": "I'd like a cup of cappuccino, please.",
+                        "startTime": 2.6,
+                        "endTime": 6.5,
+                        "words": []
+                      }
+                    ],
+                    "answer_key": [
+                      {
+                        "text": "cappuccino",
+                        "hint": "coffee drink with milk foam"
+                      }
+                    ],
+                    "display_mode": "sentence",
+                    "created_at": "2025-10-13T01:49:59.169Z",
+                    "updated_at": "2025-10-13T09:20:11.512Z"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dữ liệu không hợp lệ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Dữ liệu không hợp lệ hoặc sai định dạng"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy bài nghe",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Không tìm thấy bài nghe cần cập nhật"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Xóa bài nghe chép chính tả theo ID",
+        "description": "Xóa bài nghe khỏi hệ thống dựa trên ID. Chỉ admin hoặc cộng tác viên có quyền mới được thao tác.",
+        "tags": [
+          "Shadowing"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID của bài nghe cần xóa"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Xóa bài nghe thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Xóa bài nghe chép chính tả thành công"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ID không hợp lệ hoặc thiếu trong request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "ID không hợp lệ hoặc thiếu trong request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy bài nghe cần xóa",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Không tìm thấy bài nghe cần xóa"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ctv/topics": {
+      "get": {
+        "summary": "Lấy danh sách chủ đề từ vựng của cộng tác viên",
+        "description": "Trả về danh sách các chủ đề từ vựng được tạo bởi cộng tác viên, có hỗ trợ phân trang.",
+        "tags": [
+          "Topic Vocabulary"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            },
+            "description": "Số trang hiện tại (mặc định là 1)"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "example": 6
+            },
+            "description": "Số lượng chủ đề trên mỗi trang (mặc định là 6)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lấy danh sách chủ đề thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "status": "success",
+                  "message": "Lấy danh sách chủ đề từ vựng thành công",
+                  "data": {
+                    "currentPage": 1,
+                    "totalPages": 3,
+                    "totalItems": 15,
+                    "items": [
+                      {
+                        "_id": "6717a4b2e9f2a3c9bde91f11",
+                        "title": "Chủ đề: Du lịch",
+                        "description": "Tổng hợp các từ vựng phổ biến về du lịch",
+                        "tags": [
+                          "travel",
+                          "holiday",
+                          "airport"
+                        ],
+                        "level": "B1",
+                        "iconName": "flight_takeoff",
+                        "bgColor": "#FFDD00",
+                        "gradient": "linear-gradient(90deg, #FFDD00, #FFA500)",
+                        "vocabularies_id": [
+                          "6717a4b2e9f2a3c9bde91f21"
+                        ],
+                        "isCollaborator": true,
+                        "isPublic": true,
+                        "created_by": "6717a4b2e9f2a3c9bde91f01",
+                        "created_at": "2025-10-21T08:30:00.000Z",
+                        "updated_at": "2025-10-22T09:00:00.000Z"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Không có quyền truy cập hoặc chưa đăng nhập"
+          },
+          "500": {
+            "description": "Lỗi máy chủ nội bộ"
+          }
+        }
+      },
+      "post": {
+        "summary": "Tạo chủ đề từ vựng mới",
+        "description": "Cho phép cộng tác viên tạo chủ đề mới gồm tiêu đề, mô tả, thẻ và cấp độ CEFR.",
+        "tags": [
+          "Topic Vocabulary"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "title": "Chủ đề: Môi trường",
+                "description": "Từ vựng liên quan đến bảo vệ môi trường",
+                "tags": [
+                  "environment",
+                  "pollution",
+                  "climate"
+                ],
+                "iconName": "eco",
+                "bgColor": "#00FF99",
+                "gradient": "linear-gradient(90deg, #00FF99, #00CC66)",
+                "level": "B2",
+                "topic": [
+                  "6717a4b2e9f2a3c9bde91f01"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Tạo chủ đề mới thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "status": "success",
+                  "message": "Tạo chủ đề mới thành công",
+                  "data": {
+                    "_id": "6717a4b2e9f2a3c9bde91f50",
+                    "title": "Chủ đề: Môi trường",
+                    "description": "Từ vựng liên quan đến bảo vệ môi trường",
+                    "tags": [
+                      "environment",
+                      "pollution",
+                      "climate"
+                    ],
+                    "level": "B2",
+                    "iconName": "eco",
+                    "bgColor": "#00FF99",
+                    "gradient": "linear-gradient(90deg, #00FF99, #00CC66)",
+                    "created_by": "6717a4b2e9f2a3c9bde91f01",
+                    "created_at": "2025-10-22T08:00:00.000Z"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dữ liệu không hợp lệ"
+          },
+          "401": {
+            "description": "Không có quyền truy cập"
+          },
+          "500": {
+            "description": "Lỗi máy chủ nội bộ"
+          }
+        }
+      }
+    },
+    "/ctv/topics/explore": {
+      "get": {
+        "summary": "Lấy danh sách chủ đề từ vựng để khám phá",
+        "description": "Trả về danh sách các **chủ đề từ vựng** dành cho người học khám phá.  \nBao gồm các chủ đề được công khai (`isPublic = true`, `isCollaborator = false`) **hoặc** được gắn thẻ `explore`.  \nCó hỗ trợ **phân trang** thông qua query `page` và `limit`.\n",
+        "tags": [
+          "Topic Vocabulary"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            },
+            "description": "Số trang hiện tại (mặc định là 1)"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "example": 6
+            },
+            "description": "Số lượng chủ đề trên mỗi trang (mặc định là 6)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lấy danh sách chủ đề khám phá thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "status": "success",
+                  "message": "Lấy danh sách chủ đề khám phá thành công",
+                  "data": {
+                    "currentPage": 1,
+                    "totalPages": 2,
+                    "totalItems": 12,
+                    "items": [
+                      {
+                        "_id": "6718b4e2f1a2c4d9bde92a45",
+                        "title": "Chủ đề: Môi trường",
+                        "description": "Các từ vựng liên quan đến bảo vệ môi trường và khí hậu",
+                        "tags": [
+                          "explore",
+                          "environment",
+                          "climate"
+                        ],
+                        "level": "B2",
+                        "iconName": "eco",
+                        "bgColor": "#4CAF50",
+                        "gradient": "linear-gradient(90deg, #4CAF50, #81C784)",
+                        "vocabularies_id": [
+                          "6718b4e2f1a2c4d9bde92a99"
+                        ],
+                        "isCollaborator": false,
+                        "isPublic": true,
+                        "created_by": "6718b4e2f1a2c4d9bde92001",
+                        "created_at": "2025-10-22T10:00:00.000Z",
+                        "updated_at": "2025-10-23T09:15:00.000Z"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Không có quyền truy cập hoặc chưa đăng nhập"
+          },
+          "500": {
+            "description": "Lỗi máy chủ nội bộ"
+          }
+        }
+      }
+    },
+    "/ctv/topics/{topicId}": {
+      "get": {
+        "summary": "Lấy danh sách từ vựng theo chủ đề",
+        "description": "Trả về danh sách các từ vựng thuộc chủ đề được chỉ định.",
+        "tags": [
+          "Topic Vocabulary"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "topicId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID của chủ đề cần lấy từ vựng"
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            },
+            "description": "Trang hiện tại"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "example": 10
+            },
+            "description": "Số lượng từ vựng mỗi trang"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lấy danh sách từ vựng thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "status": "success",
+                  "message": "Lấy danh sách từ vựng thành công",
+                  "data": {
+                    "topicId": "6717a4b2e9f2a3c9bde91f11",
+                    "totalWords": 120,
+                    "items": [
+                      {
+                        "_id": "6717a4b2e9f2a3c9bde91f99",
+                        "word": "pollution",
+                        "definition": "The presence of harmful substances in the environment",
+                        "example": "Air pollution is a serious problem in big cities."
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy chủ đề"
+          },
+          "500": {
+            "description": "Lỗi máy chủ nội bộ"
+          }
+        }
+      }
+    },
+    "/ctv/topics/{id}": {
+      "put": {
+        "summary": "Cập nhật thông tin chủ đề từ vựng",
+        "description": "Cho phép cộng tác viên cập nhật tiêu đề, mô tả, thẻ, màu sắc, cấp độ, v.v.",
+        "tags": [
+          "Topic Vocabulary"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID của chủ đề cần cập nhật"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "title": "Chủ đề: Môi trường xanh",
+                "description": "Từ vựng cập nhật về bảo vệ môi trường",
+                "tags": [
+                  "environment",
+                  "green",
+                  "recycle"
+                ],
+                "iconName": "eco",
+                "bgColor": "#00FF66",
+                "gradient": "linear-gradient(90deg, #00FF66, #00CC33)",
+                "level": "C1"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cập nhật chủ đề thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "status": "success",
+                  "message": "Cập nhật chủ đề thành công",
+                  "data": {
+                    "_id": "6717a4b2e9f2a3c9bde91f11",
+                    "title": "Chủ đề: Môi trường xanh",
+                    "description": "Từ vựng cập nhật về bảo vệ môi trường",
+                    "tags": [
+                      "environment",
+                      "green",
+                      "recycle"
+                    ],
+                    "level": "C1",
+                    "updated_at": "2025-10-22T09:00:00.000Z"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy chủ đề để cập nhật"
+          },
+          "500": {
+            "description": "Lỗi máy chủ nội bộ"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Xóa chủ đề từ vựng",
+        "description": "Xóa một chủ đề do cộng tác viên tạo ra.",
+        "tags": [
+          "Topic Vocabulary"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID của chủ đề cần xóa"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Xóa chủ đề thành công",
+            "content": {
+              "application/json": {
+                "example": {
+                  "status": "success",
+                  "message": "Xóa chủ đề thành công"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy chủ đề để xóa"
+          },
+          "500": {
+            "description": "Lỗi máy chủ nội bộ"
+          }
+        }
+      }
+    },
+    "/flashcard-progress/start": {
+      "post": {
+        "summary": "Tạo session học flashcard mới",
+        "tags": [
+          "Flashcard Progress"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "topic_vocabulary_id",
+                  "order_queue"
+                ],
+                "properties": {
+                  "topic_vocabulary_id": {
+                    "type": "string",
+                    "example": "66be49edaae5e7b17b42e104"
+                  },
+                  "order_queue": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "example": [
+                      "668cfe93a9a6b2e7b42a0101",
+                      "668cfe93a9a6b2e7b42a0102"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Tạo session thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlashCardProgress"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/flashcard-progress/update": {
+      "patch": {
+        "summary": "Cập nhật tiến trình học của session hiện tại",
+        "tags": [
+          "Flashcard Progress"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "session_id",
+                  "order_queue",
+                  "current_index"
+                ],
+                "properties": {
+                  "session_id": {
+                    "type": "string"
+                  },
+                  "order_queue": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "current_index": {
+                    "type": "number"
+                  },
+                  "logs_delta": {
+                    "type": "array",
+                    "description": "Danh sách log mới thêm trong lần cập nhật",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "vocab_id": {
+                          "type": "string"
+                        },
+                        "vocab_word": {
+                          "type": "string"
+                        },
+                        "eval_type": {
+                          "type": "string",
+                          "enum": [
+                            "easy",
+                            "medium",
+                            "hard",
+                            "skip"
+                          ]
+                        },
+                        "response_time": {
+                          "type": "number"
+                        },
+                        "attempted_at": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cập nhật tiến trình học thành công"
+          }
+        }
+      }
+    },
+    "/flashcard-progress/active-by-user": {
+      "get": {
+        "summary": "Lấy tất cả session học đang active của người dùng",
+        "tags": [
+          "Flashcard Progress"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer"
+            },
+            "example": 1
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            },
+            "example": 9
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Danh sách session đang active"
+          }
+        }
+      }
+    },
+    "/flashcard-progress/{session_id}": {
+      "get": {
+        "summary": "Lấy tiến trình của 1 session cụ thể",
+        "tags": [
+          "Flashcard Progress"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID của session flashcard"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lấy thông tin tiến trình thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlashCardProgress"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/flashcard-progress/finalize": {
+      "post": {
+        "summary": "Hoàn tất một session học flashcard",
+        "tags": [
+          "Flashcard Progress"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "session_id",
+                  "accuracy",
+                  "avg_time",
+                  "total",
+                  "logs",
+                  "started_at",
+                  "finished_at"
+                ],
+                "properties": {
+                  "session_id": {
+                    "type": "string"
+                  },
+                  "accuracy": {
+                    "type": "number",
+                    "example": 0.85
+                  },
+                  "avg_time": {
+                    "type": "number",
+                    "example": 3.2
+                  },
+                  "total": {
+                    "type": "number",
+                    "example": 20
+                  },
+                  "logs": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/FlashcardLog"
+                    }
+                  },
+                  "started_at": {
+                    "type": "string",
+                    "example": "2025-10-25T12:30:00Z"
+                  },
+                  "finished_at": {
+                    "type": "string",
+                    "example": "2025-10-25T12:45:00Z"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Hoàn tất session thành công"
+          }
+        }
+      }
+    },
+    "/flashcard-progress/remove/{session_id}": {
+      "delete": {
+        "summary": "Xóa session học flashcard",
+        "tags": [
+          "Flashcard Progress"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID của session flashcard cần xóa"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Xóa session thành công"
+          },
+          "404": {
+            "description": "Không tìm thấy session"
+          }
+        }
+      }
+    },
+    "/gemini/generate-toeic-plan": {
+      "post": {
+        "summary": "Tạo kế hoạch học TOEIC cá nhân hóa",
+        "description": "Sinh lộ trình học TOEIC chi tiết dựa trên điểm hiện tại, mục tiêu và phong cách học của người dùng. Yêu cầu Bearer Token hợp lệ.",
+        "tags": [
+          "Gemini"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToeicPlanRequest"
+              },
+              "example": {
+                "current_score": 400,
+                "current_accuracy": {
+                  "part1": 72,
+                  "part2": 65,
+                  "part3": 58,
+                  "part4": 55,
+                  "part5": 68,
+                  "part6": 60,
+                  "part7": 56
+                },
+                "target_score": 600,
+                "start_date": "2025-01-01",
+                "deadline": "2025-04-30",
+                "weekly_study_hours": 21,
+                "study_days_per_week": 6,
+                "learning_methods": {
+                  "video": "Ngữ pháp, lý thuyết, chiến lược",
+                  "flashcard": "Từ vựng, collocation",
+                  "dictation": "Nghe - chép chính tả",
+                  "shadowing": "Bắt chước phát âm, ngữ điệu người bản xứ",
+                  "quiz": "Trắc nghiệm ngắn ôn từ và cấu trúc",
+                  "mini_test": "Làm đề TOEIC ngắn, đánh giá phản xạ"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tạo kế hoạch TOEIC thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseToeicPlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dữ liệu đầu vào không hợp lệ"
+          },
+          "401": {
+            "description": "Thiếu hoặc sai token"
+          },
+          "500": {
+            "description": "Lỗi hệ thống hoặc model không trả dữ liệu hợp lệ"
+          }
+        }
+      }
+    },
+    "/questions/{question_id}": {
+      "get": {
+        "summary": "Lấy thông tin chi tiết của câu hỏi theo ID (kèm group)",
+        "tags": [
+          "Questions"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "question_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID của câu hỏi cần lấy chi tiết"
+          },
+          {
+            "in": "query",
+            "name": "test_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID của bài test chứa câu hỏi"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lấy thông tin câu hỏi và group thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Lấy thông tin câu hỏi thành công."
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "_id": {
+                          "type": "string",
+                          "example": "671af63f9b0f2c1234567890"
+                        },
+                        "part": {
+                          "type": "number",
+                          "example": 3
+                        },
+                        "audioUrl": {
+                          "type": "object",
+                          "properties": {
+                            "url": {
+                              "type": "string",
+                              "example": "https://cdn.saha/audio/part3_01.mp3"
+                            }
+                          }
+                        },
+                        "imagesUrl": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "url": {
+                                "type": "string",
+                                "example": "https://cdn.saha/images/q1.png"
+                              }
+                            }
+                          }
+                        },
+                        "transcriptEnglish": {
+                          "type": "string",
+                          "example": "What does the woman say?"
+                        },
+                        "transcriptTranslation": {
+                          "type": "string",
+                          "example": "Người phụ nữ nói gì?"
+                        },
+                        "questions": {
+                          "type": "array",
+                          "description": "Danh sách câu hỏi thuộc group này",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "_id": {
+                                "type": "string",
+                                "example": "66cfb7b8a9f2c12345678901"
+                              },
+                              "name": {
+                                "type": "string",
+                                "example": "Question 5"
+                              },
+                              "textQuestion": {
+                                "type": "string",
+                                "example": "What is the man asking about?"
+                              },
+                              "choices": {
+                                "type": "object",
+                                "example": {
+                                  "A": "The report",
+                                  "B": "The meeting",
+                                  "C": "The budget"
+                                }
+                              },
+                              "correctAnswer": {
+                                "type": "string",
+                                "example": "B"
+                              },
+                              "explanation": {
+                                "type": "string",
+                                "example": "The woman mentions the meeting."
+                              },
+                              "tags": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                },
+                                "example": [
+                                  "[Part 3]"
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Thiếu tham số question_id hoặc test_id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Thiếu tham số question_id hoặc test_id."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy câu hỏi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Không tìm thấy câu hỏi."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Lỗi server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Đã xảy ra lỗi máy chủ."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rag/ask": {
+      "post": {
+        "summary": "Gửi câu hỏi TOEIC cho chatbot (Gemini RAG)",
+        "description": "API nhận câu hỏi của sinh viên, tìm dữ liệu liên quan trong hệ thống TOEIC \nthông qua RAG và trả về câu trả lời sinh bởi mô hình Gemini Flash Lite.\n\nCó hai chế độ hoạt động:\n- **semantic**: Khi sinh viên hỏi tự do (`query`), hệ thống tìm context bằng embedding.\n- **by_id**: Khi sinh viên click \"Hỏi AI\" trong câu hỏi cụ thể (`questionId`), hệ thống lấy context chính xác.\n",
+        "tags": [
+          "RAG"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "description": "Câu hỏi mà sinh viên muốn hỏi chatbot TOEIC",
+                    "example": "Vì sao đáp án câu When does the promotion end là D?"
+                  },
+                  "questionId": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "ID của câu hỏi TOEIC (nếu sinh viên click 'Hỏi AI' từ giao diện câu hỏi)",
+                    "example": "68d64e3859d280ca13208deb"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Trả lời câu hỏi thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Trả lời câu hỏi thành công ✅"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "answer": {
+                          "type": "string",
+                          "description": "Câu trả lời do Gemini sinh ra",
+                          "example": "Câu này đúng là D vì 'at the end of the month' nghĩa là vào cuối tháng."
+                        },
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "semantic",
+                            "by_id"
+                          ],
+                          "example": "by_id"
+                        },
+                        "sources": {
+                          "type": "array",
+                          "description": "Metadata của các đoạn context được dùng để trả lời",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "questionId": {
+                                "type": "string",
+                                "example": "68d64e3859d280ca13208deb"
+                              },
+                              "tags": {
+                                "type": "string",
+                                "example": "promotion, date"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Thiếu tham số `query`"
+          },
+          "500": {
+            "description": "Lỗi máy chủ"
+          }
+        }
+      }
+    },
+    "/rag/ingest": {
+      "post": {
+        "summary": "Nạp lại dữ liệu Question vào Chroma",
+        "description": "API này đọc toàn bộ dữ liệu từ MongoDB collection Question,\nsau đó chạy `chunker` để chia nhỏ và lưu vector vào ChromaDB.\n",
+        "tags": [
+          "RAG"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Nạp dữ liệu thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Nạp dữ liệu Question vào Chroma thành công"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Lỗi hệ thống nội bộ"
+          }
+        }
+      }
+    },
+    "/tests": {
+      "get": {
+        "summary": "Tìm kiếm đề thi kèm điểm của người dùng",
+        "description": "API trả về danh sách đề thi của người dùng hiện tại (đọc từ access token),\nhỗ trợ tìm kiếm theo từ khóa và phân trang.\n",
+        "tags": [
+          "Tests"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            },
+            "description": "Trang hiện tại (bắt đầu từ 1). Mặc định là 1."
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 6
+            },
+            "description": "Số lượng đề thi trên mỗi trang. Mặc định là 6."
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Từ khóa tìm kiếm (có thể bỏ trống)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tìm kiếm đề thi thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Tìm kiếm đề thi thành công"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer",
+                          "example": 1
+                        },
+                        "limit": {
+                          "type": "integer",
+                          "example": 6
+                        },
+                        "totalPages": {
+                          "type": "integer",
+                          "example": 12
+                        },
+                        "totalTests": {
+                          "type": "integer",
+                          "example": 72
+                        },
+                        "tests": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "example": "66ff0a2c1a2b3c4d5e6f7a81"
+                              },
+                              "title": {
+                                "type": "string",
+                                "example": "Reading Practice Test 01"
+                              },
+                              "userScore": {
+                                "type": "number",
+                                "example": 78
+                              },
+                              "maxScore": {
+                                "type": "number",
+                                "example": 100
+                              },
+                              "totalQuestions": {
+                                "type": "integer",
+                                "example": 100
+                              },
+                              "correctCount": {
+                                "type": "integer",
+                                "example": 78
+                              },
+                              "attemptedAt": {
+                                "type": "string",
+                                "format": "date-time",
+                                "example": "2025-10-10T09:30:00.000Z"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Từ khóa tìm kiếm không được để trống",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Từ khóa tìm kiếm không được để trống!"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Không có quyền truy cập hoặc token không hợp lệ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Bạn không có quyền thực hiện chức năng tìm kiếm đề thi!"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Lỗi phía server"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Word": {
+        "type": "object",
+        "properties": {
+          "word": {
+            "type": "string",
+            "example": "office"
+          },
+          "start": {
+            "type": "number",
+            "example": 1.23
+          },
+          "end": {
+            "type": "number",
+            "example": 1.85
+          }
+        },
+        "required": [
+          "word",
+          "start",
+          "end"
+        ]
+      },
+      "Segment": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "example": "Hello everyone, welcome to the meeting."
+          },
+          "startTime": {
+            "type": "number",
+            "example": 0
+          },
+          "endTime": {
+            "type": "number",
+            "example": 5.2
+          },
+          "words": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Word"
+            }
+          }
+        },
+        "required": [
+          "text",
+          "startTime",
+          "endTime"
+        ]
+      },
+      "Dictation": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string",
+            "example": "671ab10df8f8d0a23b6a7b14"
+          },
+          "topic": {
+            "type": "array",
+            "description": "Danh sách ID của LessonManager liên quan",
+            "items": {
+              "type": "string",
+              "example": "671aa91df8f8d0a23b6a7b10"
+            }
+          },
+          "title": {
+            "type": "string",
+            "example": "Office Communication Practice"
+          },
+          "part_type": {
+            "type": "integer",
+            "description": "Phần thi (Part 1–7)",
+            "enum": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7
+            ],
+            "example": 3
+          },
+          "level": {
+            "type": "string",
+            "description": "Trình độ theo chuẩn CEFR",
+            "enum": [
+              "A1",
+              "A2",
+              "B1",
+              "B2",
+              "C1",
+              "C2"
+            ],
+            "example": "A2"
+          },
+          "status": {
+            "type": "string",
+            "description": "Trạng thái kiểm duyệt",
+            "enum": [
+              "draft",
+              "pending",
+              "approved",
+              "rejected"
+            ],
+            "example": "approved"
+          },
+          "transcript": {
+            "type": "string",
+            "description": "Toàn bộ nội dung văn bản nghe",
+            "example": "Hello everyone, welcome to the meeting. Please take your seats."
+          },
+          "audio_url": {
+            "type": "string",
+            "format": "uri",
+            "example": "https://cdn.example.com/audio/office-meeting.mp3"
+          },
+          "duration": {
+            "type": "number",
+            "description": "Thời lượng file audio (tính bằng giây)",
+            "example": 125.6
+          },
+          "timings": {
+            "type": "array",
+            "description": "Danh sách các đoạn transcript và thời gian tương ứng",
+            "items": {
+              "$ref": "#/components/schemas/Segment"
+            }
+          },
+          "display_mode": {
+            "type": "string",
+            "enum": [
+              "sentence",
+              "word"
+            ],
+            "description": "Kiểu hiển thị bài nghe (theo câu hoặc theo từ)",
+            "example": "sentence"
+          },
+          "weight": {
+            "type": "number",
+            "description": "Trọng số dùng cho thuật toán gợi ý bài học",
+            "example": 0.5
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2025-10-20T08:30:00.000Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2025-10-20T09:00:00.000Z"
+          }
+        },
+        "required": [
+          "topic",
+          "title",
+          "level",
+          "transcript",
+          "timings",
+          "display_mode",
+          "status"
+        ]
+      },
+      "FlashcardLog": {
+        "type": "object",
+        "properties": {
+          "vocab_id": {
+            "type": "string",
+            "example": "66bf123a8a9c1d7b42e20444"
+          },
+          "vocab_word": {
+            "type": "string",
+            "example": "restaurant"
+          },
+          "eval_type": {
+            "type": "string",
+            "enum": [
+              "easy",
+              "medium",
+              "hard",
+              "skip"
+            ]
+          },
+          "response_time": {
+            "type": "number",
+            "example": 2.8
+          },
+          "attempted_at": {
+            "type": "string",
+            "example": "2025-10-25T12:35:10Z"
+          }
+        }
+      },
+      "FlashCardProgress": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string",
+            "example": "66bf49edaae5e7b17b42e888"
+          },
+          "session_id": {
+            "type": "string",
+            "example": "session_abc123"
+          },
+          "user_id": {
+            "type": "string",
+            "example": "66a1bb45ce9d5b4e7b99a111"
+          },
+          "topic_vocabulary_id": {
+            "type": "string",
+            "example": "66a2cc44aa9b2e7b42a0101"
+          },
+          "order_queue": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "668cfe93a9a6b2e7b42a0101",
+              "668cfe93a9a6b2e7b42a0102"
+            ]
+          },
+          "current_index": {
+            "type": "number",
+            "example": 5
+          },
+          "logs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FlashcardLog"
+            }
+          },
+          "last_activity": {
+            "type": "string",
+            "example": "2025-10-25T12:35:10Z"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "archived"
+            ],
+            "example": "active"
+          },
+          "archive_reason": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "abandoned",
+              "expired"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        }
+      },
+      "LessonManager": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string",
+            "example": "66f2b8bdf23ac93e3cc7f502"
+          },
+          "title": {
+            "type": "string",
+            "example": "Unit 3 - Office Communication"
+          },
+          "description": {
+            "type": "string",
+            "example": "Practice listening and speaking in office contexts"
+          },
+          "level": {
+            "type": "string",
+            "example": "B1"
+          },
+          "part_type": {
+            "type": "number",
+            "example": 3
+          },
+          "status": {
+            "type": "string",
+            "example": "draft"
+          },
+          "planned_completion_time": {
+            "type": "number",
+            "example": 60
+          },
+          "weight": {
+            "type": "number",
+            "example": 0.1
+          },
+          "created_by": {
+            "type": "string",
+            "example": "66f2b8a0cdd7f70b543c290d"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "RequestCollaborator": {
+        "type": "object",
+        "required": [
+          "fullName",
+          "email",
+          "experience",
+          "motivation",
+          "availability",
+          "cv_url"
+        ],
+        "properties": {
+          "_id": {
+            "type": "string",
+            "example": "671f9de7b1a4f88c54fcb512"
+          },
+          "user_id": {
+            "type": "string",
+            "example": "671f9d3a8e0d26bb4235ea42"
+          },
+          "fullName": {
+            "type": "string",
+            "example": "Nguyễn Minh Học"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "hoc.nguyen@example.com"
+          },
+          "experience": {
+            "type": "string",
+            "example": "1-2 năm"
+          },
+          "expertise": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "Listening",
+              "Reading"
+            ]
+          },
+          "motivation": {
+            "type": "string",
+            "example": "Tôi yêu thích giảng dạy và muốn đóng góp cho cộng đồng học TOEIC."
+          },
+          "availability": {
+            "type": "string",
+            "enum": [
+              "part-time",
+              "full-time",
+              "flexible"
+            ],
+            "example": "part-time"
+          },
+          "cv_url": {
+            "type": "string",
+            "format": "uri",
+            "example": "https://res.cloudinary.com/demo/cv_nguyenminhhoc.pdf"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ],
+            "example": "pending"
+          },
+          "rejection_reason": {
+            "type": "string",
+            "example": "Chưa đủ kinh nghiệm yêu cầu."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2025-10-28T10:15:00.000Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2025-10-28T10:15:00.000Z"
+          }
+        }
+      },
+      "ShadowingWord": {
+        "type": "object",
+        "properties": {
+          "word": {
+            "type": "string",
+            "example": "meeting"
+          },
+          "start": {
+            "type": "number",
+            "example": 1.45
+          },
+          "end": {
+            "type": "number",
+            "example": 1.9
+          }
+        },
+        "required": [
+          "word",
+          "start",
+          "end"
+        ]
+      },
+      "ShadowingSegment": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "example": "Let's start the meeting now."
+          },
+          "startTime": {
+            "type": "number",
+            "example": 0
+          },
+          "endTime": {
+            "type": "number",
+            "example": 3.2
+          },
+          "words": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ShadowingWord"
+            }
+          }
+        },
+        "required": [
+          "text",
+          "startTime",
+          "endTime"
+        ]
+      },
+      "Shadowing": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string",
+            "example": "671ac1bdf8f8d0a23b6a7b44"
+          },
+          "topic": {
+            "type": "array",
+            "description": "Danh sách ID của LessonManager liên quan",
+            "items": {
+              "type": "string",
+              "example": "671aa91df8f8d0a23b6a7b10"
+            }
+          },
+          "title": {
+            "type": "string",
+            "example": "Office Meeting Practice"
+          },
+          "part_type": {
+            "type": "integer",
+            "enum": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7
+            ],
+            "description": "Phần thi TOEIC tương ứng",
+            "example": 3
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "A1",
+              "A2",
+              "B1",
+              "B2",
+              "C1",
+              "C2"
+            ],
+            "description": "Trình độ người học theo CEFR",
+            "example": "B1"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "pending",
+              "approved",
+              "rejected"
+            ],
+            "description": "Trạng thái duyệt bài luyện nói",
+            "example": "approved"
+          },
+          "transcript": {
+            "type": "string",
+            "description": "Toàn bộ văn bản transcript của video luyện nói",
+            "example": "Let's start the meeting now. Please share your updates."
+          },
+          "audio_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL file video hoặc audio của bài luyện nói",
+            "example": "https://cdn.example.com/audio/office-meeting.mp3"
+          },
+          "duration": {
+            "type": "number",
+            "description": "Thời lượng video/audio tính bằng giây",
+            "example": 120.5
+          },
+          "timings": {
+            "type": "array",
+            "description": "Danh sách các đoạn hội thoại kèm thời gian bắt đầu/kết thúc",
+            "items": {
+              "$ref": "#/components/schemas/ShadowingSegment"
+            }
+          },
+          "display_mode": {
+            "type": "string",
+            "enum": [
+              "sentence",
+              "word"
+            ],
+            "description": "Chế độ hiển thị (theo câu hoặc theo từ)",
+            "example": "sentence"
+          },
+          "weight": {
+            "type": "number",
+            "description": "Trọng số của bài luyện nói trong hệ thống",
+            "example": 0.5
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2025-10-20T08:30:00.000Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2025-10-20T09:00:00.000Z"
+          }
+        },
+        "required": [
+          "topic",
+          "title",
+          "part_type",
+          "level",
+          "status",
+          "transcript",
+          "timings",
+          "display_mode"
+        ]
+      },
+      "ToeicPlanRequest": {
+        "type": "object",
+        "required": [
+          "current_score",
+          "target_score",
+          "deadline"
+        ],
+        "properties": {
+          "current_score": {
+            "type": "integer",
+            "example": 400
+          },
+          "target_score": {
+            "type": "integer",
+            "example": 600
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "example": "2025-01-01"
+          },
+          "deadline": {
+            "type": "string",
+            "format": "date",
+            "example": "2025-04-30"
+          },
+          "weekly_study_hours": {
+            "type": "integer",
+            "example": 21
+          },
+          "study_days_per_week": {
+            "type": "integer",
+            "example": 6
+          },
+          "learning_methods": {
+            "type": "object",
+            "description": "Phong cách học ưa thích cho từng kỹ năng",
+            "properties": {
+              "video": {
+                "type": "string",
+                "example": "Ngữ pháp, lý thuyết, chiến lược"
+              },
+              "flashcard": {
+                "type": "string",
+                "example": "Từ vựng, collocation"
+              },
+              "dictation": {
+                "type": "string",
+                "example": "Nghe - chép chính tả"
+              },
+              "shadowing": {
+                "type": "string",
+                "example": "Bắt chước phát âm, ngữ điệu người bản xứ"
+              },
+              "quiz": {
+                "type": "string",
+                "example": "Trắc nghiệm ngắn ôn từ và cấu trúc"
+              },
+              "mini_test": {
+                "type": "string",
+                "example": "Làm đề TOEIC ngắn, đánh giá phản xạ"
+              }
+            }
+          }
+        }
+      },
+      "ApiResponseToeicPlan": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "Tạo kế hoạch TOEIC thành công!"
+          },
+          "data": {
+            "type": "object",
+            "description": "JSON kế hoạch hoặc text thô nếu model trả không hợp lệ"
+          }
+        }
+      },
+      "TopicVocabulary": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string",
+            "example": "6717a4b2e9f2a3c9bde91f11"
+          },
+          "topic": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "example": "6717a4b2e9f2a3c9bde91f10"
+            },
+            "description": "Danh sách ID của LessonManager liên quan"
+          },
+          "title": {
+            "type": "string",
+            "example": "Chủ đề: Du lịch",
+            "description": "Tên chủ đề từ vựng"
+          },
+          "description": {
+            "type": "string",
+            "example": "Tổng hợp các từ vựng phổ biến về du lịch",
+            "description": "Mô tả ngắn gọn về chủ đề"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "travel",
+              "holiday",
+              "airport"
+            ],
+            "description": "Danh sách thẻ mô tả chủ đề"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "A1",
+              "A2",
+              "B1",
+              "B2",
+              "C1",
+              "C2"
+            ],
+            "example": "B1",
+            "description": "Mức độ khó của chủ đề theo khung CERF"
+          },
+          "iconName": {
+            "type": "string",
+            "example": "flight_takeoff",
+            "description": "Tên icon hiển thị của chủ đề"
+          },
+          "bgColor": {
+            "type": "string",
+            "example": "#FFDD00",
+            "description": "Mã màu nền của chủ đề"
+          },
+          "gradient": {
+            "type": "string",
+            "example": "linear-gradient(90deg, #FFDD00, #FFA500)",
+            "description": "Màu gradient nền của chủ đề"
+          },
+          "vocabularies_id": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "example": "6717a4b2e9f2a3c9bde91f20"
+            },
+            "description": "Danh sách ID từ vựng thuộc chủ đề"
+          },
+          "isCollaborator": {
+            "type": "boolean",
+            "example": true,
+            "description": "Đánh dấu chủ đề do cộng tác viên tạo"
+          },
+          "isPublic": {
+            "type": "boolean",
+            "example": true,
+            "description": "Trạng thái công khai của chủ đề"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2025-10-22T09:30:00.000Z",
+            "description": "Thời gian tạo"
+          },
+          "created_by": {
+            "type": "string",
+            "example": "6717a4b2e9f2a3c9bde91f01",
+            "description": "ID của người tạo (User)"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2025-10-22T09:45:00.000Z",
+            "description": "Thời gian cập nhật gần nhất"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Flashcard Progress",
+      "description": "Quản lý tiến trình học flashcard của người dùng"
+    },
+    {
+      "name": "Questions",
+      "description": "Quản lý và truy vấn câu hỏi trong bài thi"
+    }
+  ]
+}

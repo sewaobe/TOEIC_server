@@ -1,0 +1,32 @@
+@startuml
+skinparam backgroundColor #1e1e1e
+skinparam participantBackgroundColor #2b2b2b
+skinparam participantBorderColor #888
+skinparam participantFontColor white
+skinparam sequenceArrowColor #00ffff
+actor User
+participant "Router" as R
+participant "Day_study.controller" as C
+participant "Day_study.service" as S
+participant "Enums/WeekStudyStatus" as MEnums/WeekStudyStatus
+
+'=== GET /:id ===
+User -> R: GET /:id
+R -> C: getDayStudyByIdController()
+C -> S: getDayStudyByIdService()
+note right of C: Controller gọi getDayStudyByIdService để xử lý logic getDayStudyById
+S -> MDayStudy: findById()
+MDayStudy --> S: result
+S -> MDayStudy: findOne()
+MDayStudy --> S: result
+S -> MDayStudy: save()
+MDayStudy --> S: result
+S -> MWeekStudy: findById()
+MWeekStudy --> S: result
+S -> MDay: save()
+MDay --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP GET /:id response
+
+@enduml

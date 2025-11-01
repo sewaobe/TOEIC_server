@@ -1,0 +1,45 @@
+@startuml notification
+actor User
+participant "Router" as R
+participant "Notification.controller" as C
+participant "Notification.service" as S
+participant "NotificationModel" as MNotif
+participant "Push.service" as PushS
+participant "Socket (io)" as Socket
+
+'=== GET / ===
+User -> R: GET /
+R -> C: getNotifications()
+C -> S: listNotifications(userId,page,limit)
+S -> MNotif: find/countDocuments
+MNotif --> S: notifications,total,unreadCount
+S --> C: { notifications, total, unreadCount }
+C -> R: JSON
+R --> User: response
+
+'=== PUT /:id/read ===
+User -> R: PUT /:id/read
+R -> C: markAsRead()
+C -> S: markNotificationAsRead(notifId,userId)
+S -> MNotif: findOneAndUpdate(...)
+MNotif --> S: notif
+S --> C: notif
+C -> R: JSON
+R --> User: response
+
+'=== POST /send ===
+User -> R: POST /send { recipientId, message }
+R -> C: sendNotification()
+C -> S: createNotification({ senderId, recipientId, message, type })
+S -> MNotif: create(notification)
+MNotif --> S: notif
+S -> PushS: sendWebPushToUser(recipientId, payload)
+PushS -> SubscriptionModel: find({ userId })
+PushS --> S: delivered stats
+S -> Socket: check onlineUsers -> io.to(socketId).emit('receiveNotification', notif)
+Socket --> S: ack
+S --> C: notif
+C -> R: JSON
+R --> User: response
+
+@enduml

@@ -1,0 +1,23 @@
+@startuml
+skinparam backgroundColor #1e1e1e
+skinparam participantBackgroundColor #2b2b2b
+skinparam participantBorderColor #888
+skinparam participantFontColor white
+skinparam sequenceArrowColor #00ffff
+actor User
+participant "Router" as R
+participant "Chat_feedback.controller" as C
+participant "Chat_feedback.service" as S
+participant "Chat_feedbackModel" as MChat_feedbackModel
+
+'=== POST / ===
+User -> R: POST /
+R -> C: submitChatFeedbackController()
+note right of C: Không tìm thấy thân hàm submitChatFeedbackController
+S -> MChatFeedback: create()
+MChatFeedback --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP POST / response
+
+@enduml

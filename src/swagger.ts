@@ -1,3 +1,5 @@
+import fs from "fs"
+import path from "path"
 import swaggerJSDoc from "swagger-jsdoc"
 import swaggerUi from "swagger-ui-express"
 import { Express } from "express"
@@ -26,4 +28,7 @@ export function setupSwagger(app: Express) {
 
   const swaggerSpec = swaggerJSDoc(options)
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec))
+  // const outputPath = path.resolve("./swagger-output.json")
+  // fs.writeFileSync(outputPath, JSON.stringify(swaggerSpec, null, 2))
+  // console.log(`Swagger file exported at: ${outputPath}`)
 }

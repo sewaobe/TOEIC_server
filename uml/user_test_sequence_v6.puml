@@ -1,0 +1,18 @@
+@startuml
+skinparam backgroundColor #1e1e1e
+skinparam participantBackgroundColor #2b2b2b
+skinparam participantBorderColor #888
+skinparam participantFontColor white
+skinparam sequenceArrowColor #00ffff
+actor User
+participant "Router" as R
+participant "User-test.controller" as C
+
+'=== GET /:historyId ===
+User -> R: GET /:historyId
+R -> C: verifyAccessToken()
+note right of C: Không tìm thấy thân hàm verifyAccessToken
+C --> R: JSON
+R --> User: HTTP GET /:historyId response
+
+@enduml

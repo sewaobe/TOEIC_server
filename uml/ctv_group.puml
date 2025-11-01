@@ -1,0 +1,61 @@
+@startuml ctv_group
+actor CTVUser
+participant "Router" as R
+participant "Group.controller" as C
+participant "Group.service" as S
+participant "GroupModel" as MGroup
+participant "QuestionModel" as MQuestion
+
+'=== POST /ctv/group/create ===
+CTVUser -> R: POST /create { group payload }
+R -> C: createGroupController()
+C -> S: createGroupService(payload)
+S -> MGroup: create(group)
+MGroup --> S: group
+S -> MQuestion: create/questions if needed
+MQuestion --> S: created
+S --> C: group
+C -> R: JSON 201
+R --> CTVUser: response
+
+'=== GET /ctv/group/questions/get-all ===
+CTVUser -> R: GET /questions/get-all
+R -> C: getQuestionsWithGroupInfoController()
+C -> S: getQuestionsWithGroupInfoService(params)
+S -> MQuestion: aggregate/pipeline -> lookup groups
+MQuestion --> S: items
+S --> C: items
+C -> R: JSON
+R --> CTVUser: response
+
+'=== GET /ctv/group/:id ===
+CTVUser -> R: GET /:id
+R -> C: getGroupByIdController()
+C -> S: getGroupByIdService(id)
+S -> MGroup: findById(id).populate(questions,audio,images)
+MGroup --> S: group
+S --> C: group
+C -> R: JSON
+R --> CTVUser: response
+
+'=== PUT /ctv/group/:id ===
+CTVUser -> R: PUT /:id
+R -> C: updateGroupController()
+C -> S: updateGroupService(id,payload)
+S -> MGroup: findByIdAndUpdate(...)
+MGroup --> S: updated
+S --> C: updated
+C -> R: JSON
+R --> CTVUser: response
+
+'=== DELETE /ctv/group/:groupId ===
+CTVUser -> R: DELETE /:groupId
+R -> C: deleteGroupController()
+C -> S: deleteGroupService(groupId)
+S -> MGroup: delete/cleanup relations via group.service
+MGroup --> S: result
+S --> C: result
+C -> R: JSON
+R --> CTVUser: response
+
+@enduml

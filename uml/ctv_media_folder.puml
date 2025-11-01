@@ -1,0 +1,83 @@
+@startuml ctv_media_folder
+actor CTVUser
+participant "Router" as R
+participant "MediaFolder.controller" as C
+participant "MediaFolder.service" as S
+participant "MediaModel" as MMedia
+participant "FolderModel" as MFolder
+
+'=== POST /ctv/folders ===
+CTVUser -> R: POST /
+R -> C: createFolderController()
+C -> S: createFolderService(payload)
+S -> MFolder: create(payload)
+MFolder --> S: created
+S --> C: created
+C -> R: JSON 201
+R --> CTVUser: response
+
+'=== GET /ctv/folders/tree ===
+CTVUser -> R: GET /tree
+R -> C: getFolderTreeController()
+C -> S: getFolderTreeService()
+S -> MFolder: find().build tree
+MFolder --> S: tree
+S --> C: tree
+C -> R: JSON
+R --> CTVUser: response
+
+'=== GET /ctv/folders/medias/search ===
+CTVUser -> R: GET /medias/search?q=...
+R -> C: searchMediasController()
+C -> S: searchMediasService(query)
+S -> MMedia: find({ title/text: /q/ })
+MMedia --> S: results
+S --> C: results
+C -> R: JSON
+R --> CTVUser: response
+
+'=== POST /ctv/folders/:id/medias ===
+CTVUser -> R: POST /:id/medias
+R -> C: addMediaToFolderController()
+C -> S: addMediaToFolderService(folderId, mediaPayload)
+S -> MMedia: create(media)
+MMedia --> S: media
+S -> MFolder: findByIdAndUpdate(folderId, push media)
+MFolder --> S: updated
+S --> C: media
+C -> R: JSON 201
+R --> CTVUser: response
+
+'=== GET /ctv/folders/:id/medias ===
+CTVUser -> R: GET /:id/medias
+R -> C: getMediasByFolderController()
+C -> S: getMediasByFolderService(folderId)
+S -> MFolder: findById(folderId).populate(medias)
+MFolder --> S: medias
+S --> C: medias
+C -> R: JSON
+R --> CTVUser: response
+
+'=== PUT /ctv/folders/media/:id ===
+CTVUser -> R: PUT /media/:id
+R -> C: updateMediaController()
+C -> S: updateMediaService(mediaId,payload)
+S -> MMedia: findByIdAndUpdate(mediaId,payload)
+MMedia --> S: updated
+S --> C: updated
+C -> R: JSON
+R --> CTVUser: response
+
+'=== DELETE /ctv/folders/media/:id ===
+CTVUser -> R: DELETE /media/:id
+R -> C: deleteMediaController()
+C -> S: deleteMediaService(mediaId)
+S -> MMedia: deleteOne(mediaId)
+MMedia --> S: result
+S -> MFolder: remove media reference
+MFolder --> S: updated
+S --> C: result
+C -> R: JSON
+R --> CTVUser: response
+
+@enduml

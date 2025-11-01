@@ -1,0 +1,28 @@
+@startuml user_learningPath
+actor User
+participant "Router" as R
+participant "UserLearningPath.controller" as C
+participant "UserLearningPath.service" as S
+participant "LearningPathModel" as MLP
+
+'=== GET / ===
+User -> R: GET /
+R -> C: getUserLearningPath()
+C -> S: getUserLearningPathService(userId)
+S -> MLP: findOne({ user_id })
+MLP --> S: userPlan
+S --> C: userPlan
+C -> R: JSON
+R --> User: response
+
+'=== POST / ===
+User -> R: POST /
+R -> C: createLearningPath()
+C -> S: createLearningPathService(userId,payload)
+S -> MLP: create({...})
+MLP --> S: createdPlan
+S --> C: createdPlan
+C -> R: JSON 201
+R --> User: response
+
+@enduml

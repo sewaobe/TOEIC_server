@@ -1,0 +1,42 @@
+@startuml flashCard
+actor User
+participant "Router" as R
+participant "FlashCard.controller" as C
+participant "FlashCard.service" as S
+participant "FlashCardPlanModel" as MPlan
+participant "FlashCardAttemptModel" as MAttempt
+participant "VocabularyModel" as MVocab
+participant "DayStudy.service" as DayS
+
+'=== GET /history/:topicId ===
+User -> R: GET /history/:topicId
+R -> C: getHistoryFlashCardByTopic()
+C -> S: getHistoryFlashCardByTopicService(topicId,userId)
+S -> MAttempt: aggregate([... lookup vocabularies ...])
+MAttempt --> S: history
+S --> C: history
+C -> R: JSON
+R --> User: response
+
+'=== GET /:id ===
+User -> R: GET /:id
+R -> C: getFlashCardById()
+C -> S: getFlashCardByIdService(id)
+S -> MPlan: aggregate([ lookup topic -> lookup vocabularies ])
+MPlan --> S: topic + vocabularies
+S --> C: data
+C -> R: JSON
+R --> User: response
+
+'=== POST /submit ===
+User -> R: POST /submit { flashCardAttempt, logs, ... }
+R -> C: submitFlashCard()
+C -> S: submitFlashCardService(flashCardAttemptFull)
+S -> MAttempt: create(attempt)
+MAttempt --> S: result
+S --> C: result
+C -> R: JSON 201
+R --> User: response
+
+note right of DayS: Controller may call DayStudy service to unlock next
+@enduml

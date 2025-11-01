@@ -1,0 +1,20 @@
+@startuml
+skinparam backgroundColor #1e1e1e
+skinparam participantBackgroundColor #2b2b2b
+skinparam participantBorderColor #888
+skinparam participantFontColor white
+skinparam sequenceArrowColor #00ffff
+actor User
+participant "Router" as R
+participant "Gemini.controller" as C
+participant "Gemini.service" as S
+
+'=== POST /generate-toeic-plan ===
+User -> R: POST /generate-toeic-plan
+R -> C: generateToeicPlanController()
+note right of C: Không tìm thấy thân hàm generateToeicPlanController
+S --> C: response
+C --> R: JSON
+R --> User: HTTP POST /generate-toeic-plan response
+
+@enduml

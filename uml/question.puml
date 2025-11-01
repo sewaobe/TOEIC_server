@@ -1,0 +1,20 @@
+@startuml question
+actor User
+participant "Router" as R
+participant "Question.controller" as C
+participant "Question.service" as S
+participant "QuestionModel" as MQuestion
+participant "GroupModel" as MGroup
+participant "MediaModel" as MMedia
+
+'=== GET /:question_id?test_id=... ===
+User -> R: GET /:question_id?test_id=...
+R -> C: getQuestionByIdController()
+C -> S: getQuestionDetailById(question_id,test_id)
+S -> MGroup: findOne({ test_id, questions: question_id }).populate(questions,audioUrl,imagesUrl)
+MGroup --> S: group with populated fields
+S --> C: group
+C -> R: JSON
+R --> User: response
+
+@enduml

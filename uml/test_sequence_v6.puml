@@ -1,0 +1,67 @@
+@startuml
+skinparam backgroundColor #1e1e1e
+skinparam participantBackgroundColor #2b2b2b
+skinparam participantBorderColor #888
+skinparam participantFontColor white
+skinparam sequenceArrowColor #00ffff
+actor User
+participant "Router" as R
+participant "User-test.controller" as C
+
+'=== GET /all-tests ===
+User -> R: GET /all-tests
+R -> C: getAllTests()
+note right of C: Không tìm thấy thân hàm getAllTests
+C --> R: JSON
+R --> User: HTTP GET /all-tests response
+
+'=== GET /latest ===
+User -> R: GET /latest
+R -> C: getLatestTests()
+note right of C: Không tìm thấy thân hàm getLatestTests
+C --> R: JSON
+R --> User: HTTP GET /latest response
+
+'=== GET /recent ===
+User -> R: GET /recent
+R -> C: verifyAccessToken()
+note right of C: Không tìm thấy thân hàm verifyAccessToken
+C --> R: JSON
+R --> User: HTTP GET /recent response
+
+'=== GET / ===
+User -> R: GET /
+R -> C: verifyAccessToken()
+note right of C: Không tìm thấy thân hàm verifyAccessToken
+C --> R: JSON
+R --> User: HTTP GET / response
+
+'=== GET /:testId ===
+User -> R: GET /:testId
+R -> C: getTest()
+note right of C: Không tìm thấy thân hàm getTest
+C --> R: JSON
+R --> User: HTTP GET /:testId response
+
+'=== GET /:testId/history ===
+User -> R: GET /:testId/history
+R -> C: verifyAccessToken()
+note right of C: Không tìm thấy thân hàm verifyAccessToken
+C --> R: JSON
+R --> User: HTTP GET /:testId/history response
+
+'=== GET /:testId/detail ===
+User -> R: GET /:testId/detail
+R -> C: verifyAccessToken()
+note right of C: Không tìm thấy thân hàm verifyAccessToken
+C --> R: JSON
+R --> User: HTTP GET /:testId/detail response
+
+'=== POST /:testId/submit ===
+User -> R: POST /:testId/submit
+R -> C: verifyAccessToken()
+note right of C: Không tìm thấy thân hàm verifyAccessToken
+C --> R: JSON
+R --> User: HTTP POST /:testId/submit response
+
+@enduml

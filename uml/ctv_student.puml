@@ -1,0 +1,38 @@
+@startuml ctv_student
+actor CTVUser
+participant "Router" as R
+participant "Student.controller" as C
+participant "Student.service" as S
+participant "UserModel" as MUser
+
+'=== GET /ctv/students ===
+CTVUser -> R: GET /
+R -> C: getStudentsController()
+C -> S: getStudentsService(query)
+S -> MUser: find({ role: 'student' }).skip().limit()
+MUser --> S: students
+S --> C: students
+C -> R: JSON
+R --> CTVUser: response
+
+'=== GET /ctv/students/:id ===
+CTVUser -> R: GET /:id
+R -> C: getStudentDetailController()
+C -> S: getStudentDetailService(id)
+S -> MUser: findById(id).populate(progress,...)
+MUser --> S: studentDetail
+S --> C: studentDetail
+C -> R: JSON
+R --> CTVUser: response
+
+'=== GET /ctv/students/reports/all ===
+CTVUser -> R: GET /reports/all
+R -> C: getGroupReportsController()
+C -> S: getGroupReportsService()
+S -> MUser: aggregate/group statistics
+MUser --> S: report
+S --> C: report
+C -> R: JSON
+R --> CTVUser: response
+
+@enduml

@@ -1,0 +1,75 @@
+@startuml ctv_test
+actor CTVUser
+participant "Router" as R
+participant "Test.controller" as C
+participant "Test.service" as S
+participant "TestModel" as MTest
+
+'=== GET /ctv/tests/get-all ===
+CTVUser -> R: GET /tests/get-all
+R -> C: getAllTests()
+C -> S: getAllTestsService(params)
+S -> MTest: find/aggregate(...)
+MTest --> S: tests
+S --> C: tests
+C -> R: JSON
+R --> CTVUser: response
+
+'=== POST /ctv/tests/create ===
+CTVUser -> R: POST /tests/create
+R -> C: createTestController()
+C -> S: createTest(payload)
+S -> MTest: create(newTest) and GroupService calls
+MTest --> S: created/populated
+S --> C: createdTest
+C -> R: JSON 201
+R --> CTVUser: response
+
+'=== GET /ctv/tests/:testId ===
+CTVUser -> R: GET /tests/:testId
+R -> C: getTest()
+C -> S: getFullTest(testId) or getPart(s)
+S -> MTest: findById().populate(groups->questions,audio,...)
+MTest --> S: test
+S --> C: test or metadata
+C -> R: JSON
+R --> CTVUser: response
+
+'=== PUT /ctv/tests/:testId/status ===
+CTVUser -> R: PUT /tests/:testId/status
+R -> C: updateTestStatusController()
+C -> S: updateStatusTest(testId,status,userId)
+S -> MTest: findByIdAndUpdate(status)
+MTest --> S: updated
+S -> PushUtils: pushNotificationToAdmin(userId,...)
+PushUtils --> S: ack
+S --> C: updated
+C -> R: JSON
+R --> CTVUser: response
+
+'=== PUT /ctv/tests/:testId ===
+CTVUser -> R: PUT /tests/:testId
+R -> C: updateTest()
+C -> S: updateTest(testId,payload)
+S -> MTest: findByIdAndUpdate(basic)
+S -> GroupService: syncGroups/create/update/delete groups
+GroupService --> S: newGroupIds
+S -> MTest: finalizeTestWithGroups
+MTest --> S: populatedTest
+S --> C: populatedTest
+C -> R: JSON
+R --> CTVUser: response
+
+'=== DELETE /ctv/tests/:testId ===
+CTVUser -> R: DELETE /tests/:testId
+R -> C: deleteTest()
+C -> S: deleteTest(testId)
+S -> GroupService: deleteGroupWithRelations for each group
+GroupService --> S: done
+S -> MTest: findByIdAndDelete(testId)
+MTest --> S: deleted
+S --> C: true
+C -> R: JSON
+R --> CTVUser: response
+
+@enduml

@@ -1,0 +1,18 @@
+@startuml
+skinparam backgroundColor #1e1e1e
+skinparam participantBackgroundColor #2b2b2b
+skinparam participantBorderColor #888
+skinparam participantFontColor white
+skinparam sequenceArrowColor #00ffff
+actor User
+participant "Router" as R
+participant "Demo.controller" as C
+
+'=== GET / ===
+User -> R: GET /
+R -> C: demo()
+note right of C: Không tìm thấy thân hàm demo
+C --> R: JSON
+R --> User: HTTP GET / response
+
+@enduml

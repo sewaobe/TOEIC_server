@@ -1,0 +1,12 @@
+@startuml demo
+actor User
+participant "Router" as R
+participant "Demo.controller" as C
+
+'=== GET / ===
+User -> R: GET /
+R -> C: demo()
+C --> R: "Hello test"
+R --> User: HTTP 200
+
+@enduml

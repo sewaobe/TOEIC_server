@@ -1,0 +1,23 @@
+@startuml
+skinparam backgroundColor #1e1e1e
+skinparam participantBackgroundColor #2b2b2b
+skinparam participantBorderColor #888
+skinparam participantFontColor white
+skinparam sequenceArrowColor #00ffff
+actor User
+participant "Router" as R
+participant "Rag.controller" as C
+
+'=== POST /ask ===
+User -> R: POST /ask
+R -> C: handleAskQuestionController()
+C --> R: JSON
+R --> User: HTTP POST /ask response
+
+'=== POST /ingest ===
+User -> R: POST /ingest
+R -> C: handleIngestQuestionController()
+C --> R: JSON
+R --> User: HTTP POST /ingest response
+
+@enduml

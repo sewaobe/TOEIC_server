@@ -1,0 +1,109 @@
+@startuml
+skinparam backgroundColor #1e1e1e
+skinparam participantBackgroundColor #2b2b2b
+skinparam participantBorderColor #888
+skinparam participantFontColor white
+skinparam sequenceArrowColor #00ffff
+actor User
+participant "Router" as R
+participant "Flashcard_progress.controller" as C
+participant "Flashcard_progress.service" as S
+participant "Flashcard_progressModel" as MFlashcard_progressModel
+
+'=== POST /start ===
+User -> R: POST /start
+R -> C: createSessionFlashcardController()
+note right of C: Không tìm thấy thân hàm createSessionFlashcardController
+S -> MSession: save()
+MSession --> S: result
+S -> MFlashCardProgress: findOne()
+MFlashCardProgress --> S: result
+S -> MFlashCardProgress: find()
+MFlashCardProgress --> S: result
+S -> MFlashCardAttempt: create()
+MFlashCardAttempt --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP POST /start response
+
+'=== PATCH /update ===
+User -> R: PATCH /update
+R -> C: updateSessionFlashcardController()
+note right of C: Không tìm thấy thân hàm updateSessionFlashcardController
+S -> MSession: save()
+MSession --> S: result
+S -> MFlashCardProgress: findOne()
+MFlashCardProgress --> S: result
+S -> MFlashCardProgress: find()
+MFlashCardProgress --> S: result
+S -> MFlashCardAttempt: create()
+MFlashCardAttempt --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP PATCH /update response
+
+'=== GET /active-by-user ===
+User -> R: GET /active-by-user
+R -> C: getAllActiveSessionsController()
+note right of C: Không tìm thấy thân hàm getAllActiveSessionsController
+S -> MSession: save()
+MSession --> S: result
+S -> MFlashCardProgress: findOne()
+MFlashCardProgress --> S: result
+S -> MFlashCardProgress: find()
+MFlashCardProgress --> S: result
+S -> MFlashCardAttempt: create()
+MFlashCardAttempt --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP GET /active-by-user response
+
+'=== GET /:session_id ===
+User -> R: GET /:session_id
+R -> C: getFlashcardProgressController()
+note right of C: Không tìm thấy thân hàm getFlashcardProgressController
+S -> MSession: save()
+MSession --> S: result
+S -> MFlashCardProgress: findOne()
+MFlashCardProgress --> S: result
+S -> MFlashCardProgress: find()
+MFlashCardProgress --> S: result
+S -> MFlashCardAttempt: create()
+MFlashCardAttempt --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP GET /:session_id response
+
+'=== POST /finalize ===
+User -> R: POST /finalize
+R -> C: finalizeFlashcardSessionController()
+note right of C: Không tìm thấy thân hàm finalizeFlashcardSessionController
+S -> MSession: save()
+MSession --> S: result
+S -> MFlashCardProgress: findOne()
+MFlashCardProgress --> S: result
+S -> MFlashCardProgress: find()
+MFlashCardProgress --> S: result
+S -> MFlashCardAttempt: create()
+MFlashCardAttempt --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP POST /finalize response
+
+'=== DELETE /remove/:session_id ===
+User -> R: DELETE /remove/:session_id
+R -> C: removeFlashcardSessionController()
+note right of C: Không tìm thấy thân hàm removeFlashcardSessionController
+S -> MSession: save()
+MSession --> S: result
+S -> MFlashCardProgress: findOne()
+MFlashCardProgress --> S: result
+S -> MFlashCardProgress: find()
+MFlashCardProgress --> S: result
+S -> MFlashCardAttempt: create()
+MFlashCardAttempt --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP DELETE /remove/:session_id response
+
+@enduml
