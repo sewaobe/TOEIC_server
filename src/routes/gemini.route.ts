@@ -1,5 +1,5 @@
 import Router from "express";
-import { generateToeicPlanController } from "../controllers/gemini.controller";
+import { dictionaryController, generateToeicPlanController } from "../controllers/gemini.controller";
 
 const router = Router();
 
@@ -56,5 +56,82 @@ const router = Router();
  *         description: Lỗi hệ thống hoặc model không trả dữ liệu hợp lệ
  */
 router.post("/generate-toeic-plan", generateToeicPlanController);
+
+/**
+ * @openapi
+ * /gemini/dictionary:
+ *   post:
+ *     summary: Tra cứu từ vựng song ngữ Anh - Việt thông minh
+ *     description: |
+ *       Dịch và tra cứu chi tiết từ vựng Anh - Việt bằng AI.  
+ *       - Nếu người dùng nhập **từ tiếng Việt**, hệ thống sẽ dịch sang tiếng Anh rồi lấy toàn bộ thông tin từ điển (định nghĩa, ví dụ, phiên âm, audio...).  
+ *       - Nếu người dùng nhập **từ tiếng Anh**, hệ thống sẽ lấy trực tiếp dữ liệu từ API Dictionary và dịch nghĩa sang tiếng Việt.
+ *     tags:
+ *       - Gemini
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - query
+ *             properties:
+ *               query:
+ *                 type: string
+ *                 description: Từ hoặc cụm cần tra (có thể là tiếng Anh hoặc tiếng Việt)
+ *             example:
+ *               query: "quả chuối"
+ *     responses:
+ *       200:
+ *         description: Trả về dữ liệu song ngữ từ Gemini và Dictionary API
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 englishWord:
+ *                   type: string
+ *                   example: "banana"
+ *                 phonetic:
+ *                   type: string
+ *                   example: "/bəˈnænə/"
+ *                 phonetics:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       text:
+ *                         type: string
+ *                         example: "/bəˈnɑːnə/"
+ *                       audio:
+ *                         type: string
+ *                         example: "https://api.dictionaryapi.dev/media/pronunciations/en/banana-uk.mp3"
+ *                 translations:
+ *                   type: array
+ *                   description: Danh sách nghĩa được dịch sang tiếng Việt
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       partOfSpeech:
+ *                         type: string
+ *                         example: "noun"
+ *                       translatedDefinitions:
+ *                         type: array
+ *                         items:
+ *                           type: string
+ *                           example: "Quả chuối – loại trái cây nhiệt đới dài cong có vỏ màu vàng."
+ *                       examples:
+ *                         type: array
+ *                         items:
+ *                           type: string
+ *                           example: "Khỉ rất thích ăn chuối."
+ *       400:
+ *         description: Thiếu hoặc sai dữ liệu đầu vào
+ *       500:
+ *         description: Lỗi hệ thống hoặc model không trả dữ liệu hợp lệ
+ */
+router.post("/dictionary", dictionaryController);
+
 
 export default router;

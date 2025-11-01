@@ -1,0 +1,85 @@
+Bạn là từ điển song ngữ Anh–Việt chuyên nghiệp.
+
+Dưới đây là dữ liệu gốc từ DictionaryAPI.dev, có thể chứa nhiều entry:
+- word
+- phonetics (một số có audio)
+- meanings (mỗi meanings gồm partOfSpeech, definitions, examples, synonyms, antonyms)
+- sourceUrl, license (có thể bỏ qua)
+
+---
+
+Hãy xử lý theo yêu cầu sau:
+
+1. **Gộp các entry trùng nhau.**
+
+2. **Giữ lại những phonetics có cả `text` và `audio`.**
+   - Nếu có nhiều, chỉ chọn tối đa 2.
+   - Ưu tiên bản US làm `phonetic` chính, nếu không có thì lấy bản đầu tiên.
+
+3. **Dịch toàn bộ định nghĩa và ví dụ sang tiếng Việt tự nhiên**, nhưng vẫn **giữ cả bản tiếng Anh song song**.
+
+4. **Từ loại (`partOfSpeech`)** phải chuyển về dạng viết tắt chuẩn quốc tế:
+   - N → danh từ
+   - V → động từ
+   - Adj → tính từ
+   - Adv → trạng từ
+   - Prep → giới từ
+   - Conj → liên từ
+   - Pron → đại từ
+   - Det → mạo từ
+   - Interj → thán từ
+
+   Ví dụ:
+   `"noun"` → `"N"`
+   `"verb"` → `"V"`
+
+5. **Gộp và rút gọn nghĩa:**
+   - Mỗi `translation` tương ứng với một `partOfSpeech`.
+   - `translatedDefinitions` là mảng các cặp câu song ngữ:
+     ```json
+     { "en": "A tropical fruit with a soft inside.", "vi": "Một loại trái cây nhiệt đới có ruột mềm." }
+     ```
+   - `examples` là mảng các cặp tương tự:
+     ```json
+     { "en": "I eat a banana every day.", "vi": "Tôi ăn chuối mỗi ngày." }
+     ```
+
+6. **Giữ lại tối đa 4 từ đồng nghĩa (`synonyms`) và 4 từ trái nghĩa (`antonyms`).**
+
+7. **Gợi ý tối đa 3 từ khóa tiếng Anh cho Unsplash (`imageKeywords`)**
+   - Nếu là Noun: tên vật thể hoặc bối cảnh thực tế (vd: “banana fruit”, “banana tree”)
+   - Nếu là Verb: hành động cụ thể (vd: “run action”, “jump movement”)
+   - Nếu là Adj: đặc điểm cụ thể (vd: “curved shape”, “happy face”)
+   - Không dùng từ khóa mơ hồ như “concept”, “color”, “background”.
+
+---
+
+Trả về JSON đúng định dạng sau:
+
+{
+  "englishWord": "<từ tiếng Anh>",
+  "phonetic": "<phiên âm chính>",
+  "phonetics": [
+    { "text": "<phiên âm>", "audio": "<link mp3>" }
+  ],
+  "translations": [
+    {
+      "partOfSpeech": "N",
+      "translatedDefinitions": [
+        { "en": "A tropical fruit.", "vi": "Một loại trái cây nhiệt đới." },
+        { "en": "The banana tree.", "vi": "Cây chuối." }
+      ],
+      "examples": [
+        { "en": "I like eating bananas.", "vi": "Tôi thích ăn chuối." }
+      ],
+      "synonyms": ["plantain", "fruit", "yellow fruit"],
+      "antonyms": ["meat", "egg"]
+    }
+  ],
+  "imageKeywords": ["banana", "banana tree", "yellow banana"]
+}
+
+---
+
+Dữ liệu cần phân tích:
+{{DICTIONARY_RAW_DATA}}

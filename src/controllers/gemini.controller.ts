@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from "express";
-import { generateToeicPlan } from "../services/gemini.service";
+import { dictionaryLookup, generateToeicPlan } from "../services/gemini.service";
 import { ApiResponse } from "../utils/ApiResponse";
 
 export async function generateToeicPlanController(req: Request, res: Response, next: NextFunction) {
@@ -16,3 +16,17 @@ export async function generateToeicPlanController(req: Request, res: Response, n
         next(error);
     }
 }
+
+export const dictionaryController = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const { query } = req.body;
+
+        const result = await dictionaryLookup(query);
+
+        return res.status(200).json(
+            ApiResponse.success(result, "Tra cứu từ điển thành công!")
+        );
+    } catch (error: any) {
+        next(error);
+    }
+};

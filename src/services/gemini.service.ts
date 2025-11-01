@@ -71,3 +71,189 @@ export async function generateToeicPlan(userInput: any) {
 
     throw new Error("Tất cả model đều quá tải, vui lòng thử lại sau vài phút.");
 }
+
+export const DictionarySchema = {
+  type: Type.OBJECT,
+  properties: {
+    englishWord: { type: Type.STRING },
+    phonetic: { type: Type.STRING },
+    phonetics: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          text: { type: Type.STRING },
+          audio: { type: Type.STRING },
+        },
+      },
+    },
+    translations: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          partOfSpeech: { type: Type.STRING }, // N, V, Adj, Adv...
+          translatedDefinitions: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                en: { type: Type.STRING },
+                vi: { type: Type.STRING },
+              },
+            },
+          },
+          examples: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                en: { type: Type.STRING },
+                vi: { type: Type.STRING },
+              },
+            },
+          },
+          synonyms: { type: Type.ARRAY, items: { type: Type.STRING } },
+          antonyms: { type: Type.ARRAY, items: { type: Type.STRING } },
+        },
+      },
+    },
+    imageKeywords: { type: Type.ARRAY, items: { type: Type.STRING } },
+  },
+  propertyOrdering: [
+    "englishWord",
+    "phonetic",
+    "phonetics",
+    "translations",
+    "imageKeywords",
+  ],
+};
+
+// Fetch data from dictionary API
+async function fetchDictionaryRawData(word: string) {
+    const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
+    const data = await res.json();
+    if (!Array.isArray(data) || data.length === 0)
+        throw new Error("No data found for the given word.");
+    return data;
+}
+
+export async function fetchUnsplashImages(keywords: string[], limit = 2) {
+    const accessKey = process.env.UNSPLASH_ACCESS_KEY;
+    if (!accessKey) throw new Error("Missing UNSPLASH_ACCESS_KEY in .env");
+
+    const query = encodeURIComponent(keywords.join(" "));
+    const url = `https://api.unsplash.com/search/photos?query=${query}&per_page=6&orientation=squarish`;
+
+    const res = await fetch(url, {
+        headers: { Authorization: `Client-ID ${accessKey}` },
+    });
+
+    if (!res.ok) throw new Error(`Unsplash error: ${res.statusText}`);
+    const data = await res.json();
+
+    // 🎯 Lọc ảnh có từ khóa xuất hiện trong mô tả / alt_description
+    const filtered = (data.results || []).filter((img: any) => {
+        const desc = `${img.description || ""} ${img.alt_description || ""}`.toLowerCase();
+        return keywords.some((kw) => desc.includes(kw.toLowerCase()));
+    });
+
+    // Nếu không có ảnh match hoàn hảo → fallback
+    const final = filtered.length > 0 ? filtered : data.results.slice(0, limit);
+
+    return final.slice(0, limit).map((img: any) => ({
+        url: img.urls.small,
+        description: img.alt_description,
+        photographer: img.user.name,
+        link: img.links.html,
+    }));
+}
+
+export async function dictionaryLookup(query: string) {
+    const promptPath = path.resolve(__dirname, "../configs/dictionary.txt");
+    const promptTemplate = fs.readFileSync(promptPath, "utf8");
+
+    const TranslateSchema = {
+        type: Type.OBJECT,
+        properties: { englishWord: { type: Type.STRING } },
+        propertyOrdering: ["englishWord"],
+    };
+
+    for (const model of MODELS) {
+        try {
+            console.log(`🧠 Trying model: ${model}`);
+
+            // STEP 1: dịch từ tiếng Việt -> tiếng Anh (nếu cần)
+            const translatePrompt = `
+                Hãy dịch từ hoặc cụm sau sang tiếng Anh, chỉ trả về JSON có key "englishWord".
+                Không thêm giải thích nào khác.
+
+                Input: "quả táo" → Output: {"englishWord":"apple"}
+                Từ cần dịch: "${query}"
+            `;
+
+            const translateResult = await ai.models.generateContent({
+                model,
+                contents: translatePrompt,
+                config: {
+                    temperature: 0.2,
+                    responseMimeType: "application/json",
+                    responseSchema: TranslateSchema,
+                },
+            });
+
+            if (!translateResult.text) throw new Error("Không nhận được phản hồi dịch.");
+            const englishWord =
+                JSON.parse(translateResult.text).englishWord?.trim() || query;
+            console.log("🔤 Detected English word:", englishWord);
+
+            // STEP 2: lấy toàn bộ dữ liệu gốc từ dictionaryapi.dev
+            const rawDictData = await fetchDictionaryRawData(englishWord);
+
+            // STEP 3: gửi sang Gemini để xử lý
+            const prompt = promptTemplate.replace(
+                "{{DICTIONARY_RAW_DATA}}",
+                JSON.stringify(rawDictData, null, 2)
+            );
+
+            const result = await ai.models.generateContent({
+                model,
+                contents: prompt,
+                config: {
+                    temperature: 0.4,
+                    maxOutputTokens: 4096,
+                    responseMimeType: "application/json",
+                    responseSchema: DictionarySchema,
+                },
+            });
+
+            const text = result.text?.trim();
+            if (!text) throw new Error("Empty structured response from Gemini.");
+
+            const parsed = JSON.parse(text);
+            console.log("📦 Gemini dictionary result:", parsed);
+
+            // STEP 4: Gọi Unsplash lấy ảnh minh họa
+            const imageKeywords = parsed.imageUrls || [englishWord];
+            const images = await fetchUnsplashImages(imageKeywords);
+
+            return {
+                model,
+                json: {
+                    ...parsed,
+                    imageUrls: images.map((img: any) => img.url),
+                },
+            };
+        } catch (err: any) {
+            const msg = err?.message || err?.error?.message || "";
+            if (msg.includes("503") || msg.includes("UNAVAILABLE")) {
+                console.warn(`🚧 ${model} quá tải, thử model kế tiếp...`);
+                continue;
+            }
+            console.error(`❌ Lỗi khi gọi ${model}:`, msg);
+            throw err;
+        }
+    }
+
+    throw new Error("Tất cả model đều quá tải hoặc lỗi xử lý.");
+}
