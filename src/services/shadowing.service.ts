@@ -1,6 +1,7 @@
 import { Types } from "mongoose";
 import { IShadowing, Shadowing } from "../models/shadowing.model";
 import { appEvents } from "../core/appEvents";
+import { TestStatus } from "../models/enums/TestStatus";
 
 export const getAllShadowingService = async (page: number, limit: number) => {
     const skip = (page - 1) * limit;
@@ -37,7 +38,7 @@ export const createShadowingService = async (payload: IShadowing) => {
     }
 
     await appEvents.emitAsync("shadowing.created", shadowing);
-    
+
     return shadowing;
 }
 
@@ -56,7 +57,15 @@ export const updateShadowingService = async (payload: Partial<IShadowing>, shado
     return updated;
 }
 
-export const deleteShadowingService = async(shadowingId: string) => {
+export const deleteShadowingService = async (shadowingId: string) => {
     const deleted = await Shadowing.findByIdAndDelete(shadowingId);
     return deleted;
+}
+
+export const getAllShadowingPracticeService = async () => {
+    const shadowings = await Shadowing.find({
+        status: TestStatus.APPROVED
+    }).sort({ created_at: -1 });
+
+    return shadowings;
 }
