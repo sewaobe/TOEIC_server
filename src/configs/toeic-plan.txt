@@ -25,7 +25,7 @@ tôi nghĩ như vậy
   },
   "target_score": 600,
   "start_date": "2025-09-20",
-  "deadline": "2026-02-21",
+  "deadline": "2026-02-20",
   "weekly_study_hours": 20.45,
   "study_days_per_week": 7,
   "learning_methods": {
@@ -50,13 +50,13 @@ tôi nghĩ như vậy
      Ví dụ: 415.8 → 600 ≈ **450 giờ học** (Chọn mốc 400-600).
 
 2. **Tính số tuần và giờ khả dụng (PHẢI CHÍNH XÁC)**
-   - Tổng số ngày khả dụng = (deadline - start_date) = 155 ngày (từ 20/09/2025 đến 21/02/2026).
-   - Tổng số tuần khả dụng = 155 / 7 ≈ 22.14 tuần.
+   - Tổng số ngày khả dụng = (deadline - start_date) = 154 ngày (từ 20/09/2025 đến 20/02/2026).
+   - Tổng số tuần khả dụng = 154 / 7 ≈ 22 tuần(có thể 23 tuần nếu tính cả ngày lẻ).
    - Giờ học mỗi ngày (tính toán ban đầu) = 20.45 / 7 ≈ 2.9214 giờ.
    - **CHỐT THỜI GIAN HỌC MỖI NGÀY:** Để đảm bảo lịch chi tiết (từng phút), ta làm tròn thành **175 PHÚT** (2 giờ 55 phút).
    - **GIÁ TRỊ TƯƠNG ĐƯƠNG (CHO SUMMARY):** 175 / 60 = **2.9166...** giờ ~~ 3 giờ.
-   - Tổng giờ học khả dụng = (175 phút * 155 ngày) / 60 = **452.08 giờ**.
-   - So sánh: 452.08h (khả dụng) > 450h (cần thiết).
+   - Tổng giờ học khả dụng = (175 phút * 154 ngày) / 60 = **450.08 giờ**.
+   - So sánh: 450.08h (khả dụng) > 450h (cần thiết).
    - → **TUYỆT ĐỐI KHÔNG thêm "warning"**.
 
 3. **Phân bổ 3 giai đoạn học (dựa theo band mục tiêu):**
@@ -72,14 +72,14 @@ tôi nghĩ như vậy
 
 5. **Tạo timeline chi tiết từng tuần & từng ngày:**
    - Tổng giờ học thực tế = **452.08 giờ**.
-   - Tổng số tuần thực tế = **22.14 tuần** (chia thành 22 tuần, tuần 23 sẽ có 1 ngày).
+   - Tổng số tuần thực tế = **22 tuần** (chia thành 22 tuần, thành 23 tuần nếu lẻ ngày).
    - Giai đoạn 1 (Nền tảng): 45% * 22.14 tuần ≈ 10.0 tuần.
    - Giai đoạn 2 (Luyện kỹ năng): 30% * 22.14 tuần ≈ 6.6 tuần.
    - Giai đoạn 3 (Thực chiến): 25% * 22.14 tuần ≈ 5.5 tuần.
    - Mỗi tuần có 7 ngày.
    - **Mỗi ngày trong `schedule_by_week` có chính xác 175 phút (2 giờ 55 phút) học.**
    - Chủ đề học Giai đoạn 1 phải tập trung vào Part 1, Part 5 (do `current_accuracy` thấp).
-   - Lịch học phải kết thúc *chính xác* vào ngày `deadline` (2026-02-21).
+   - Lịch học phải kết thúc *chính xác* vào ngày `deadline` (2026-02-20).
 
 6. **Kết thúc lịch trình:**
    - Tổng hợp: số tuần, tổng giờ toàn khóa (phải ≈ 452.08 giờ).
@@ -93,9 +93,9 @@ tôi nghĩ như vậy
 - Lịch trình phải bao gồm tất cả 155 ngày.
 - **Giữ đúng % giai đoạn** theo bảng band điểm (Quy tắc 3).
 - Chỉ dùng các **keys** (video, flashcard, dictation, shadowing, quiz, mini_test, full_test) từ object `learning_methods` trong INPUT làm hoạt động.
-- Đảm bảo tổng số tuần chính xác, số thứ tự các tuần không nhảy cóc (Tuần 1 đến 22, và Tuần 23 có 1 ngày).
+- Đảm bảo tổng số tuần chính xác, số thứ tự các tuần không nhảy cóc (Tuần 1 đến 23, và Tuần 1 có 2 ngày).
 - Đảm bảo thời gian học trên một ngày (trong `schedule_by_week`) chính xác là **175 phút**.
-- Lịch học phải bắt đầu vào `start_date` (2025-09-20) và kết thúc *chính xác* vào `deadline` (2026-02-21).
+- Lịch học phải bắt đầu vào `start_date` (2025-09-20) và kết thúc *chính xác* vào `deadline` (2026-02-20).
 - Full Test phải là 120 phút mỗi lần học.
 - Không có Activities nào là "review".
 
@@ -108,6 +108,8 @@ tôi nghĩ như vậy
   - Trường `final_summary.total_hours` BẮT BUỘC phải là **452.08**.
   - Các Activities bắt buộc phải là những gì có trong `learning_methods` của input, topic phải cụ thể học gì. 
   - **TUYỆT ĐỐI KHÔNG** được thêm trường `"warning"` vào bất cứ đâu trong JSON.
+  - **Nếu `start_date` giữa tuần (ngày 2025-09-20 là thứ 7) thì cho tuần đầu thiếu, chỉ có 2 ngày 20 và 21.**
+
 
 ---
 
@@ -146,18 +148,29 @@ tôi nghĩ như vậy
       "days": [
         { "date": "2025-09-20", "video": 60, "quiz": 25, "flashcard": 60, "dictation": 30 },
         { "date": "2025-09-21", "video": 60, "quiz": 25, "flashcard": 60, "shadowing": 30 },
-        { "date": "2025-09-22", "flashcard": 60, "dictation": 60, "shadowing": 55 },
+      ]
+    },
+    {
+      "week": 2,
+      "phase": "Nền tảng",
+      "goal": "Tập trung cải thiện Part 1 và Ngữ pháp Part 5",
+      "days": [
+        { "date": "2025-09-22", "video": 60, "quiz": 25, "flashcard": 60, "dictation": 30 },
+        { "date": "2025-09-23", "video": 60, "quiz": 25, "flashcard": 60, "shadowing": 30 },
+        { "date": "2025-09-24", "flashcard": 60, "dictation": 60, "shadowing": 55 },
         ...
-        { "date": "2025-09-26", "mini_test": 60, "quiz": 115 }
+        { "date": "2025-09-28", "mini_test": 60, "quiz": 115 }
       ]
     },
     ...
     {
-      "week": 23,
+      "week": 22,
       "phase": "Thực chiến",
       "goal": "Tổng ôn tập",
       "days": [
-         { "date": "2026-02-21", "flashcard": 60, "dictation": 60, "shadowing": 55 }
+         { "date": "2025-09-13", "video": 60, "quiz": 25, "flashcard": 60, "dictation": 30 },
+        ...
+        { "date": "2025-09-20", "mini_test": 60, "quiz": 115 }
       ]
     }
   ],

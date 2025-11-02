@@ -1,4 +1,4 @@
-import { WeekStudyStatus } from './../models/enums/WeekStudyStatus';
+import { WeekStudyStatus } from "./../models/enums/WeekStudyStatus";
 import { Types } from "mongoose";
 import {
   UserLearningPath,
@@ -15,6 +15,8 @@ import {
   ShadowingPlan,
   WeekStudy,
 } from "../models"; // ✅ gom từ index
+import { generateToeicPlan } from "./gemini.service";
+import { buildLearningPathFromGemini } from "./learningPath.generator";
 
 import { getDemoTestTagAccuracyService } from "./user_test.service";
 import { SessionType } from "../models/enums/SessionType";
@@ -40,7 +42,7 @@ export const getUserLearningPathService = async (userId: string) => {
       path: "learningPath_id",
       populate: [
         {
-          path: "week_studies_id",
+          path: "week_study_ids",
           populate: { path: "days" },
         },
         {
@@ -60,58 +62,37 @@ export const createLearningPathService = async (
   if (!userId) throw new Error("UserId is required");
   const userObjectId = new Types.ObjectId(userId);
 
-  // 1. Phân tích demo test → lấy điểm yếu theo tag
-  const tagAccuracy = await getDemoTestTagAccuracyService(userId);
+  // New flow: Always generate plan via Gemini and build the full learning path from AI output.
+  // We reuse the generator logic in learningPath.generator.ts which will find-or-create
+  // minimal metadata (Lesson, Quiz, Shadowing, Dictation, TopicVocabulary, Plans)
+  // and then create LearningPath, WeekStudy and DayStudy documents.
 
-  // 2. Chọn lesson phù hợp
-  const selectedLessons = (await selectLessonsByTagAccuracy(
-    tagAccuracy
-  )) as ILesson[];
-  console.log("Số bài học là:", selectedLessons.length);
-
-  // 3. Phân bổ lesson theo tuần
-  const distributed = distributeLessonsByWeek(
-    selectedLessons,
-    payload.weeklyTotals
-  );
-  console.log("Bài theo tuần:", JSON.stringify(distributed[0], null, 2));
-
-  // 4. Tạo LearningPath + tất cả WeekStudy + DayStudy
-  const lp = await createLearningPathWithWeeks(
-    userId,
-    "Lộ trình TOEIC",
-    "Lộ trình được tạo từ placement test",
-    payload.targetScore >= 750 ? "ADVANCED" : "INTERMEDIATE", // ví dụ
-    distributed
-  );
-
-  // tính toán sơ sơ
-  // const daysPerWeek = Object.values(payload.weeklyPlan).filter(
-  //   (v) => v > 0
-  // ).length;
-
-  const daysPerWeek = 7;
-  // const timePerDay = Math.round(
-  //   Object.values(payload.weeklyPlan).reduce((a, b) => a + b, 0) / daysPerWeek
-  // );
-
-  const timePerDay = 90;
-  // Tạo liên kết UserLearningPath
-  const userLP = await createUserLearningPath(
-    userId,
-    (lp._id as Types.ObjectId).toString(),
-    payload.targetScore,
-    timePerDay, // ví dụ 120 phút/ngày
-    daysPerWeek, // ví dụ 6 ngày/tuần
-    new Date(payload.endDate)
-  );
-
-  console.log("===== USER LEARNING PATH CREATED =====");
-  console.log(JSON.stringify(userLP, null, 2));
-
-  return {
-    tagAccuracy,
+  // Prepare a compact user input object to send to Gemini
+  const userInput = {
+    methods: payload.methods,
+    targetScore: payload.targetScore,
+    weeklyTotals: payload.weeklyTotals,
+    weeklyPlan: payload.weeklyPlan,
+    endDate: payload.endDate,
   };
+
+  // Call Gemini to get structured plan (the gemini.service writes artifacts to toeic_outputs)
+  const gen = await generateToeicPlan(userInput);
+  const parsed = gen?.json ?? null;
+
+  // Build learning path from parsed Gemini result (generator will create any missing metadata)
+  const result = await buildLearningPathFromGemini(
+    userId,
+    userInput,
+    {
+      title: `Lộ trình TOEIC (AI)`,
+      targetScore: payload.targetScore,
+      endDate: payload.endDate,
+    },
+    parsed
+  );
+
+  return result;
 };
 
 export async function selectLessonsByTagAccuracy(
@@ -284,6 +265,8 @@ export async function createLearningPathWithWeeks(
 
   // 5. Gắn các tuần vào LearningPath
   // learningPath.week_studies_id = weekIds;
+  // Attach created week IDs to the learning path so FE can render weeks/days
+  learningPath.week_study_ids = weekIds;
   await learningPath.save();
 
   return learningPath;
@@ -323,9 +306,9 @@ export function generateWeeklyDayStudies(
     no: number,
     part: PartType | null,
     items: {
-      kind: SessionType,
-      activityId?: Types.ObjectId,
-      status?: WeekStudyStatus
+      kind: SessionType;
+      activityId?: Types.ObjectId;
+      status?: WeekStudyStatus;
     }[],
     status: WeekStudyStatus = WeekStudyStatus.LOCK
   ) => ({
@@ -352,7 +335,11 @@ export function generateWeeklyDayStudies(
         }
       }
 
-      return { kind: it.kind, activity_id: activityId, status: it.status ? it.status : WeekStudyStatus.LOCK };
+      return {
+        kind: it.kind,
+        activity_id: activityId,
+        status: it.status ? it.status : WeekStudyStatus.LOCK,
+      };
     }),
   });
 
@@ -392,7 +379,8 @@ export function generateWeeklyDayStudies(
         { kind: SessionType.FLASH_CARD, status: WeekStudyStatus.IN_PROGRESS },
         { kind: SessionType.SHADOWING },
         { kind: SessionType.DICTATION },
-      ]), ,
+      ]),
+      ,
       makeSession(2, PartType.PART_2, [
         { kind: SessionType.FLASH_CARD },
         { kind: SessionType.SHADOWING },
@@ -423,7 +411,6 @@ export function generateWeeklyDayStudies(
     created_at: new Date(),
   } as any);
 
-
   // ===== Thứ 4: Part 5 → xen kẽ lesson + quiz, thêm flashcard
   result.push({
     week_id: weekId,
@@ -434,7 +421,6 @@ export function generateWeeklyDayStudies(
     sessions: makeLessonQuizSessions(PartType.PART_5, grammarLessons.wed),
     created_at: new Date(),
   } as any);
-
 
   // ===== Thứ 5: Part 6 → xen kẽ lesson + quiz, thêm flashcard
   result.push({
@@ -493,4 +479,3 @@ export function generateWeeklyDayStudies(
 
   return result;
 }
-
