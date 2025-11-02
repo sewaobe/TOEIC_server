@@ -1,5 +1,5 @@
 import Router from "express";
-import { analyzeDictationController, dictionaryController, generateToeicPlanController, translateController } from "../controllers/gemini.controller";
+import { analyzeDictationController, analyzeShadowingController, dictionaryController, generateToeicPlanController, translateController } from "../controllers/gemini.controller";
 
 const router = Router();
 
@@ -312,5 +312,152 @@ router.post("/translate", translateController);
  *         description: Lỗi hệ thống hoặc model không phản hồi hợp lệ
  */
 router.post("/dictation-analysis", analyzeDictationController)
+
+/**
+ * @openapi
+ * /gemini/shadowing-analysis:
+ *   post:
+ *     summary: Phân tích và chấm điểm bài luyện Shadowing từng câu bằng Gemini AI
+ *     description: |
+ *       API chấm **mỗi đoạn (timing)** của bài Shadowing ngay sau khi người học nói xong.  
+ *       - Nhận vào 2 URL Cloudinary (bản **user nói** và bản **native gốc**)  
+ *       - Gọi Flask WhisperX để nhận transcript cho cả hai audio  
+ *       - Gửi transcript và thời lượng vào Gemini để chấm điểm chi tiết theo các tiêu chí:  
+ *         **similarity, pronunciation, accuracy, fluency, intonation, feedback**  
+ *       
+ *       > ⚡ Phân tích ngay sau mỗi đoạn, giúp phản hồi tức thời cho người học.
+ *     tags:
+ *       - Gemini
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - user_audio_url
+ *               - native_audio_url
+ *               - shadowing
+ *             properties:
+ *               user_audio_url:
+ *                 type: string
+ *                 description: URL Cloudinary của bản ghi người học nói
+ *                 example: "https://res.cloudinary.com/demo/video/upload/user_segment_1.mp3"
+ *               native_audio_url:
+ *                 type: string
+ *                 description: URL Cloudinary của audio gốc (native speaker)
+ *                 example: "https://res.cloudinary.com/demo/video/upload/native_segment_1.mp3"
+ *               level:
+ *                 type: string
+ *                 description: CEFR level của bài học (A1–C2)
+ *                 example: "A2"
+ *               segmentIndex:
+ *                 type: integer
+ *                 description: Thứ tự đoạn trong bài Shadowing
+ *                 example: 0
+ *               shadowing:
+ *                 type: object
+ *                 description: Thông tin bài Shadowing hiện tại
+ *                 properties:
+ *                   _id:
+ *                     type: string
+ *                     example: "672b34f8e19293a1c2b45a8f"
+ *                   title:
+ *                     type: string
+ *                     example: "Lesson 12 – Job Interview"
+ *                   level:
+ *                     type: string
+ *                     example: "A2"
+ *     responses:
+ *       200:
+ *         description: Phân tích thành công từng đoạn Shadowing
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "✅ Segment 0 analyzed!"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     model:
+ *                       type: string
+ *                       example: "gemini-2.5-flash"
+ *                     json:
+ *                       type: object
+ *                       properties:
+ *                         transcript_native:
+ *                           type: string
+ *                           example: "I will call you tomorrow morning."
+ *                         transcript_user:
+ *                           type: string
+ *                           example: "I will call you to morrow morning"
+ *                         similarity_score:
+ *                           type: number
+ *                           example: 0.91
+ *                         accuracy_score:
+ *                           type: number
+ *                           example: 0.87
+ *                         fluency_score:
+ *                           type: number
+ *                           example: 0.84
+ *                         intonation_score:
+ *                           type: number
+ *                           example: 0.89
+ *                         pronunciation_feedback:
+ *                           type: object
+ *                           properties:
+ *                             mispronounced:
+ *                               type: array
+ *                               items:
+ *                                 type: string
+ *                               example: ["tomorrow"]
+ *                             missing_words:
+ *                               type: array
+ *                               items:
+ *                                 type: string
+ *                               example: []
+ *                             extra_words:
+ *                               type: array
+ *                               items:
+ *                                 type: string
+ *                               example: ["to"]
+ *                             word_scores:
+ *                               type: array
+ *                               items:
+ *                                 type: object
+ *                                 properties:
+ *                                   word:
+ *                                     type: string
+ *                                   score:
+ *                                     type: number
+ *                               example:
+ *                                 - { "word": "I", "score": 1 }
+ *                                 - { "word": "will", "score": 1 }
+ *                                 - { "word": "call", "score": 1 }
+ *                                 - { "word": "you", "score": 1 }
+ *                                 - { "word": "tomorrow", "score": 0.7 }
+ *                                 - { "word": "morning", "score": 1 }
+ *                         comments:
+ *                           type: string
+ *                           example: "Phát âm tốt, chỉ sai nhẹ ở từ 'tomorrow'."
+ *                         suggestions:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                           example:
+ *                             - "Luyện nối âm giữa 'call' và 'you'."
+ *                             - "Chú ý nhịp nói đều hơn ở cuối câu."
+ *       400:
+ *         description: Thiếu dữ liệu hoặc URL audio không hợp lệ
+ *       500:
+ *         description: Lỗi hệ thống hoặc Gemini không phản hồi hợp lệ
+ */
+router.post("/shadowing-analysis", analyzeShadowingController);
 
 export default router;

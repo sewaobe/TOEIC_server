@@ -1,3 +1,4 @@
+import { getAllShadowingPracticeService } from './../services/shadowing.service';
 import { NextFunction, Request, Response } from "express"
 import { ApiResponse } from "../utils/ApiResponse";
 import { IShadowing } from "../models/shadowing.model";
@@ -98,6 +99,17 @@ export const deleteShadowingController = async (req: Request, res: Response, nex
 
         res.status(200).json(
             ApiResponse.success(null, "Xóa bài shadowing thành công")
+        );
+    } catch (err) {
+        next(err)
+    }
+}
+
+export const getAllShadowingPracticeController = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const shadowings = await getAllShadowingPracticeService();
+        res.status(200).json(
+            ApiResponse.success(shadowings, "Lấy tất cả bài shadowing practice thành công")
         );
     } catch (err) {
         next(err)

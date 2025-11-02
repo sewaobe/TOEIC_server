@@ -601,3 +601,143 @@ export async function analyzeDictationWithAI(logs: any[], dictationMeta: any) {
 
   throw new Error("Tất cả model Gemini đều quá tải hoặc lỗi xử lý.");
 }
+
+export const ShadowingFeedbackSchema = {
+  type: Type.OBJECT,
+  properties: {
+    transcript_native: { type: Type.STRING },
+    transcript_user: { type: Type.STRING },
+    similarity_score: { type: Type.NUMBER },
+    accuracy_score: { type: Type.NUMBER },
+    fluency_score: { type: Type.NUMBER },
+    intonation_score: { type: Type.NUMBER },
+    pronunciation_feedback: {
+      type: Type.OBJECT,
+      properties: {
+        mispronounced: { type: Type.ARRAY, items: { type: Type.STRING } },
+        missing_words: { type: Type.ARRAY, items: { type: Type.STRING } },
+        extra_words: { type: Type.ARRAY, items: { type: Type.STRING } },
+        word_scores: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              word: { type: Type.STRING },
+              score: { type: Type.NUMBER },
+            },
+          },
+        },
+      },
+    },
+
+    // 🆕 Căn chỉnh theo câu
+    sentence_alignment: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          native_sentence: { type: Type.STRING },
+          user_sentence: { type: Type.STRING },
+          sentence_similarity: { type: Type.NUMBER },
+          word_diffs: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                word: { type: Type.STRING },
+                status: { type: Type.STRING }, // matched | missing | extra | mispronounced
+                note: { type: Type.STRING },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    // 🆕 Tóm tắt lỗi nổi bật
+    highlight_mistakes: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          native_part: { type: Type.STRING },
+          user_part: { type: Type.STRING },
+          reason: { type: Type.STRING },
+        },
+      },
+    },
+
+    comments: { type: Type.STRING },
+    suggestions: { type: Type.ARRAY, items: { type: Type.STRING } },
+  },
+  propertyOrdering: [
+    "transcript_native",
+    "transcript_user",
+    "similarity_score",
+    "accuracy_score",
+    "fluency_score",
+    "intonation_score",
+    "pronunciation_feedback",
+    "sentence_alignment",
+    "highlight_mistakes",
+    "comments",
+    "suggestions",
+  ],
+};
+
+export async function analyzeShadowingByURL(userAudioUrl: string, meta: any) {
+  const flaskUrl =
+    process.env.FLASK_API_URL || "http://127.0.0.1:5001/api/transcribe_fast";
+
+  // 🧩 Gọi WhisperX cho user audio
+  const userRes = await fetch(flaskUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ audio_path: userAudioUrl }),
+  });
+  const userData = await userRes.json();
+  if (!userRes.ok || !userData.transcript)
+    throw new Error(userData.error || "User audio transcription failed.");
+
+  const { transcript: userTranscript, duration: userDuration } = userData;
+  const nativeTranscript = meta.nativeText;
+
+  // 🧠 Tạo prompt Gemini
+  const promptTemplate = fs.readFileSync(
+    path.resolve(__dirname, "../configs/shadowing_analysis.txt"),
+    "utf8"
+  );
+
+  const prompt = promptTemplate
+    .replace("{{NATIVE_TRANSCRIPT}}", nativeTranscript)
+    .replace("{{USER_TRANSCRIPT}}", userTranscript)
+    .replace("{{LEVEL}}", meta.level || "A2")
+    .replace("{{SEGMENT_INDEX}}", meta.segmentIndex?.toString() || "0")
+    .replace("{{NATIVE_DURATION}}", "0")
+    .replace("{{USER_DURATION}}", userDuration?.toString() || "0");
+
+  // 🧠 Gọi Gemini
+  for (const model of MODELS) {
+    try {
+      const result = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          temperature: 0.4,
+          maxOutputTokens: 8192,
+          responseMimeType: "application/json",
+          responseSchema: ShadowingFeedbackSchema,
+        },
+      });
+
+      const text = result.text?.trim();
+      if (!text) throw new Error("Empty structured response from Gemini.");
+      const parsed = JSON.parse(text);
+      return { model, json: parsed };
+    } catch (e: any) {
+      console.error(`[Gemini Error] ${e.message}`);
+    }
+  }
+
+  throw new Error("Tất cả model Gemini đều quá tải hoặc lỗi.");
+}
