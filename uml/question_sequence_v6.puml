@@ -1,0 +1,26 @@
+@startuml
+skinparam backgroundColor #1e1e1e
+skinparam participantBackgroundColor #2b2b2b
+skinparam participantBorderColor #888
+skinparam participantFontColor white
+skinparam sequenceArrowColor #00ffff
+actor User
+participant "Router" as R
+participant "Question.controller" as C
+participant "Question.service" as S
+
+'=== GET /:question_id ===
+User -> R: GET /:question_id
+R -> C: getQuestionByIdController()
+note right of C: Không tìm thấy thân hàm getQuestionByIdController
+S -> MQuestion: findById()
+MQuestion --> S: result
+S -> MQuestion: find()
+MQuestion --> S: result
+S -> MGroup: findOne()
+MGroup --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP GET /:question_id response
+
+@enduml

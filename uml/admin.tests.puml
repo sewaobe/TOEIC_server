@@ -1,0 +1,58 @@
+@startuml admin_tests
+actor AdminUser
+participant "Router" as R
+participant "AdminTest.controller" as C
+participant "AdminTest.service" as S
+participant "TestModel" as MTest
+
+'=== GET /admin/tests ===
+AdminUser -> R: GET /
+R -> C: listTestsController()
+C -> S: listTestsService(query)
+S -> MTest: find(...).populate(...)
+MTest --> S: tests
+S --> C: tests + pagination
+C -> R: JSON
+R --> AdminUser: response
+
+'=== GET /admin/tests/:id ===
+AdminUser -> R: GET /:id
+R -> C: getTestDetailController()
+C -> S: getTestDetailService(id)
+S -> MTest: findById(id).populate(groups...)
+MTest --> S: testDetail
+S --> C: testDetail
+C -> R: JSON
+R --> AdminUser: response
+
+'=== POST /admin/tests/:id/approve ===
+AdminUser -> R: POST /:id/approve
+R -> C: approveTestController()
+C -> S: approveTestService(id, adminId)
+S -> MTest: findByIdAndUpdate({ status: 'approved' })
+MTest --> S: updated
+S --> C: updated
+C -> R: JSON
+R --> AdminUser: response
+
+'=== POST /admin/tests/:id/reject ===
+AdminUser -> R: POST /:id/reject
+R -> C: rejectTestController()
+C -> S: rejectTestService(id, reason)
+S -> MTest: findByIdAndUpdate({ status: 'rejected' })
+MTest --> S: updated
+S --> C: updated
+C -> R: JSON
+R --> AdminUser: response
+
+'=== POST /admin/tests/:id/delete ===
+AdminUser -> R: POST /:id/delete
+R -> C: softDeleteTestController()
+C -> S: softDeleteTestService(id)
+S -> MTest: findByIdAndUpdate({ is_deleted: true })
+MTest --> S: updated
+S --> C: result
+C -> R: JSON
+R --> AdminUser: response
+
+@enduml

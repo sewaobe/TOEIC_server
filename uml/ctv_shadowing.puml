@@ -1,0 +1,58 @@
+@startuml ctv_shadowing
+actor CTVUser
+participant "Router" as R
+participant "Shadowing.controller" as C
+participant "Shadowing.service" as S
+participant "ShadowingModel" as MShadow
+
+'=== GET /ctv/shadowing ===
+CTVUser -> R: GET /
+R -> C: getAllShadowingController()
+C -> S: getAllService(page,limit)
+S -> MShadow: find().skip().limit()
+MShadow --> S: items
+S --> C: { items, total }
+C -> R: JSON
+R --> CTVUser: response
+
+'=== GET /ctv/shadowing/:id ===
+CTVUser -> R: GET /:id
+R -> C: getShadowingByIdController()
+C -> S: getByIdService(id)
+S -> MShadow: findById(id)
+MShadow --> S: item
+S --> C: item
+C -> R: JSON
+R --> CTVUser: response
+
+'=== POST /ctv/shadowing ===
+CTVUser -> R: POST /
+R -> C: createShadowingController()
+C -> S: createService(payload)
+S -> MShadow: create(payload)
+MShadow --> S: created
+S --> C: created
+C -> R: JSON 201
+R --> CTVUser: response
+
+'=== PUT /ctv/shadowing/:id ===
+CTVUser -> R: PUT /:id
+R -> C: updateShadowingController()
+C -> S: updateService(id,payload)
+S -> MShadow: findByIdAndUpdate(id,payload)
+MShadow --> S: updated
+S --> C: updated
+C -> R: JSON
+R --> CTVUser: response
+
+'=== DELETE /ctv/shadowing/:id ===
+CTVUser -> R: DELETE /:id
+R -> C: deleteShadowingController()
+C -> S: deleteService(id)
+S -> MShadow: deleteOne({ _id: id })
+MShadow --> S: result
+S --> C: result
+C -> R: JSON
+R --> CTVUser: response
+
+@enduml

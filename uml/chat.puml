@@ -1,0 +1,72 @@
+@startuml chat
+actor User
+participant "Router" as R
+participant "Chat.controller" as C
+participant "Chat.service" as S
+participant "ChatSessionModel" as MSession
+participant "ChatMessageModel" as MMessage
+participant "Retriever" as Retriever
+participant "LLM (Gemini)" as LLM
+
+'=== POST /session ===
+User -> R: POST /session { title, type }
+R -> C: createChatSessionController()
+C -> S: createChatSessionService(userId, title, type)
+S -> MSession: create({ user_id, title, type })
+MSession --> S: created session
+S -> MMessage: create(initial bot message)
+MMessage --> S: created message
+S --> C: session
+C -> R: JSON 201
+R --> User: response
+
+'=== GET /session ===
+User -> R: GET /session?page&limit
+R -> C: getChatSessionByUserIdController()
+C -> S: getChatSessionByUserIdService(userId,page,limit)
+S -> MSession: find({ user_id })
+MSession --> S: sessions
+S --> C: paged result
+C -> R: JSON
+R --> User: response
+
+'=== POST /message ===
+User -> R: POST /message { sessionId, userText, questionId? }
+R -> C: processUserMessageController()
+C -> S: processUserMessageService(sessionId,userText,questionId)
+alt questionId provided
+  S -> Retriever: getContextById(questionId)
+else
+  S -> Retriever: retrieveContext(userText)
+end
+S -> LLM: generateAnswer(userText, context)
+LLM --> S: botAnswer
+S -> MMessage: create(bot message)
+MMessage --> S: saved
+S -> MSession: findByIdAndUpdate(sessionId, last_message_preview, inc total)
+MSession --> S: updated
+S --> C: { botMessage }
+C -> R: JSON
+R --> User: response
+
+'=== GET /message/:sessionId ===
+User -> R: GET /message/:sessionId
+R -> C: getAllChatMessageInSessionController()
+C -> S: getAllChatMessageInSessionService(sessionId)
+S -> MMessage: find({ session_id })
+MMessage --> S: messages
+S --> C: messages
+C -> R: JSON
+R --> User: response
+
+'=== DELETE /session/:sessionId ===
+User -> R: DELETE /session/:sessionId
+R -> C: deleteChatSessionController()
+C -> S: deleteChatSessionService(sessionId,userId)
+S -> MSession: findOneAndUpdate({ _id, user_id }, { is_archived: true })
+MSession --> S: updated
+S --> C: deletedSession
+C -> R: JSON
+R --> User: response
+
+@enduml

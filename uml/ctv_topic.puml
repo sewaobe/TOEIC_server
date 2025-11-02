@@ -1,0 +1,69 @@
+@startuml ctv_topic
+actor CTVUser
+participant "Router" as R
+participant "Topic.controller" as C
+participant "Topic.service" as S
+participant "TopicModel" as MTopic
+participant "VocabularyModel" as MVocabulary
+
+'=== GET /ctv/topics ===
+CTVUser -> R: GET /
+R -> C: getAllTopicOfCollaborator()
+C -> S: getAllTopicsService(page,limit,userId)
+S -> MTopic: find({ created_by: userId }).skip().limit()
+MTopic --> S: items
+S --> C: items
+C -> R: JSON
+R --> CTVUser: response
+
+'=== GET /ctv/topics/explore ===
+CTVUser -> R: GET /explore
+R -> C: getTopicExploresController()
+C -> S: getExploreTopicsService(page,limit)
+S -> MTopic: find({ isPublic or tag explore }).skip().limit()
+MTopic --> S: items
+S --> C: items
+C -> R: JSON
+R --> CTVUser: response
+
+'=== POST /ctv/topics ===
+CTVUser -> R: POST /
+R -> C: createTopicOfCollaborator()
+C -> S: createTopicService(payload,userId)
+S -> MTopic: create(payload)
+MTopic --> S: created
+S --> C: created
+C -> R: JSON 201
+R --> CTVUser: response
+
+'=== GET /ctv/topics/:topicId ===
+CTVUser -> R: GET /:topicId
+R -> C: getVocabulariesByTopic()
+C -> S: getVocabulariesByTopicService(topicId,page,limit)
+S -> MVocabulary: find({ topic_id: topicId }).skip().limit()
+MVocabulary --> S: items
+S --> C: items
+C -> R: JSON
+R --> CTVUser: response
+
+'=== PUT /ctv/topics/:id ===
+CTVUser -> R: PUT /:id
+R -> C: updateTopicOfCollaborator()
+C -> S: updateTopicService(id,payload)
+S -> MTopic: findByIdAndUpdate(id,payload)
+MTopic --> S: updated
+S --> C: updated
+C -> R: JSON
+R --> CTVUser: response
+
+'=== DELETE /ctv/topics/:id ===
+CTVUser -> R: DELETE /:id
+R -> C: deleteTopicOfCollaborator()
+C -> S: deleteTopicService(id)
+S -> MTopic: deleteOne({ _id: id })
+MTopic --> S: result
+S --> C: result
+C -> R: JSON
+R --> CTVUser: response
+
+@enduml

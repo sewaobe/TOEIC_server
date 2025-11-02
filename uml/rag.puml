@@ -1,0 +1,39 @@
+@startuml rag
+actor User
+participant "Router" as R
+participant "RAG.controller" as C
+participant "Retriever" as Retriever
+participant "LLM (Gemini)" as LLM
+participant "Ingest" as Ingest
+participant "Chroma/Vector DB" as Chroma
+
+'=== POST /ask ===
+User -> R: POST /ask { query, questionId? }
+R -> C: handleAskQuestionController()
+C -> Retriever: if questionId -> getContextById(questionId)
+alt no questionId
+  C -> Retriever: retrieveContext(query)
+end
+Retriever --> C: { context, metadatas, type }
+alt no context
+  C --> R: ApiResponse.success('Mình chưa có thông tin...')
+  R --> User: response
+else
+  C -> LLM: generateAnswer(query, context)
+  LLM --> C: answer
+  C -> R: JSON { answer, mode, sources }
+  R --> User: response
+end
+
+'=== POST /ingest ===
+User -> R: POST /ingest
+R -> C: handleIngestQuestionController()
+C -> Ingest: ingestQuestion()
+Ingest -> QuestionModel: read all questions from MongoDB
+Ingest -> Chroma: upsert vectors
+Chroma --> Ingest: ack
+Ingest --> C: done
+C -> R: JSON
+R --> User: response
+
+@enduml

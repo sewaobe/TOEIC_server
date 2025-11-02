@@ -1,0 +1,62 @@
+@startuml
+skinparam backgroundColor #1e1e1e
+skinparam participantBackgroundColor #2b2b2b
+skinparam participantBorderColor #888
+skinparam participantFontColor white
+skinparam sequenceArrowColor #00ffff
+actor User
+participant "Router" as R
+participant "Subscription.controller" as C
+participant "Push.service" as S
+participant "SubscriptionModel" as MSubscriptionModel
+participant "Webpush" as UWebpush
+
+'=== POST / ===
+User -> R: POST /
+R -> C: verifyAccessToken()
+note right of C: Không tìm thấy thân hàm verifyAccessToken
+S -> MSubscription: findOne()
+MSubscription --> S: result
+S -> MSubscription: create()
+MSubscription --> S: result
+S -> MSubscription: delete()
+MSubscription --> S: result
+S -> MSubscription: find()
+MSubscription --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP POST / response
+
+'=== GET / ===
+User -> R: GET /
+R -> C: verifyAccessToken()
+note right of C: Không tìm thấy thân hàm verifyAccessToken
+S -> MSubscription: findOne()
+MSubscription --> S: result
+S -> MSubscription: create()
+MSubscription --> S: result
+S -> MSubscription: delete()
+MSubscription --> S: result
+S -> MSubscription: find()
+MSubscription --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP GET / response
+
+'=== DELETE / ===
+User -> R: DELETE /
+R -> C: unregisterSubscription()
+note right of C: Không tìm thấy thân hàm unregisterSubscription
+S -> MSubscription: findOne()
+MSubscription --> S: result
+S -> MSubscription: create()
+MSubscription --> S: result
+S -> MSubscription: delete()
+MSubscription --> S: result
+S -> MSubscription: find()
+MSubscription --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP DELETE / response
+
+@enduml

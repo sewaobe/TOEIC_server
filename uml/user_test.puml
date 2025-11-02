@@ -1,0 +1,39 @@
+@startuml user_test
+actor User
+participant "Router" as R
+participant "UserTest.controller" as C
+participant "UserTest.service" as S
+participant "UserTestModel" as MUserTest
+participant "PaginationDto" as PDTO
+
+'=== GET /recent ===
+User -> R: GET /recent
+R -> C: getRecentUserTests()
+C -> S: getRecentUserTestsService(userId, limit)
+S -> MUserTest: find({ user_id }).sort(...).limit(limit)
+MUserTest --> S: recentTests
+S --> C: recentTests
+C -> R: JSON
+R --> User: response
+
+'=== GET /:historyId ===
+User -> R: GET /:historyId
+R -> C: getTestHistoryDetail()
+C -> S: getTestHistoryDetailService(historyId)
+S -> MUserTest: findById(historyId) / populate test info
+MUserTest --> S: historyDetail
+S --> C: result
+C -> R: JSON
+R --> User: response
+
+'=== GET /:testId (history list) ===
+User -> R: GET /:testId
+R -> C: getUserTestHistory()
+C -> S: getUserTestHistoryService(userId,testId,page,limit)
+S -> MUserTest: aggregate / paginate
+MUserTest --> S: paginationResult
+S --> C: result
+C -> R: JSON
+R --> User: response
+
+@enduml

@@ -1,0 +1,104 @@
+@startuml
+skinparam backgroundColor #1e1e1e
+skinparam participantBackgroundColor #2b2b2b
+skinparam participantBorderColor #888
+skinparam participantFontColor white
+skinparam sequenceArrowColor #00ffff
+actor User
+participant "Router" as R
+participant "Chat.controller" as C
+participant "Chat.service" as S
+participant "Chat_messageModel" as MChat_messageModel
+participant "Chat_sessionModel" as MChat_sessionModel
+
+'=== POST /session ===
+User -> R: POST /session
+R -> C: createChatSessionController()
+note right of C: Không tìm thấy thân hàm createChatSessionController
+S -> MChatSession: create()
+MChatSession --> S: result
+S -> MChatMessage: create()
+MChatMessage --> S: result
+S -> MChatMessage: find()
+MChatMessage --> S: result
+S -> MChatSession: findById()
+MChatSession --> S: result
+S -> MChatSession: findOne()
+MChatSession --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP POST /session response
+
+'=== GET /session ===
+User -> R: GET /session
+R -> C: getChatSessionByUserIdController()
+note right of C: Không tìm thấy thân hàm getChatSessionByUserIdController
+S -> MChatSession: create()
+MChatSession --> S: result
+S -> MChatMessage: create()
+MChatMessage --> S: result
+S -> MChatMessage: find()
+MChatMessage --> S: result
+S -> MChatSession: findById()
+MChatSession --> S: result
+S -> MChatSession: findOne()
+MChatSession --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP GET /session response
+
+'=== DELETE /session/:sessionId ===
+User -> R: DELETE /session/:sessionId
+R -> C: deleteChatSessionController()
+note right of C: Không tìm thấy thân hàm deleteChatSessionController
+S -> MChatSession: create()
+MChatSession --> S: result
+S -> MChatMessage: create()
+MChatMessage --> S: result
+S -> MChatMessage: find()
+MChatMessage --> S: result
+S -> MChatSession: findById()
+MChatSession --> S: result
+S -> MChatSession: findOne()
+MChatSession --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP DELETE /session/:sessionId response
+
+'=== GET /message/:sessionId ===
+User -> R: GET /message/:sessionId
+R -> C: getAllChatMessageInSessionController()
+note right of C: Không tìm thấy thân hàm getAllChatMessageInSessionController
+S -> MChatSession: create()
+MChatSession --> S: result
+S -> MChatMessage: create()
+MChatMessage --> S: result
+S -> MChatMessage: find()
+MChatMessage --> S: result
+S -> MChatSession: findById()
+MChatSession --> S: result
+S -> MChatSession: findOne()
+MChatSession --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP GET /message/:sessionId response
+
+'=== POST /message ===
+User -> R: POST /message
+R -> C: processUserMessageController()
+note right of C: Không tìm thấy thân hàm processUserMessageController
+S -> MChatSession: create()
+MChatSession --> S: result
+S -> MChatMessage: create()
+MChatMessage --> S: result
+S -> MChatMessage: find()
+MChatMessage --> S: result
+S -> MChatSession: findById()
+MChatSession --> S: result
+S -> MChatSession: findOne()
+MChatSession --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP POST /message response
+
+@enduml

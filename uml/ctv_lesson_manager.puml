@@ -1,0 +1,78 @@
+@startuml ctv_lesson_manager
+actor CTVUser
+participant "Router" as R
+participant "LessonManager.controller" as C
+participant "LessonManager.service" as S
+participant "LessonManagerModel" as MLM
+
+'=== GET /ctv/lesson-manager/titles ===
+CTVUser -> R: GET /titles
+R -> C: getAllTopicTitlesController()
+C -> S: getAllTopicTitlesService()
+S -> MLM: find().select(title)
+MLM --> S: titles
+S --> C: titles
+C -> R: JSON
+R --> CTVUser: response
+
+'=== GET /ctv/lesson-manager ===
+CTVUser -> R: GET /
+R -> C: getAllLessonManagerController()
+C -> S: getAllService(page,limit,userId)
+S -> MLM: find({ created_by: userId }).skip().limit()
+MLM --> S: items
+S --> C: items + pagination
+C -> R: JSON
+R --> CTVUser: response
+
+'=== GET /ctv/lesson-manager/:id ===
+CTVUser -> R: GET /:id
+R -> C: getLessonManagerByIdController()
+C -> S: getByIdService(id)
+S -> MLM: findById(id).populate(...)
+MLM --> S: manager
+S --> C: manager
+C -> R: JSON
+R --> CTVUser: response
+
+'=== POST /ctv/lesson-manager ===
+CTVUser -> R: POST /
+R -> C: createLessonManagerController()
+C -> S: createService(payload,userId)
+S -> MLM: create(payload)
+MLM --> S: created
+S --> C: created
+C -> R: JSON 201
+R --> CTVUser: response
+
+'=== PUT /ctv/lesson-manager/:id/status ===
+CTVUser -> R: PUT /:id/status
+R -> C: updateStatusLessonManagerController()
+C -> S: updateStatusService(id,status)
+S -> MLM: findByIdAndUpdate({ status })
+MLM --> S: updated
+S --> C: updated
+C -> R: JSON
+R --> CTVUser: response
+
+'=== PUT /ctv/lesson-manager/:id ===
+CTVUser -> R: PUT /:id
+R -> C: updateLessonManagerController()
+C -> S: updateService(id,payload)
+S -> MLM: findByIdAndUpdate(payload)
+MLM --> S: updated
+S --> C: updated
+C -> R: JSON
+R --> CTVUser: response
+
+'=== DELETE /ctv/lesson-manager/:id ===
+CTVUser -> R: DELETE /:id
+R -> C: deleteLessonManagerController()
+C -> S: deleteService(id)
+S -> MLM: findByIdAndDelete(id)
+MLM --> S: deleted
+S --> C: result
+C -> R: JSON
+R --> CTVUser: response
+
+@enduml

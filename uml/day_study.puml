@@ -1,0 +1,19 @@
+@startuml day_study
+actor User
+participant "Router" as R
+participant "DayStudy.controller" as C
+participant "DayStudy.service" as S
+participant "DayStudyModel" as MDay
+participant "LessonModel" as MLesson
+
+'=== GET /:id ===
+User -> R: GET /day-study/:id
+R -> C: getDayStudyByIdController()
+C -> S: getDayStudyByIdService(id)
+S -> MDay: findById(id).select(...)
+MDay --> S: day
+S --> C: day
+C -> R: JSON
+R --> User: response
+
+@enduml

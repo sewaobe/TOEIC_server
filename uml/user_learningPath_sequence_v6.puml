@@ -1,0 +1,62 @@
+@startuml
+skinparam backgroundColor #1e1e1e
+skinparam participantBackgroundColor #2b2b2b
+skinparam participantBorderColor #888
+skinparam participantFontColor white
+skinparam sequenceArrowColor #00ffff
+actor User
+participant "Router" as R
+participant "User_learningPath.controller" as C
+participant "User_learningPath.service" as S
+participant "Enums/SessionType" as MEnums/SessionType
+participant "Enums/PartType" as MEnums/PartType
+
+'=== GET / ===
+User -> R: GET /
+R -> C: verifyAccessToken()
+note right of C: Không tìm thấy thân hàm verifyAccessToken
+S -> MUserLearningPath: findOne()
+MUserLearningPath --> S: result
+S -> MLesson: find()
+MLesson --> S: result
+S -> MLearningPath: save()
+MLearningPath --> S: result
+S -> MPath: save()
+MPath --> S: result
+S -> MFlashCardPlan: find()
+MFlashCardPlan --> S: result
+S -> MDictationPlan: find()
+MDictationPlan --> S: result
+S -> MQuizPlan: find()
+MQuizPlan --> S: result
+S -> MShadowingPlan: find()
+MShadowingPlan --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP GET / response
+
+'=== POST / ===
+User -> R: POST /
+R -> C: verifyAccessToken()
+note right of C: Không tìm thấy thân hàm verifyAccessToken
+S -> MUserLearningPath: findOne()
+MUserLearningPath --> S: result
+S -> MLesson: find()
+MLesson --> S: result
+S -> MLearningPath: save()
+MLearningPath --> S: result
+S -> MPath: save()
+MPath --> S: result
+S -> MFlashCardPlan: find()
+MFlashCardPlan --> S: result
+S -> MDictationPlan: find()
+MDictationPlan --> S: result
+S -> MQuizPlan: find()
+MQuizPlan --> S: result
+S -> MShadowingPlan: find()
+MShadowingPlan --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP POST / response
+
+@enduml

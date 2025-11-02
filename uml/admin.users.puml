@@ -1,0 +1,48 @@
+@startuml admin_users
+actor AdminUser
+participant "Router" as R
+participant "AdminUser.controller" as C
+participant "AdminUser.service" as S
+participant "UserModel" as MUser
+
+'=== GET /admin/users ===
+AdminUser -> R: GET /
+R -> C: listUsersController()
+C -> S: listUsersService(query)
+S -> MUser: find(...).select(...)
+MUser --> S: users
+S --> C: users + pagination
+C -> R: JSON
+R --> AdminUser: response
+
+'=== GET /admin/users/:id ===
+AdminUser -> R: GET /:id
+R -> C: getUserDetailController()
+C -> S: getUserDetailService(id)
+S -> MUser: findById(id).populate(...)
+MUser --> S: userDetail
+S --> C: userDetail
+C -> R: JSON
+R --> AdminUser: response
+
+'=== POST /admin/users/:id/ban ===
+AdminUser -> R: POST /:id/ban
+R -> C: banUserController()
+C -> S: banUserService(id)
+S -> MUser: findByIdAndUpdate({ banned: true })
+MUser --> S: updated
+S --> C: updated
+C -> R: JSON
+R --> AdminUser: response
+
+'=== POST /admin/users/:id/unban ===
+AdminUser -> R: POST /:id/unban
+R -> C: unbanUserController()
+C -> S: unbanUserService(id)
+S -> MUser: findByIdAndUpdate({ banned: false })
+MUser --> S: updated
+S --> C: updated
+C -> R: JSON
+R --> AdminUser: response
+
+@enduml

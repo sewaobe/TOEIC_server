@@ -1,0 +1,43 @@
+@startuml comment
+actor User
+participant "Router" as R
+participant "Comment.controller" as C
+participant "Comment.service" as S
+participant "CommentModel" as MComment
+participant "TestModel" as MTest
+
+'=== GET /test/:testId ===
+User -> R: GET /test/:testId
+R -> C: getCommentsByTest()
+C -> S: getCommentsByTest(testId,page,limit)
+S -> MComment: aggregate/lookup replies
+MComment --> S: comments
+S --> C: { comments, pagination }
+C -> R: JSON
+R --> User: response
+
+'=== GET /:parentId/replies ===
+User -> R: GET /:parentId/replies
+R -> C: getRepliesByComment()
+C -> S: getRepliesByComment(parentId,page,limit)
+S -> MComment: find({ parent_id })
+MComment --> S: replies
+S -> MComment: countDocuments({ parent_id })
+MComment --> S: total
+S --> C: { comments, pagination }
+C -> R: JSON
+R --> User: response
+
+'=== POST /test/:testId ===
+User -> R: POST /test/:testId { content, parentId }
+R -> C: createComment()
+C -> S: createComment(userId,testId,content,parentId)
+S -> MComment: create(newComment)
+MComment --> S: savedComment
+S -> MTest: findByIdAndUpdate(testId, { $inc: { countComment: 1 } })
+MTest --> S: updated
+S --> C: savedComment
+C -> R: JSON 201
+R --> User: response
+
+@enduml

@@ -1,0 +1,99 @@
+@startuml auth
+actor User
+participant "Router" as R
+participant "Auth.controller" as C
+participant "Auth.service" as S
+participant "Mail.controller" as CM
+participant "UserModel" as MUser
+participant "RoleModel" as MRole
+participant "Hash" as UHash
+participant "Jwt" as UJwt
+participant "FirebaseAdmin" as FAdmin
+
+'=== POST /login ===
+User -> R: POST /login
+R -> C: loginController()
+note right of C: validate body via DTO middleware earlier
+C -> S: loginService(loginRequest)
+S -> MUser: findOne({ username })
+MUser --> S: user
+S -> UHash: comparePassword()
+UHash --> S: boolean
+S -> UJwt: generateAccessToken()/generateRefreshToken()
+S --> C: { accessToken, refreshToken, role_name }
+C -> R: set cookies + JSON
+R --> User: HTTP response
+
+'=== POST /google ===
+User -> R: POST /google
+R -> C: loginWithGoogleController()
+C -> S: loginWithGoogleService(idToken)
+S -> FAdmin: verifyIdToken(idToken)
+FAdmin --> S: decoded (uid,email,...)
+alt user exists
+  S -> MUser: findOne({ firebaseUid }) / findOne({ email })
+  MUser --> S: user
+else create user
+  S -> MRole: findOne({ name: 'student' })
+  MRole --> S: role
+  S -> MUser: create({...})
+  MUser --> S: user
+end
+S -> UJwt: generateAccessToken()/generateRefreshToken()
+S --> C: tokens
+C -> R: set cookies + JSON
+R --> User: HTTP response
+
+'=== POST /register ===
+User -> R: POST /register
+R -> C: registerController()
+C -> S: registerService(registerRequest)
+S -> MUser: findOne({ email/username })
+MUser --> S: null/exists
+S -> MRole: findOne({ name: 'student' })
+MRole --> S: role
+S -> UHash: hashPassword(password)
+UHash --> S: hashed
+S -> MUser: create(user)
+MUser --> S: created
+S --> C: { message }
+C -> R: JSON 201
+R --> User: HTTP response
+
+'=== GET /refresh-token ===
+User -> R: GET /refresh-token
+R -> C: refreshTokenController()
+note right of C: reads cookie refreshToken
+C -> UJwt: verify(refreshToken)
+UJwt --> C: decoded payload
+C -> UJwt: generateAccessTokenFromPayload(decoded)
+UJwt --> C: accessToken
+C -> R: set cookie accessToken + JSON
+R --> User: HTTP response
+
+'=== POST /request-otp /verify-otp /reset-password ===
+User -> R: POST /request-otp
+R -> CM: requestOtp()
+CM -> MUser: findOne({ email })
+MUser --> CM: user
+CM -> MailService: sendOtpEmail(email, otp)
+MailService --> CM: sent
+CM --> R: JSON
+R --> User: HTTP response
+
+User -> R: POST /verify-otp
+R -> CM: verifyOtp()
+CM -> CM: check otpStore
+CM --> R: JSON
+
+User -> R: POST /reset-password
+R -> CM: resetPassword()
+CM -> CM: check otpStore
+CM -> UHash: bcrypt.hash(newPassword)
+UHash --> CM: hashed
+CM -> MUser: findOneAndUpdate({ email }, { passwordHash: hashed })
+MUser --> CM: updated user
+CM --> R: JSON
+R --> User: HTTP response
+
+@enduml

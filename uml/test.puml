@@ -1,0 +1,65 @@
+@startuml test
+actor User
+participant "Router" as R
+participant "Test.controller" as C
+participant "Test.service" as S
+participant "TestModel" as MTest
+participant "GroupService" as GroupS
+participant "UserTestModel" as MUserTest
+participant "PushUtils" as PUtils
+
+'=== GET /latest ===
+User -> R: GET /latest
+R -> C: getLatestTests()
+C -> S: getLatestTest(limit)
+S -> MTest: find({ status: OPEN })
+MTest --> S: tests
+S --> C: tests
+C -> R: JSON
+R --> User: response
+
+'=== GET / (search with token) ===
+User -> R: GET /?page&limit&search
+R -> C: getTestsWithScoreAndSearch()
+C -> S: getTestsWithScoreAndSearch(userId,page,limit,search)
+S -> MTest: aggregate(lookup usertests...) / UserTest
+MTest --> S: tests
+S --> C: { tests, totalTests }
+C -> R: JSON
+R --> User: response
+
+'=== GET /:testId ===
+User -> R: GET /:testId
+R -> C: getTest()
+C -> S: getFullTest(testId) or getPart/getParts
+S -> MTest: findById().populate(groups->questions,audio,...)
+MTest --> S: test
+S --> C: test or metadata
+C -> R: JSON
+R --> User: response
+
+'=== POST /:testId/submit ===
+User -> R: POST /:testId/submit { userId, answers, duration }
+R -> C: submitTest()
+C -> S: submitTest(userId,testId,answers,duration,completedPart)
+S -> MTest: getFullTest(testId) -> iterate groups/questions
+S -> MUserTest: create(userTest)
+MUserTest --> S: saved
+S -> MTest: findByIdAndUpdate({ $inc: { countSubmit: 1 } })
+S --> C: result
+C -> R: JSON
+R --> User: response
+
+'=== POST / (create test) ===
+User -> R: POST /
+R -> C: createTestController()
+C -> S: createTest(payload)
+S -> MTest: create(newTest)
+S -> GroupS: createGroupWithNewRelations(...) // calls group.service
+GroupS --> S: group created
+S -> MTest: save groups
+S --> C: populated test
+C -> R: JSON 201
+R --> User: response
+
+@enduml

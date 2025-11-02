@@ -1,0 +1,53 @@
+@startuml flashcard_progress
+actor User
+participant "Router" as R
+participant "FlashcardProgress.controller" as C
+participant "FlashcardProgress.service" as S
+participant "FlashCardProgressModel" as MProgress
+participant "FlashCardAttemptModel" as MAttempt
+
+'=== POST /start ===
+User -> R: POST /start
+R -> C: createSessionFlashcardController()
+C -> S: createFlashcardSessionService(userId, topic_vocabulary_id, order_queue)
+S -> MProgress: create(newSession)
+MProgress --> S: newSession
+S --> C: { sessionId, newSession }
+C -> R: JSON 201
+R --> User: response
+
+'=== PATCH /update ===
+User -> R: PATCH /update
+R -> C: updateSessionFlashcardController()
+C -> S: updateFlashcardProgressService(session_id,userId,order_queue,current_index,logs_delta)
+S -> MProgress: findOneAndUpdate(...)
+MProgress --> S: progress
+S --> C: updatedProgress
+C -> R: JSON
+R --> User: response
+
+'=== POST /finalize ===
+User -> R: POST /finalize
+R -> C: finalizeFlashcardSessionController()
+C -> S: finalizeFlashcardSessionService(userId,session_id,accuracy,avg_time,total,logs,...)
+S -> MProgress: findOne({ session_id, user_id })
+MProgress --> S: progress
+S -> MAttempt: create(attempt from logs)
+MAttempt --> S: attempt
+S -> MProgress: set archived/status and save
+MProgress --> S: saved
+S --> C: attempt
+C -> R: JSON
+R --> User: response
+
+'=== GET /:session_id ===
+User -> R: GET /:session_id
+R -> C: getFlashcardProgressController()
+C -> S: getSession(session_id,userId)
+S -> MProgress: findOne(...)
+MProgress --> S: session
+S --> C: session
+C -> R: JSON
+R --> User: response
+
+@enduml

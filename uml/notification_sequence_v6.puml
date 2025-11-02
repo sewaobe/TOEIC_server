@@ -1,0 +1,55 @@
+@startuml
+skinparam backgroundColor #1e1e1e
+skinparam participantBackgroundColor #2b2b2b
+skinparam participantBorderColor #888
+skinparam participantFontColor white
+skinparam sequenceArrowColor #00ffff
+actor User
+participant "Router" as R
+participant "Notification.controller" as C
+participant "Notification.service" as S
+participant "NotificationModel" as MNotificationModel
+
+'=== GET / ===
+User -> R: GET /
+R -> C: verifyAccessToken()
+note right of C: Không tìm thấy thân hàm verifyAccessToken
+S -> MNotification: create()
+MNotification --> S: result
+S -> MNotification: find()
+MNotification --> S: result
+S -> MNotification: findOne()
+MNotification --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP GET / response
+
+'=== PUT /:id/read ===
+User -> R: PUT /:id/read
+R -> C: verifyAccessToken()
+note right of C: Không tìm thấy thân hàm verifyAccessToken
+S -> MNotification: create()
+MNotification --> S: result
+S -> MNotification: find()
+MNotification --> S: result
+S -> MNotification: findOne()
+MNotification --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP PUT /:id/read response
+
+'=== POST /send ===
+User -> R: POST /send
+R -> C: verifyAccessToken()
+note right of C: Không tìm thấy thân hàm verifyAccessToken
+S -> MNotification: create()
+MNotification --> S: result
+S -> MNotification: find()
+MNotification --> S: result
+S -> MNotification: findOne()
+MNotification --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP POST /send response
+
+@enduml

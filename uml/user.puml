@@ -1,0 +1,39 @@
+@startuml user
+actor User
+participant "Router" as R
+participant "User.controller" as C
+participant "User.service" as S
+participant "UserModel" as MUser
+participant "ProfileDto" as DTO
+
+'=== GET /me ===
+User -> R: GET /me
+R -> C: getCurrentUser()
+C -> S: getUserById(userId)
+S -> MUser: findById(userId)
+MUser --> S: user
+S --> C: user
+C -> R: JSON
+R --> User: response
+
+'=== PUT /me ===
+User -> R: PUT /me { fullname, email, avatar }
+R -> C: updateProfileController()
+C -> S: updateUserProfile(userId, updatePayload)
+S -> MUser: findByIdAndUpdate(userId, updatePayload)
+MUser --> S: updatedUser
+S --> C: updatedUser
+C -> R: JSON
+R --> User: response
+
+'=== GET /:username ===
+User -> R: GET /:username
+R -> C: getUserByUsernameController()
+C -> S: getProfileUserByUsername(username)
+S -> MUser: findOne({ username }).select(profile fields)
+MUser --> S: profileDto
+S --> C: ProfileDto
+C -> R: JSON
+R --> User: response
+
+@enduml

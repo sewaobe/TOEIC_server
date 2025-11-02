@@ -1,0 +1,48 @@
+@startuml ctv_vocabulary
+actor CTVUser
+participant "Router" as R
+participant "Vocabulary.controller" as C
+participant "Vocabulary.service" as S
+participant "VocabularyModel" as MVocab
+
+'=== GET /ctv/vocabularies/:topicId/info ===
+CTVUser -> R: GET /:topicId/info
+R -> C: getTopicInfo()
+C -> S: getTopicInfoService(topicId)
+S -> MVocab: find({ topic_id }).aggregate or stats
+MVocab --> S: info
+S --> C: info
+C -> R: JSON
+R --> CTVUser: response
+
+'=== POST /ctv/vocabularies ===
+CTVUser -> R: POST /
+R -> C: createVocabulary()
+C -> S: createVocabularyService(payload)
+S -> MVocab: create(payload)
+MVocab --> S: created
+S --> C: created
+C -> R: JSON 201
+R --> CTVUser: response
+
+'=== PUT /ctv/vocabularies/:id ===
+CTVUser -> R: PUT /:id
+R -> C: updateVocabulary()
+C -> S: updateVocabularyService(id,payload)
+S -> MVocab: findByIdAndUpdate(id,payload)
+MVocab --> S: updated
+S --> C: updated
+C -> R: JSON
+R --> CTVUser: response
+
+'=== DELETE /ctv/vocabularies/:id ===
+CTVUser -> R: DELETE /:id
+R -> C: deleteVocabulary()
+C -> S: deleteVocabularyService(id)
+S -> MVocab: deleteOne({ _id: id })
+MVocab --> S: result
+S --> C: result
+C -> R: JSON
+R --> CTVUser: response
+
+@enduml

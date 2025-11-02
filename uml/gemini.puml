@@ -1,0 +1,21 @@
+@startuml gemini
+actor User
+participant "Router" as R
+participant "Gemini.controller" as C
+participant "Gemini.service" as S
+participant "GoogleGenAI (Gemini)" as GAI
+participant "Configs/ToeicPlanTemplate" as Template
+
+'=== POST /generate-toeic-plan ===
+User -> R: POST /generate-toeic-plan { userInput }
+R -> C: generateToeicPlanController()
+C -> S: generateToeicPlan(userInput)
+S -> Template: read toeic-plan.txt
+Template --> S: promptTemplate
+S -> GAI: ai.models.generateContent({ model, contents: prompt, responseSchema })
+GAI --> S: result (text/json)
+S --> C: plan
+C -> R: JSON
+R --> User: response
+
+@enduml

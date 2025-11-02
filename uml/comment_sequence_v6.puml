@@ -1,0 +1,60 @@
+@startuml
+skinparam backgroundColor #1e1e1e
+skinparam participantBackgroundColor #2b2b2b
+skinparam participantBorderColor #888
+skinparam participantFontColor white
+skinparam sequenceArrowColor #00ffff
+actor User
+participant "Router" as R
+participant "Comment.controller" as C
+participant "Comment.service" as S
+
+'=== GET /test/:testId ===
+User -> R: GET /test/:testId
+R -> C: verifyAccessToken()
+note right of C: Không tìm thấy thân hàm verifyAccessToken
+S -> MComment: populate()
+MComment --> S: result
+S -> MComment: find()
+MComment --> S: result
+S -> MComment: save()
+MComment --> S: result
+S -> MTest: findById()
+MTest --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP GET /test/:testId response
+
+'=== GET /:parentId/replies ===
+User -> R: GET /:parentId/replies
+R -> C: commentController()
+note right of C: Không tìm thấy thân hàm commentController
+S -> MComment: populate()
+MComment --> S: result
+S -> MComment: find()
+MComment --> S: result
+S -> MComment: save()
+MComment --> S: result
+S -> MTest: findById()
+MTest --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP GET /:parentId/replies response
+
+'=== POST /test/:testId ===
+User -> R: POST /test/:testId
+R -> C: verifyAccessToken()
+note right of C: Không tìm thấy thân hàm verifyAccessToken
+S -> MComment: populate()
+MComment --> S: result
+S -> MComment: find()
+MComment --> S: result
+S -> MComment: save()
+MComment --> S: result
+S -> MTest: findById()
+MTest --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP POST /test/:testId response
+
+@enduml

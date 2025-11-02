@@ -1,0 +1,48 @@
+@startuml admin_request_collaborator
+actor User
+participant "Router" as R
+participant "RequestCollaborator.controller" as C
+participant "RequestCollaborator.service" as S
+participant "RequestCollaboratorModel" as MReq
+
+'=== GET /admin/request-collaborators ===
+User -> R: GET /
+R -> C: getAllRequestCollaboratorsController()
+C -> S: listRequestsService(page,limit)
+S -> MReq: find(...).paginate(...)
+MReq --> S: items + total
+S --> C: { items, pagination }
+C -> R: JSON
+R --> User: response
+
+'=== GET /admin/request-collaborators/by-user ===
+User -> R: GET /by-user
+R -> C: getRequestCollaboratorByUserIdController()
+C -> S: getByUserIdService(userId)
+S -> MReq: findOne({ user_id: userId })
+MReq --> S: request
+S --> C: request
+C -> R: JSON
+R --> User: response
+
+'=== POST /admin/request-collaborators ===
+User -> R: POST /
+R -> C: submitRequestCollaboratorController()
+C -> S: submitRequestService(payload,userId)
+S -> MReq: create(payload)
+MReq --> S: created
+S --> C: created
+C -> R: JSON 201
+R --> User: response
+
+'=== PUT /admin/request-collaborators/:id/status ===
+User (admin) -> R: PUT /:id/status { status }
+R -> C: updateRequestCollaboratorStatusController()
+C -> S: updateStatusService(id,status)
+S -> MReq: findByIdAndUpdate({ status })
+MReq --> S: updated
+S --> C: updated
+C -> R: JSON
+R --> User: response
+
+@enduml

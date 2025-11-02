@@ -2,6 +2,8 @@ import { FilterQuery, Types, UpdateQuery } from "mongoose";
 import { IReport, Report } from "../models";
 import { ReportType } from "../models/enums/ReportType";
 import { ReportStatus } from "../models/enums/ReportStatus";
+import { pushNotificationToAdmin } from "../utils/pushNotificationToAdmin";
+import { pushNotification } from "../utils/pushNotification";
 
 export interface ReportFilters {
   type?: ReportType;
@@ -163,7 +165,19 @@ export const createReport = async (params: {
     { path: "user_id", select: "profile fullname email username" },
   ]);
 
-  return mapReport(report as any);
+  const mapped = mapReport(report as any);
+  if (mapped.reporter === null) {
+    throw new Error("Reporter should not be null after population");
+  }
+
+  pushNotificationToAdmin(userId, {
+    message: `Có báo lỗi mới từ ${mapped.reporter.fullname}`,
+    type: type,
+    description: mapped.title.concat(" - ", mapped.description.slice(0, 50), "..."),
+    url: `/admin/reports`,
+  });
+
+  return mapped;
 };
 
 export const getReportsByUser = async (
@@ -314,5 +328,19 @@ export const updateReport = async (
     return null;
   }
 
-  return mapReport(updated as any);
+  const mapped = mapReport(updated as any);
+  if (mapped.reporter === null) {
+    throw new Error("Reporter should not be null after population");
+  }
+
+  pushNotification({
+    senderId: adminId,
+    recipientId: mapped.reporter.id,
+    message: `Báo lỗi của bạn đã được cập nhật trạng thái: ${mapped.status}`,
+    type: mapped.type,
+    description: mapped.title.concat(" - ", mapped.description.slice(0, 50), "..."),
+    url: `/reports/${mapped.id}`,
+  })
+
+  return mapped;
 };

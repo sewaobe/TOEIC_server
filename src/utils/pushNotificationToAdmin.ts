@@ -1,9 +1,10 @@
 import { Role, User } from "../models";
+import { ReportType } from "../models/enums/ReportType";
 import { pushNotification } from "./pushNotification";
 
 export const pushNotificationToAdmin = async (user_id: string, data: {
     message: string;
-    type?: "system" | "comment" | "error" | "chat" | "test" | "lesson";
+    type?: "system" | "comment" | "error" | "chat" | "test" | "lesson" | ReportType;
     description?: string;
     url?: string;
 }) => {

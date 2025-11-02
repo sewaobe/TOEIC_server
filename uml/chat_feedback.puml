@@ -1,0 +1,18 @@
+@startuml chat_feedback
+actor User
+participant "Router" as R
+participant "ChatFeedback.controller" as C
+participant "ChatFeedback.service" as S
+participant "ChatFeedbackModel" as MFeedback
+
+'=== POST / (submit feedback) ===
+User -> R: POST / { sessionId, messageId, rating, comment }
+R -> C: submitChatFeedbackController()
+C -> S: submitChatFeedbackService(sessionId,messageId,rating,comment,userId)
+S -> MFeedback: create({ user_id, session_id, message_id, rating, comment })
+MFeedback --> S: feedback
+S --> C: feedback
+C -> R: JSON 201
+R --> User: response
+
+@enduml

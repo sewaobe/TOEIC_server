@@ -1,0 +1,58 @@
+@startuml admin_lessons
+actor AdminUser
+participant "Router" as R
+participant "AdminLesson.controller" as C
+participant "AdminLesson.service" as S
+participant "LessonModel" as MLesson
+
+'=== GET /admin/lessons ===
+AdminUser -> R: GET /
+R -> C: listLessonsController()
+C -> S: listLessonsService(query)
+S -> MLesson: find(...).populate(...)
+MLesson --> S: lessons
+S --> C: lessons + pagination
+C -> R: JSON
+R --> AdminUser: response
+
+'=== GET /admin/lessons/:id ===
+AdminUser -> R: GET /:id
+R -> C: getLessonDetailController()
+C -> S: getLessonDetailService(id)
+S -> MLesson: findById(id).populate(sections,...)
+MLesson --> S: lessonDetail
+S --> C: lessonDetail
+C -> R: JSON
+R --> AdminUser: response
+
+'=== POST /admin/lessons/:id/approve ===
+AdminUser -> R: POST /:id/approve
+R -> C: approveLessonController()
+C -> S: approveLessonService(id, adminId)
+S -> MLesson: findByIdAndUpdate(... status: approved)
+MLesson --> S: updated
+S --> C: updated
+C -> R: JSON
+R --> AdminUser: response
+
+'=== POST /admin/lessons/:id/reject ===
+AdminUser -> R: POST /:id/reject
+R -> C: rejectLessonController()
+C -> S: rejectLessonService(id, reason)
+S -> MLesson: findByIdAndUpdate(... status: rejected)
+MLesson --> S: updated
+S --> C: updated
+C -> R: JSON
+R --> AdminUser: response
+
+'=== POST /admin/lessons/:id/delete ===
+AdminUser -> R: POST /:id/delete
+R -> C: softDeleteLessonController()
+C -> S: softDeleteLessonService(id)
+S -> MLesson: findByIdAndUpdate({ is_deleted: true })
+MLesson --> S: updated
+S --> C: result
+C -> R: JSON
+R --> AdminUser: response
+
+@enduml

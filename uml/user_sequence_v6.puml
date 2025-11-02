@@ -1,0 +1,84 @@
+@startuml
+skinparam backgroundColor #1e1e1e
+skinparam participantBackgroundColor #2b2b2b
+skinparam participantBorderColor #888
+skinparam participantFontColor white
+skinparam sequenceArrowColor #00ffff
+actor User
+participant "Router" as R
+participant "User.controller" as C
+participant "User.service" as S
+
+'=== GET /me ===
+User -> R: GET /me
+R -> C: verifyAccessToken()
+note right of C: Không tìm thấy thân hàm verifyAccessToken
+S -> MUser: findOne()
+MUser --> S: result
+S -> MUserLearningPath: find()
+MUserLearningPath --> S: result
+S -> MUserTest: findOne()
+MUserTest --> S: result
+S -> MUser: findById()
+MUser --> S: result
+S -> MDoc: create()
+MDoc --> S: result
+S -> MRole: findOne()
+MRole --> S: result
+S -> MUser: find()
+MUser --> S: result
+S -> MUserActivity: create()
+MUserActivity --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP GET /me response
+
+'=== PUT /me ===
+User -> R: PUT /me
+R -> C: verifyAccessToken()
+note right of C: Không tìm thấy thân hàm verifyAccessToken
+S -> MUser: findOne()
+MUser --> S: result
+S -> MUserLearningPath: find()
+MUserLearningPath --> S: result
+S -> MUserTest: findOne()
+MUserTest --> S: result
+S -> MUser: findById()
+MUser --> S: result
+S -> MDoc: create()
+MDoc --> S: result
+S -> MRole: findOne()
+MRole --> S: result
+S -> MUser: find()
+MUser --> S: result
+S -> MUserActivity: create()
+MUserActivity --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP PUT /me response
+
+'=== GET /:username ===
+User -> R: GET /:username
+R -> C: userController()
+note right of C: Không tìm thấy thân hàm userController
+S -> MUser: findOne()
+MUser --> S: result
+S -> MUserLearningPath: find()
+MUserLearningPath --> S: result
+S -> MUserTest: findOne()
+MUserTest --> S: result
+S -> MUser: findById()
+MUser --> S: result
+S -> MDoc: create()
+MDoc --> S: result
+S -> MRole: findOne()
+MRole --> S: result
+S -> MUser: find()
+MUser --> S: result
+S -> MUserActivity: create()
+MUserActivity --> S: result
+S --> C: response
+C --> R: JSON
+R --> User: HTTP GET /:username response
+
+@enduml

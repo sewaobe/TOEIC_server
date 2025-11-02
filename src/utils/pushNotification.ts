@@ -1,13 +1,14 @@
 import { io, onlineUsers } from "../socket";
 import { createNotification } from "../services/notification.service";
 import { sendWebPushToUser } from "../services/push.service";
+import { ReportType } from "../models/enums/ReportType";
 
 export interface PushOptions {
   senderId?: string;
   recipientId: string;
   message: string;
   description?: string;
-  type?: "system" | "comment" | "error" | "chat" | "test" | "lesson";
+  type?: "system" | "comment" | "error" | "chat" | "test" | "lesson" | ReportType;
   url?: string;
 }
 

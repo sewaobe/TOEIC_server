@@ -1,0 +1,44 @@
+@startuml subscription
+actor User
+participant "Router" as R
+participant "Subscription.controller" as C
+participant "Push.service" as S
+participant "SubscriptionModel" as MSub
+
+'=== POST / ===
+User -> R: POST / { subscription }
+R -> C: registerSubscription()
+C -> S: addSubscription(userId, subscription, userAgent)
+S -> MSub: findOne({ endpoint })
+alt exists
+  MSub --> S: existing
+  S --> C: existing
+else
+  S -> MSub: create({ userId, endpoint, keys, userAgent })
+  MSub --> S: created
+  S --> C: created
+end
+C -> R: JSON
+R --> User: response
+
+'=== GET / ===
+User -> R: GET /
+R -> C: getMySubscriptions()
+C -> S: listUserSubscriptions(userId)
+S -> MSub: find({ userId })
+MSub --> S: subs
+S --> C: subs
+C -> R: JSON
+R --> User: response
+
+'=== DELETE /?endpoint=... ===
+User -> R: DELETE /?endpoint=...
+R -> C: unregisterSubscription()
+C -> S: removeSubscriptionByEndpoint(endpoint)
+S -> MSub: deleteOne({ endpoint })
+MSub --> S: deleted
+S --> C: ok
+C -> R: JSON
+R --> User: response
+
+@enduml

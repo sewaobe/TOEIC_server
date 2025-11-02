@@ -6,7 +6,6 @@ export * from "./learning_path.model";
 export * from "./lesson.model";
 export * from "./lesson_section.model";
 export * from "./media.model";
-export * from "./message.model";
 export * from "./question.model";
 export * from "./role.model";
 export * from "./test.model";

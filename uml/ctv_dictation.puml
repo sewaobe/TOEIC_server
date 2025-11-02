@@ -1,0 +1,48 @@
+@startuml ctv_dictation
+actor CTVUser
+participant "Router" as R
+participant "Dictation.controller" as C
+participant "Dictation.service" as S
+participant "DictationModel" as MDict
+
+'=== GET /ctv/dictation ===
+CTVUser -> R: GET /
+R -> C: getAllDictationController()
+C -> S: getAllDictationService(page,limit)
+S -> MDict: find().skip().limit()
+MDict --> S: items
+S --> C: { items, total }
+C -> R: JSON
+R --> CTVUser: response
+
+'=== GET /ctv/dictation/:id ===
+CTVUser -> R: GET /:id
+R -> C: getDictationByIdController()
+C -> S: getDictationByIdService(id)
+S -> MDict: findById(id)
+MDict --> S: dictation
+S --> C: dictation
+C -> R: JSON
+R --> CTVUser: response
+
+'=== POST /ctv/dictation ===
+CTVUser -> R: POST /
+R -> C: createDictationController()
+C -> S: createDictationService(payload)
+S -> MDict: create(payload)
+MDict --> S: created
+S --> C: created
+C -> R: JSON 201
+R --> CTVUser: response
+
+'=== PUT /ctv/dictation/:id ===
+CTVUser -> R: PUT /:id
+R -> C: updateDictationController()
+C -> S: updateDictationService(id,payload)
+S -> MDict: findByIdAndUpdate(id,payload)
+MDict --> S: updated
+S --> C: updated
+C -> R: JSON
+R --> CTVUser: response
+
+@enduml

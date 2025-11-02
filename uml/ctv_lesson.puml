@@ -1,0 +1,68 @@
+@startuml ctv_lesson
+actor CTVUser
+participant "Router" as R
+participant "Lesson.controller" as C
+participant "Lesson.service" as S
+participant "LessonModel" as MLesson
+
+'=== GET /ctv/lesson ===
+CTVUser -> R: GET /
+R -> C: getLessonsController()
+C -> S: getLessonsService(query)
+S -> MLesson: find().populate(sections,...) 
+MLesson --> S: lessons
+S --> C: lessons
+C -> R: JSON
+R --> CTVUser: response
+
+'=== POST /ctv/lesson ===
+CTVUser -> R: POST /
+R -> C: createLessonController()
+C -> S: createLessonService(payload)
+S -> MLesson: create(payload)
+MLesson --> S: created
+S --> C: created
+C -> R: JSON 201
+R --> CTVUser: response
+
+'=== GET /ctv/lesson/:id ===
+CTVUser -> R: GET /:id
+R -> C: getLessonDetailController()
+C -> S: getLessonDetailService(id)
+S -> MLesson: findById(id).populate(sections...)
+MLesson --> S: lessonDetail
+S --> C: lessonDetail
+C -> R: JSON
+R --> CTVUser: response
+
+'=== PUT /ctv/lesson/:id/sections ===
+CTVUser -> R: PUT /:id/sections
+R -> C: updateLessonWithSectionsController()
+C -> S: updateLessonSectionsService(id, sections)
+S -> MLesson: findByIdAndUpdate(sections)
+MLesson --> S: updated
+S --> C: updated
+C -> R: JSON
+R --> CTVUser: response
+
+'=== PUT /ctv/lesson/:id/basic ===
+CTVUser -> R: PUT /:id/basic
+R -> C: updateLessonBasicController()
+C -> S: updateLessonBasicService(id,payload)
+S -> MLesson: findByIdAndUpdate(basic)
+MLesson --> S: updated
+S --> C: updated
+C -> R: JSON
+R --> CTVUser: response
+
+'=== DELETE /ctv/lesson/:id ===
+CTVUser -> R: DELETE /:id
+R -> C: deleteLessonController()
+C -> S: deleteLessonService(id)
+S -> MLesson: delete/findByIdAndDelete
+MLesson --> S: deleted
+S --> C: result
+C -> R: JSON
+R --> CTVUser: response
+
+@enduml

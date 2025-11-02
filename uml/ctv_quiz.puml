@@ -1,0 +1,58 @@
+@startuml ctv_quiz
+actor CTVUser
+participant "Router" as R
+participant "Quiz.controller" as C
+participant "Quiz.service" as S
+participant "QuizModel" as MQuiz
+
+'=== POST /ctv/quiz ===
+CTVUser -> R: POST /
+R -> C: createQuizController()
+C -> S: createQuizService(payload)
+S -> MQuiz: create(payload)
+MQuiz --> S: created
+S --> C: created
+C -> R: JSON 201
+R --> CTVUser: response
+
+'=== GET /ctv/quiz ===
+CTVUser -> R: GET /
+R -> C: getAllQuizController()
+C -> S: getAllQuizService(query)
+S -> MQuiz: find().skip().limit()
+MQuiz --> S: quizzes
+S --> C: quizzes
+C -> R: JSON
+R --> CTVUser: response
+
+'=== GET /ctv/quiz/:id ===
+CTVUser -> R: GET /:id
+R -> C: getQuizByIdController()
+C -> S: getQuizByIdService(id)
+S -> MQuiz: findById(id).populate(questions)
+MQuiz --> S: quiz
+S --> C: quiz
+C -> R: JSON
+R --> CTVUser: response
+
+'=== PUT /ctv/quiz/:id ===
+CTVUser -> R: PUT /:id
+R -> C: updateQuizController()
+C -> S: updateQuizService(id,payload)
+S -> MQuiz: findByIdAndUpdate(id,payload)
+MQuiz --> S: updated
+S --> C: updated
+C -> R: JSON
+R --> CTVUser: response
+
+'=== DELETE /ctv/quiz/:id ===
+CTVUser -> R: DELETE /:id
+R -> C: deleteQuizController()
+C -> S: deleteQuizService(id)
+S -> MQuiz: deleteOne({ _id: id })
+MQuiz --> S: result
+S --> C: result
+C -> R: JSON
+R --> CTVUser: response
+
+@enduml
