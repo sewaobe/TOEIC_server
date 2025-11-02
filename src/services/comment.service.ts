@@ -1,4 +1,4 @@
-import { Types } from "mongoose";
+import mongoose, { Types } from "mongoose";
 import { Comment, IComment, Test } from "../models";
 
 export const getCommentsByTest = async (
@@ -179,3 +179,135 @@ export const createComment = async (
 
   return savedComment
 };
+
+
+export const getCommentByCreatedTestOrLessonService = async (
+  createdId: string,
+  limit: number,
+  page: number
+) => {
+  const skip = (page - 1) * limit;
+
+  const comments = await Comment.aggregate([
+    // 1️⃣ Join với Test
+    {
+      $lookup: {
+        from: "tests",
+        localField: "test_id",
+        foreignField: "_id",
+        as: "test_info"
+      }
+    },
+    // 2️⃣ Join với Lesson
+    {
+      $lookup: {
+        from: "lessons",
+        localField: "lesson_id",
+        foreignField: "_id",
+        as: "lesson_info"
+      }
+    },
+    // 3️⃣ Join với User để lấy thông tin người comment
+    {
+      $lookup: {
+        from: "users",
+        localField: "user_id",
+        foreignField: "_id",
+        as: "user_info"
+      }
+    },
+    // 4️⃣ Giữ comment có test hoặc lesson được tạo bởi createdId
+    {
+      $match: {
+        $or: [
+          { "test_info.created_by": new mongoose.Types.ObjectId(createdId) },
+          { "lesson_info.created_by": new mongoose.Types.ObjectId(createdId) }
+        ]
+      }
+    },
+    // 5️⃣ Tạo field type và activity_id
+    {
+      $addFields: {
+        type: {
+          $cond: [
+            { $gt: [{ $size: "$test_info" }, 0] },
+            "test",
+            "lesson"
+          ]
+        },
+        activity_id: {
+          $cond: [
+            { $gt: [{ $size: "$test_info" }, 0] },
+            { $arrayElemAt: ["$test_info._id", 0] },
+            { $arrayElemAt: ["$lesson_info._id", 0] }
+          ]
+        },
+        activity_title: {
+          $cond: [
+            { $gt: [{ $size: "$test_info" }, 0] },
+            { $arrayElemAt: ["$test_info.title", 0] },
+            { $arrayElemAt: ["$lesson_info.title", 0] }
+          ]
+        },
+        user: { $arrayElemAt: ["$user_info", 0] }
+      }
+    },
+    // 6️⃣ Giữ gọn dữ liệu
+    {
+      $project: {
+        _id: 1,
+        content: 1,
+        create_at: 1,
+        type: 1,
+        activity_id: 1,
+        activity_title: 1,
+        "user._id": 1,
+        "user.profile.fullname": 1,
+        "user.profile.avatar": 1
+      }
+    },
+    // 7️⃣ Sắp xếp & phân trang
+    { $sort: { create_at: -1 } },
+    { $skip: skip },
+    { $limit: limit }
+  ]);
+
+  // 8️⃣ Đếm tổng (tùy chọn, có thể tách riêng để tối ưu)
+  const total = await Comment.aggregate([
+    {
+      $lookup: {
+        from: "tests",
+        localField: "test_id",
+        foreignField: "_id",
+        as: "test_info"
+      }
+    },
+    {
+      $lookup: {
+        from: "lessons",
+        localField: "lesson_id",
+        foreignField: "_id",
+        as: "lesson_info"
+      }
+    },
+    {
+      $match: {
+        $or: [
+          { "test_info.created_by": new mongoose.Types.ObjectId(createdId) },
+          { "lesson_info.created_by": new mongoose.Types.ObjectId(createdId) }
+        ]
+      }
+    },
+    { $count: "count" }
+  ]);
+
+  const totalCount = total[0]?.count || 0;
+
+  return {
+    items: comments,
+    total: totalCount,
+    page,
+    pageCount: Math.ceil(totalCount / limit)
+  };
+};
+

@@ -91,3 +91,22 @@ export const createComment = async (
     next(err);
   }
 };
+
+
+export const getCommentByCreatedTestOrLessonController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user._id;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const result = await commentService.getCommentByCreatedTestOrLessonService(
+      userId,
+      limit,
+      page
+    );
+    res.status(200).json(
+      ApiResponse.success(result, "Lấy bình luận của bài test/bài học đã tạo thành công")
+    );
+  } catch (error) {
+    next(error);
+  }
+};
