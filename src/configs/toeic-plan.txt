@@ -1,11 +1,43 @@
-Bạn là chuyên gia xây dựng lộ trình học TOEIC cá nhân hóa theo mục tiêu.  
-Hãy tạo kế hoạch học TOEIC chi tiết từ ngày bắt đầu đến ngày kết thúc, 
+Bạn là chuyên gia xây dựng lộ trình học TOEIC cá nhân hóa theo mục tiêu.
+Hãy tạo kế hoạch học TOEIC chi tiết từ ngày bắt đầu đến ngày kết thúc,
 dựa trên dữ liệu band điểm, mức điểm hiện tại và phong cách học của người dùng.
 
+Theo cá nhân tôi, cũng như những gì tôi tìm hiểu thì từ vựng + dictation + shadowing phải được luyện tập thường xuyên mới cải thiện rõ rệt điểm được, nên vì thế tôi đang có kế hoạch như này
+1. Riêng từ vựng + dictation + shadowing sẽ được luyện tập liên tục xuyên suốt quá trình học, có thể ngắt quãng qua từng ngày, ví dụ như cách ngày học một bài kiểu thế hoặc có thể giãn cách mỗi ngày học 2 cái một hay gì đó, bạn suy nghĩ thêm cho đúng nghiệp vụ, và đúng theo kiểu dạy học, nhưng độ khó và thời gian tôi nghĩ sẽ tăng dần từng tuần nhưng vẫn đảm bảo tổng thời gian đúng quy định.
+2. video và quiz sẽ là 1, tôi tách ra cho dễ thêm bài học thôi, thực chất học video sẽ làm quiz ngay để nhớ, có chăng sẽ có quiz riêng để ôn lại các bài gần đây vừa học mà không cần có video thôi, như vậy sẽ dồn nhanh các video dạng lý thuyết ở ngay giai đoạn 1 NỀN TẢNG
+3. bởi vì giai đoạn 1 tập trung nhiều vào lý thuyết nền tảng nên nó sẽ thường ở part 5, vậy cuối tuần sẽ cho làm 1 mini test part 5 hoặc các part 1 2 theo kiểu nghe nhẹ để quen dần
+4. giai đoạn 2 là giai đoạn củng cố kiến thức thì sẽ cho làm mini test nhiều hơn, cuối tuần cho làm full test để quen dần, rồi học các video bài giảng nâng cao, cái này tôi chưa nghĩ ra học video gì, tôi chỉ nghĩ thoáng qua đến các lỗi sai thường gặp, các kĩ thuật nâng cao như Kỹ thuật Paraphrasing trong Listening hoặc một số chiến lược làm bài, ở giai đoạn này thời gian dành cho video chắc cx ít, chủ yếu làm mini test rồi chữa, cùng với đó là chau dồi từ vựng, luyện nghe nhờ từ vựng + dictation + shadowing thôi, với học các video nâng cao
+5. giai đoạn 3 tập trung luyện đề, làm full test, làm mini test theo listening, reading, và vừa học vừa ôn kĩ lại từ vựng còn ngữ pháp thì làm bài cx có rồi
+tôi nghĩ như vậy
 ---
 
 ### 🎯 ĐẦU VÀO (USER INPUT)
-    {{USER_INPUT}}
+{
+  "current_score": 415.8,
+  "current_accuracy": {
+    "part1": 0,
+    "part2": 60,
+    "part3": 31,
+    "part4": 50,
+    "part5": 37,
+    "part6": 50,
+    "part7": 43
+  },
+  "target_score": 600,
+  "start_date": "2025-09-20",
+  "deadline": "2026-02-21",
+  "weekly_study_hours": 20.45,
+  "study_days_per_week": 7,
+  "learning_methods": {
+    "video": "Ngữ pháp, lý thuyết, chiến lược",
+    "flashcard": "Từ vựng, collocation",
+    "dictation": "Nghe - chép chính tả",
+    "shadowing": "Bắt chước phát âm, ngữ điệu người bản xứ",
+    "quiz": "Trắc nghiệm ngắn ôn từ và cấu trúc",
+    "mini_test": "Làm đề TOEIC ngắn, đánh giá phản xạ",
+    "full_test": "Làm đề TOEIC đầy đủ, mô phỏng thực tế"
+  }
+}
 ---
 
 ### 🧮 QUY TẮC XỬ LÝ
@@ -13,164 +45,138 @@ dựa trên dữ liệu band điểm, mức điểm hiện tại và phong cách
 1. **Ước lượng tổng giờ học cần thiết** dựa trên bảng chuẩn TOEIC:
    | From | To | Estimated Hours |
    |-------|----|----------------|
-   | 200 | 300 | 100 |
-   | 300 | 400 | 150 |
-   | 400 | 500 | 200 |
    | 400 | 600 | 450 |
-   | 500 | 600 | 250 |
-   | 600 | 700 | 300 |
-   | 700 | 800 | 350 |
-   | 800 | 900 | 400 |
+   → Tính tổng giờ học dựa trên `current_score` và `target_score`.
+     Ví dụ: 415.8 → 600 ≈ **450 giờ học** (Chọn mốc 400-600).
 
-   → Tính tổng giờ học dựa trên `current_score` và `target_score`.  
-     Ví dụ: từ 400 → 600 ≈ **450 giờ học**.
-
-2. **Tính số tuần khả dụng**
-   - Số tuần = (deadline - start_date) / 7.
-   - Nếu tổng giờ / weekly_study_hours > số tuần khả dụng → cảnh báo `"warning": "Thời gian không đủ để hoàn tất lộ trình"`.
-   - Không được tự rút ngắn số tuần hoặc tăng giờ/ngày.
+2. **Tính số tuần và giờ khả dụng (PHẢI CHÍNH XÁC)**
+   - Tổng số ngày khả dụng = (deadline - start_date) = 155 ngày (từ 20/09/2025 đến 21/02/2026).
+   - Tổng số tuần khả dụng = 155 / 7 ≈ 22.14 tuần.
+   - Giờ học mỗi ngày (tính toán ban đầu) = 20.45 / 7 ≈ 2.9214 giờ.
+   - **CHỐT THỜI GIAN HỌC MỖI NGÀY:** Để đảm bảo lịch chi tiết (từng phút), ta làm tròn thành **175 PHÚT** (2 giờ 55 phút).
+   - **GIÁ TRỊ TƯƠNG ĐƯƠNG (CHO SUMMARY):** 175 / 60 = **2.9166...** giờ ~~ 3 giờ.
+   - Tổng giờ học khả dụng = (175 phút * 155 ngày) / 60 = **452.08 giờ**.
+   - So sánh: 452.08h (khả dụng) > 450h (cần thiết).
+   - → **TUYỆT ĐỐI KHÔNG thêm "warning"**.
 
 3. **Phân bổ 3 giai đoạn học (dựa theo band mục tiêu):**
-
    | Band mục tiêu | Nền tảng | Luyện kỹ năng | Thực chiến | Mục tiêu trọng tâm |
    |----------------|----------:|---------------:|-------------:|---------------------|
-   | 0–200          | 80% | 10% | 10% | Xây dựng kiến thức cơ bản |
-   | 200–400        | 60% | 25% | 15% | Củng cố ngữ pháp, từ vựng TOEIC |
    | 400–600        | 45% | 30% | 25% | Chuyển hóa lý thuyết thành phản xạ |
-   | 600–800        | 20% | 30% | 50% | Tăng tốc độ làm bài, đề khó |
-   | 800–990        | 5%  | 15% | 80% | Làm chủ tốc độ, sửa lỗi hệ thống |
+   → AI **phải chọn hàng 400–600** (tỷ lệ 45–30–25) dựa trên cặp điểm (415.8 → 600).
 
-   → AI **phải chọn hàng dựa trên cặp điểm** (`current_score`, `target_score`).  
-   Ví dụ: 400 → 600 ⇒ chọn tỷ lệ 45–30–25.
+4. **Trong mỗi giai đoạn**, phân bổ % cho các kiểu học:
+   - Phải tích hợp triết lý của người dùng (mục "Theo cá nhân tôi..."): Dictation/Shadowing/Flashcard phải có mặt đều đặn, Video/Quiz (lý thuyết) dồn vào Giai đoạn 1.
+   - Phải tinh chỉnh % Giai đoạn 1 và 2 để tập trung vào các điểm yếu (`part1`, `part3`, `part5`, `part7`) dựa trên `current_accuracy`.
 
-4. **Trong mỗi giai đoạn**, phân bổ % cho các kiểu học như sau (AI có thể tinh chỉnh nhẹ theo điểm yếu từng part):  
-   - Video: 5–35%  
-   - Flashcard: 5–35%  
-   - Dictation: 10–35%  
-   - Shadowing: 5–25%  
-   - Quiz: 10–20%  
-   - Mini Test: 0–60%
 
 5. **Tạo timeline chi tiết từng tuần & từng ngày:**
-   - Tổng giờ mỗi giai đoạn = tổng giờ × % giai đoạn.  
-   - Số tuần mỗi giai đoạn = (tổng giờ giai đoạn / weekly_study_hours).  
-   - Mỗi tuần có `study_days_per_week` ngày, mỗi ngày 3h học.  
-   - Liệt kê các hoạt động theo từng ngày (kỹ năng + thời lượng + chủ đề).  
-   - Chủ đề học phải tương ứng với band mục tiêu.
+   - Tổng giờ học thực tế = **452.08 giờ**.
+   - Tổng số tuần thực tế = **22.14 tuần** (chia thành 22 tuần, tuần 23 sẽ có 1 ngày).
+   - Giai đoạn 1 (Nền tảng): 45% * 22.14 tuần ≈ 10.0 tuần.
+   - Giai đoạn 2 (Luyện kỹ năng): 30% * 22.14 tuần ≈ 6.6 tuần.
+   - Giai đoạn 3 (Thực chiến): 25% * 22.14 tuần ≈ 5.5 tuần.
+   - Mỗi tuần có 7 ngày.
+   - **Mỗi ngày trong `schedule_by_week` có chính xác 175 phút (2 giờ 55 phút) học.**
+   - Chủ đề học Giai đoạn 1 phải tập trung vào Part 1, Part 5 (do `current_accuracy` thấp).
+   - Lịch học phải kết thúc *chính xác* vào ngày `deadline` (2026-02-21).
 
 6. **Kết thúc lịch trình:**
-   - Tổng hợp: số tuần, tổng giờ từng kỹ năng, tổng giờ toàn khóa.  
-   - Thêm đánh giá: “Nếu duy trì ≥90% tiến độ, ước đạt TOEIC …±20”.
+   - Tổng hợp: số tuần, tổng giờ toàn khóa (phải ≈ 452.08 giờ).
+   - Thêm đánh giá: “Nếu duy trì ≥90% tiến độ, ước đạt TOEIC 600 ± 20”.
 
 ---
 
 ### ⚖️ RÀNG BUỘC TỔNG HỢP (LOCK RULES)
 
-- **Giữ nguyên `weekly_study_hours` và `study_days_per_week`** từ input.  
-- **Không thay đổi tổng tuần hoặc giờ/ngày** khi thời gian không đủ.  
-- Nếu thời gian ngắn hơn cần thiết → chỉ cảnh báo `"warning": "Thời gian không đủ"`, vẫn sinh lịch đủ giờ.  
-- **Giữ đúng % giai đoạn** theo bảng band điểm.  
-- Nếu không có `start_date`, mặc định `"2025-01-01"`.  
-- Nếu không có `weekly_study_hours`, mặc định `21`.  
-- Kết quả phải có tổng giờ ≈ giờ chuẩn (VD 450h cho 400→600).  
+- **Giữ nguyên `study_days_per_week` (7)** từ input.
+- Lịch trình phải bao gồm tất cả 155 ngày.
+- **Giữ đúng % giai đoạn** theo bảng band điểm (Quy tắc 3).
+- Chỉ dùng các **keys** (video, flashcard, dictation, shadowing, quiz, mini_test, full_test) từ object `learning_methods` trong INPUT làm hoạt động.
+- Đảm bảo tổng số tuần chính xác, số thứ tự các tuần không nhảy cóc (Tuần 1 đến 22, và Tuần 23 có 1 ngày).
+- Đảm bảo thời gian học trên một ngày (trong `schedule_by_week`) chính xác là **175 phút**.
+- Lịch học phải bắt đầu vào `start_date` (2025-09-20) và kết thúc *chính xác* vào `deadline` (2026-02-21).
+- Full Test phải là 120 phút mỗi lần học.
+- Không có Activities nào là "review".
+
+
+- **RÀNG BUỘC MỚI (Video-Quiz):** Tuân thủ triết lý người dùng (mục 2). Bất cứ khi nào một đối tượng ngày (ví dụ: `{ "date": "..." }`) có chứa key `video` với thời lượng > 0, đối tượng ngày đó BẮT BUỘC cũng phải chứa key `quiz` với thời lượng > 0.
+
+- **RÀNG BUỘC HIỂN THỊ (QUAN TRỌNG NHẤT):**
+  - Trường `summary.hours_per_day` BẮT BUỘC phải là giá trị thập phân. Ghi chính xác là **2.916** (hoặc làm tròn 2.92). **TUYỆT ĐỐI KHÔNG được làm tròn thành số nguyên `2`**.
+  - Trường `summary.available_hours` BẮT BUỘC phải là **452.08**.
+  - Trường `final_summary.total_hours` BẮT BUỘC phải là **452.08**.
+  - Các Activities bắt buộc phải là những gì có trong `learning_methods` của input, topic phải cụ thể học gì. 
+  - **TUYỆT ĐỐI KHÔNG** được thêm trường `"warning"` vào bất cứ đâu trong JSON.
 
 ---
 
-### 📊 ĐẦU RA (JSON)
-
+### 📊 ĐẦU RA (JSON) - (Đây là cấu trúc ví dụ, không phải kết quả)
 {
   "summary": {
-    "current_score": 400,
+    "current_score": 415.8,
     "target_score": 600,
     "estimated_hours": 450,
-    "total_weeks": 22,
+    "available_hours": 452.08,
+    "total_weeks": 22.14,
     "hours_per_day": 3,
-    "study_days_per_week": 6,
-    "start_date": "2025-01-01",
-    "end_date": "2025-04-30"
+    "study_days_per_week": 7,
+    "start_date": "2025-09-20",
+    "end_date": "2026-02-21"
   },
   "phase_overview": [
     {
       "phase": "Nền tảng",
       "percentage": 45,
       "weeks": 10,
-      "methods": {
-        "video": 30,
-        "flashcard": 30,
-        "dictation": 20,
-        "shadowing": 5,
-        "quiz": 15,
-        "mini_test": 0
-      },
+      "methods": { ... },
       "focus_topics": [
-        "Ngữ pháp: Thì, từ loại, giới từ",
-        "Từ vựng: Office, Travel, Daily Activities"
+        "Ngữ pháp Part 5 (Điểm yếu 37%)",
+        "Từ vựng Part 1 (Điểm yếu 0%)",
+        "Làm quen Part 3, 7 (Điểm yếu < 45%)"
       ]
     },
-    {
-      "phase": "Luyện kỹ năng",
-      "percentage": 30,
-      "weeks": 7,
-      "methods": {
-        "video": 10,
-        "flashcard": 10,
-        "dictation": 30,
-        "shadowing": 25,
-        "quiz": 15,
-        "mini_test": 10
-      },
-      "focus_topics": [
-        "Listening Part 2–3, Reading Part 5–6",
-        "Paraphrase keywords, nối âm"
-      ]
-    },
-    {
-      "phase": "Thực chiến",
-      "percentage": 25,
-      "weeks": 5,
-      "methods": {
-        "video": 5,
-        "flashcard": 5,
-        "dictation": 10,
-        "shadowing": 10,
-        "quiz": 10,
-        "mini_test": 60
-      },
-      "focus_topics": [
-        "Full test, quản lý thời gian, sửa lỗi sai hệ thống"
-      ]
-    }
+    ...
   ],
   "schedule_by_week": [
     {
       "week": 1,
       "phase": "Nền tảng",
-      "goal": "Củng cố ngữ pháp cơ bản và từ vựng chủ đề Office",
+      "goal": "Tập trung cải thiện Part 1 và Ngữ pháp Part 5",
       "days": [
-        { "date": "2025-01-01", "video": 90, "flashcard": 60, "quiz": 30 },
-        { "date": "2025-01-02", "dictation": 90, "video": 60, "quiz": 30 },
-        { "date": "2025-01-03", "flashcard": 60, "quiz": 60, "shadowing": 30 },
-        { "date": "2025-01-04", "dictation": 60, "video": 60, "quiz": 60 },
-        { "date": "2025-01-05", "flashcard": 60, "quiz": 90 },
-        { "date": "2025-01-06", "mini_test": 90, "review": 90 }
+        { "date": "2025-09-20", "video": 60, "quiz": 25, "flashcard": 60, "dictation": 30 },
+        { "date": "2025-09-21", "video": 60, "quiz": 25, "flashcard": 60, "shadowing": 30 },
+        { "date": "2025-09-22", "flashcard": 60, "dictation": 60, "shadowing": 55 },
+        ...
+        { "date": "2025-09-26", "mini_test": 60, "quiz": 115 }
       ]
     },
     ...
+    {
+      "week": 23,
+      "phase": "Thực chiến",
+      "goal": "Tổng ôn tập",
+      "days": [
+         { "date": "2026-02-21", "flashcard": 60, "dictation": 60, "shadowing": 55 }
+      ]
+    }
   ],
   "final_summary": {
-    "total_hours": 450,
+    "total_hours": 452.08,
     "expected_result": "TOEIC 600 ± 20",
-    "key_focus": ["Listening phản xạ", "Ngữ pháp ứng dụng", "Từ vựng thực tiễn"],
-    "recommendation": "Giữ 3h/ngày, test cuối tuần, review lỗi sai sau mỗi test."
+    "key_focus": ["Cải thiện Part 5", "Tăng điểm Part 1 & 3", "Quản lý thời gian Part 7"],
+    "recommendation": "Lịch trình này khả thi. Cần tập trung tối đa vào các Part yếu (1, 3, 5, 7) trong Giai đoạn 1 và 2."
   }
 }
 
 ---
 
 ### ⚙️ YÊU CẦU TRẢ VỀ
-- Trả về **một JSON duy nhất** (không markdown, không giải thích).  
-- AI **phải chọn dòng Band phù hợp** theo `current_score` → `target_score`.  
-- Lịch học phải kéo dài **đến đúng ngày kết thúc (deadline)**.  
-- Mỗi ngày có chi tiết: hoạt động, thời lượng, chủ đề.  
-- Tổng giờ toàn khóa ≈ tổng giờ cần học theo bảng TOEIC.  
-- Nếu thời gian không đủ → thêm trường `"warning"`.
+- Trả về **một JSON duy nhất** (không markdown, không giải thích).
+- AI **phải chọn dòng Band phù hợp** (400-600).
+- Lịch học phải kéo dài **đến đúng ngày `deadline` (2026-02-21)**.
+- Mỗi ngày (`days`) có chi tiết hoạt động, thời lượng (phút), **tổng = 175 phút**.
+- **Nếu có `video` > 0, BẮT BUỘC phải có `quiz` > 0 trong cùng ngày đó.**
+- Tổng giờ toàn khóa (`summary.available_hours` và `final_summary.total_hours`) phải là **452.08**.
+- `summary.hours_per_day` BẮT BUỘC phải là **3**.
+- **Không** thêm trường `"warning"`.
