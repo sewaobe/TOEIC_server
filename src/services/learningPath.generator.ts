@@ -196,7 +196,6 @@ export async function buildLearningPathFromGemini(
     : [];
 
   const artifacts = new Map<string, any>();
-
   for (const week of schedule) {
     const days = Array.isArray(week.days) ? week.days : [];
     for (const day of days) {
@@ -208,152 +207,187 @@ export async function buildLearningPathFromGemini(
       if (artifacts.has(key)) continue;
 
       const part = inferPartTypeFromText(rawTitle);
-      // For session mapping, only set part if Gemini explicitly mentions Part X.
       const explicitPart = detectExplicitPartFromText(rawTitle);
+      const activity = (day.activity || "").toString().toLowerCase();
 
-      // Lesson (find or create)
-      let lesson = await Lesson.findOne({
-        title: new RegExp(`^${escapeRegExp(rawTitle)}$`, "i"),
-      });
-      if (!lesson) {
-        lesson = await Lesson.create({
-          part_type: part,
-          topic: [],
+      // simple switch-like handling: only create resources needed for this activity
+      let lesson: any = undefined;
+      let quiz: any = undefined;
+      let topicVocab: any = undefined;
+      let shadowing: any = undefined;
+      let dictation: any = undefined;
+      const plans: any = {};
+
+      // helper: create lesson (used by video/lesson fallback)
+      const ensureLesson = async () => {
+        if (lesson) return lesson;
+        lesson = await Lesson.findOne({
+          title: new RegExp(`^${escapeRegExp(rawTitle)}$`, "i"),
+        });
+        if (!lesson) {
+          lesson = await Lesson.create({
+            part_type: part,
+            topic: [],
+            title: rawTitle,
+            status: TestStatus.APPROVED,
+            summary: `[AI GENERATED] Placeholder for ${rawTitle}`,
+            planned_completion_time: 10,
+            weight: 0.1,
+            sections_id: [],
+            created_at: new Date(),
+            created_by: DEFAULT_CREATOR_ID,
+            updated_at: new Date(),
+          } as any);
+          const isVideo = /video|youtube|watch|watch\?/i.test(rawTitle);
+          let section;
+          if (isVideo) {
+            const media = await Media.create({
+              topic: rawTitle,
+              url: "https://youtu.be/CKgCahkAkQ8?list=PL8ttwakxyDAEKWvNtd_Pzs3Mou75JqeCe",
+              type: "video",
+              created_at: new Date(),
+              updated_at: new Date(),
+            } as any);
+            section = await LessonSection.create({
+              lesson_id: lesson._id,
+              order: 0,
+              title: "Video",
+              type: "media",
+              medias_id: [media._id],
+              created_at: new Date(),
+              updated_at: new Date(),
+            } as any);
+          } else {
+            section = await LessonSection.create({
+              lesson_id: lesson._id,
+              order: 0,
+              title: "Meta",
+              type: "text",
+              content: `AI generated placeholder for ${rawTitle}`,
+              created_at: new Date(),
+              updated_at: new Date(),
+            } as any);
+          }
+          lesson.sections_id = [section._id as Types.ObjectId];
+          await lesson.save();
+        }
+        return lesson;
+      };
+
+      // switch-case (pattern matching) — create only required items
+      if (/flashcard|vocab|vocabulary|từ vựng/i.test(activity)) {
+        topicVocab = await TopicVocabulary.create({
           title: rawTitle,
-          status: TestStatus.APPROVED,
-          summary: `[AI GENERATED] Placeholder for ${rawTitle}`,
-          planned_completion_time: 10,
-          weight: 0.1,
-          sections_id: [],
+          description: `[AI GENERATED] ${rawTitle}`,
+          tags: [],
+          level: CERFLevel.A2,
+          iconName: "",
+          bgColor: "ffffff",
+          gradient: "",
+          vocabularies_id: [],
+          isCollaborator: false,
+          isPublic: false,
           created_at: new Date(),
           created_by: DEFAULT_CREATOR_ID,
-          updated_at: new Date(),
         } as any);
-        // If activity indicates a video, create a Media and a media-type section
-        const isVideo = /video|youtube|watch|watch\?/i.test(rawTitle);
-        let section;
-        if (isVideo) {
-          const media = await Media.create({
-            topic: rawTitle,
-            url: "https://youtu.be/CKgCahkAkQ8?list=PL8ttwakxyDAEKWvNtd_Pzs3Mou75JqeCe",
-            type: "video",
-            created_at: new Date(),
-            updated_at: new Date(),
-          } as any);
-          section = await LessonSection.create({
-            lesson_id: lesson._id,
-            order: 0,
-            title: "Video",
-            type: "media",
-            medias_id: [media._id],
-            created_at: new Date(),
-            updated_at: new Date(),
-          } as any);
-        } else {
-          section = await LessonSection.create({
-            lesson_id: lesson._id,
-            order: 0,
-            title: "Meta",
-            type: "text",
-            content: `AI generated placeholder for ${rawTitle}`,
-            created_at: new Date(),
-            updated_at: new Date(),
-          } as any);
-        }
-        lesson.sections_id = [section._id as Types.ObjectId];
-        await lesson.save();
+        const flashPlan = await FlashCardPlan.create({
+          user_id: userObjectId,
+          topic_vocabulary_id: topicVocab._id,
+          total_attempts: 0,
+          accuracy_overall: 0,
+        } as any);
+        plans.flash = { _id: flashPlan._id, part_type: part };
+      } else if (/quiz/i.test(activity)) {
+        quiz = await Quiz.create({
+          title: rawTitle,
+          question_ids: [],
+          part_type: part,
+          level: CERFLevel.A2,
+          status: TestStatus.APPROVED,
+          planned_completion_time: 5,
+          weight: 0.1,
+        } as any);
+        const quizPlan = await QuizPlan.create({
+          user_id: userObjectId,
+          quiz_id: quiz._id,
+          total_attempts: 0,
+          accuracy_overall: 0,
+        } as any);
+        plans.quiz = { _id: quizPlan._id, part_type: part };
+      } else if (/dictation|nghe chép|nghe chép chính tả/i.test(activity)) {
+        const dictationPayload = {
+          ...DICTATION_TEMPLATE,
+          title: rawTitle,
+          part_type: part,
+          level: CERFLevel.A2,
+          status: TestStatus.APPROVED,
+          created_at: new Date(),
+          updated_at: new Date(),
+          created_by: DEFAULT_CREATOR_ID,
+        } as any;
+        dictation = await Dictation.create(dictationPayload);
+        const dictPlan = await DictationPlan.create({
+          user_id: userObjectId,
+          dictation_id: dictation._id,
+          total_attempts: 0,
+          accuracy_overall: 0,
+        } as any);
+        plans.dict = { _id: dictPlan._id, part_type: part };
+      } else if (/shadowing|repeat|speak/i.test(activity)) {
+        const shadowingPayload = {
+          ...SHADOWING_TEMPLATE,
+          title: rawTitle,
+          part_type: part,
+          level: CERFLevel.A2,
+          status: TestStatus.APPROVED,
+          created_at: new Date(),
+          updated_at: new Date(),
+          created_by: DEFAULT_CREATOR_ID,
+        } as any;
+        shadowing = await Shadowing.create(shadowingPayload);
+        const shadowPlan = await ShadowingPlan.create({
+          user_id: userObjectId,
+          shadowing_id: shadowing._id,
+          total_attempts: 0,
+          accuracy_overall: 0,
+        } as any);
+        plans.shadow = { _id: shadowPlan._id, part_type: part };
+      } else if (
+        /(video|lesson)/i.test(activity) ||
+        /video|youtube|watch|watch\?/i.test(rawTitle)
+      ) {
+        // create lesson for video/lesson or if title implies video
+        lesson = await ensureLesson();
+      } else {
+        // fallback: create lesson by default
+        lesson = await ensureLesson();
       }
-
-      // Create Quiz / Shadowing / Dictation / TopicVocabulary and user plans (minimal meta)
-      const quiz = await Quiz.create({
-        title: rawTitle,
-        question_ids: [],
-        part_type: part,
-        level: CERFLevel.A2,
-        status: TestStatus.APPROVED,
-        planned_completion_time: 5,
-        weight: 0.1,
-      } as any);
-      // Create shadowing using template content but override title/part/level
-      const shadowingPayload = {
-        ...SHADOWING_TEMPLATE,
-        title: rawTitle,
-        part_type: part,
-        level: CERFLevel.A2,
-        status: TestStatus.APPROVED,
-        created_at: new Date(),
-        updated_at: new Date(),
-        created_by: DEFAULT_CREATOR_ID,
-      } as any;
-
-      const shadowing = await Shadowing.create(shadowingPayload);
-      // Create dictation using template content but override title/part/level
-      const dictationPayload = {
-        ...DICTATION_TEMPLATE,
-        title: rawTitle,
-        part_type: part,
-        level: CERFLevel.A2,
-        status: TestStatus.APPROVED,
-        created_at: new Date(),
-        updated_at: new Date(),
-        created_by: DEFAULT_CREATOR_ID,
-      } as any;
-
-      const dictation = await Dictation.create(dictationPayload);
-      const topicVocab = await TopicVocabulary.create({
-        title: rawTitle,
-        description: `[AI GENERATED] ${rawTitle}`,
-        tags: [],
-        level: CERFLevel.A2,
-        iconName: "",
-        bgColor: "ffffff",
-        gradient: "",
-        vocabularies_id: [],
-        isCollaborator: false,
-        isPublic: false,
-        created_at: new Date(),
-        created_by: DEFAULT_CREATOR_ID,
-      } as any);
-
-      const flashPlan = await FlashCardPlan.create({
-        user_id: userObjectId,
-        topic_vocabulary_id: topicVocab._id,
-        total_attempts: 0,
-        accuracy_overall: 0,
-      } as any);
-      const quizPlan = await QuizPlan.create({
-        user_id: userObjectId,
-        quiz_id: quiz._id,
-        total_attempts: 0,
-        accuracy_overall: 0,
-      } as any);
-      const shadowPlan = await ShadowingPlan.create({
-        user_id: userObjectId,
-        shadowing_id: shadowing._id,
-        total_attempts: 0,
-        accuracy_overall: 0,
-      } as any);
-      const dictPlan = await DictationPlan.create({
-        user_id: userObjectId,
-        dictation_id: dictation._id,
-        total_attempts: 0,
-        accuracy_overall: 0,
-      } as any);
 
       artifacts.set(key, {
         title: rawTitle,
         part: explicitPart,
-        lesson: lesson.toObject ? lesson.toObject() : lesson,
-        quiz: quiz.toObject ? quiz.toObject() : quiz,
-        shadowing: shadowing.toObject ? shadowing.toObject() : shadowing,
-        dictation: dictation.toObject ? dictation.toObject() : dictation,
-        topicVocab: topicVocab.toObject ? topicVocab.toObject() : topicVocab,
-        plans: {
-          flash: { _id: flashPlan._id, part_type: part },
-          quiz: { _id: quizPlan._id, part_type: part },
-          shadow: { _id: shadowPlan._id, part_type: part },
-          dict: { _id: dictPlan._id, part_type: part },
-        },
+        lesson: lesson
+          ? lesson.toObject
+            ? lesson.toObject()
+            : lesson
+          : undefined,
+        quiz: quiz ? (quiz.toObject ? quiz.toObject() : quiz) : undefined,
+        shadowing: shadowing
+          ? shadowing.toObject
+            ? shadowing.toObject()
+            : shadowing
+          : undefined,
+        dictation: dictation
+          ? dictation.toObject
+            ? dictation.toObject()
+            : dictation
+          : undefined,
+        topicVocab: topicVocab
+          ? topicVocab.toObject
+            ? topicVocab.toObject()
+            : topicVocab
+          : undefined,
+        plans,
       });
     }
   }
@@ -365,10 +399,15 @@ export async function buildLearningPathFromGemini(
   const dictationsArr: any[] = [];
   for (const v of artifacts.values()) {
     const p = v.part;
-    flashcardsArr.push({ _id: v.plans.flash._id, part_type: p });
-    quizesArr.push({ _id: v.plans.quiz._id, part_type: p });
-    shadowingsArr.push({ _id: v.plans.shadow._id, part_type: p });
-    dictationsArr.push({ _id: v.plans.dict._id, part_type: p });
+    // Only push plans that actually exist to avoid reading undefined._id
+    if (v.plans && v.plans.flash && v.plans.flash._id)
+      flashcardsArr.push({ _id: v.plans.flash._id, part_type: p });
+    if (v.plans && v.plans.quiz && v.plans.quiz._id)
+      quizesArr.push({ _id: v.plans.quiz._id, part_type: p });
+    if (v.plans && v.plans.shadow && v.plans.shadow._id)
+      shadowingsArr.push({ _id: v.plans.shadow._id, part_type: p });
+    if (v.plans && v.plans.dict && v.plans.dict._id)
+      dictationsArr.push({ _id: v.plans.dict._id, part_type: p });
   }
 
   // Create LearningPath + WeekStudy + DayStudy
