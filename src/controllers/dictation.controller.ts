@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from "express"
 import { ApiResponse } from "../utils/ApiResponse";
-import { createDictationService, deleteDictationService, getAllDictationService, getDictationByIdService, updateDictationService } from "../services/dictation.service";
+import { createDictationService, deleteDictationService, getAllDictationPracticeService, getAllDictationService, getDictationByIdService, updateDictationService } from "../services/dictation.service";
 import { IDictation } from "../models/dictation.model";
 
 
@@ -21,7 +21,7 @@ export const getAllDictationController = async (req: Request, res: Response, nex
 
 export const getDictationByIdController = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        
+
         const dictationId = req.params.id;
 
         const result = await getDictationByIdService(dictationId);
@@ -105,5 +105,16 @@ export const deleteDictationController = async (req: Request, res: Response, nex
         );
     } catch (err) {
         next(err)
+    }
+}
+
+export const getAllDictationPracticeController = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const dictations = await getAllDictationPracticeService();
+        res.status(200).json(
+            ApiResponse.success(dictations, "Lấy tất cả bài nghe chép chính tả để luyện tập thành công")
+        );
+    } catch (err) {
+        next(err);
     }
 }

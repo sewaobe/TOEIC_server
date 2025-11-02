@@ -1,5 +1,5 @@
 import Router from "express";
-import { dictionaryController, generateToeicPlanController, translateController } from "../controllers/gemini.controller";
+import { analyzeDictationController, dictionaryController, generateToeicPlanController, translateController } from "../controllers/gemini.controller";
 
 const router = Router();
 
@@ -197,5 +197,120 @@ router.post("/dictionary", dictionaryController);
  *         description: Lỗi hệ thống hoặc model không phản hồi hợp lệ
  */
 router.post("/translate", translateController);
+
+/**
+ * @openapi
+ * /gemini/dictation-analysis:
+ *   post:
+ *     summary: Phân tích bài luyện Dictation bằng Gemini AI
+ *     description: |
+ *       Gửi danh sách kết quả luyện nghe – chép chính tả (DictationAttemptLogs) để Gemini phân tích điểm mạnh, điểm yếu, lỗi phổ biến và gợi ý cải thiện.
+ *       - Model sử dụng: **Gemini 2.5 Flash / Flash-Lite**
+ *       - Phản hồi ở dạng JSON có cấu trúc rõ ràng.
+ *     tags:
+ *       - Gemini
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - logs
+ *               - dictation
+ *             properties:
+ *               dictation:
+ *                 type: object
+ *                 description: Thông tin bài luyện Dictation
+ *                 properties:
+ *                   _id:
+ *                     type: string
+ *                     example: "671f1c9343a28cce7c4a5a2b"
+ *                   title:
+ *                     type: string
+ *                     example: "People walking in the park"
+ *                   level:
+ *                     type: string
+ *                     example: "Intermediate"
+ *               logs:
+ *                 type: array
+ *                 description: Danh sách kết quả từng câu học viên đã làm
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     index:
+ *                       type: integer
+ *                       example: 2
+ *                     accuracy:
+ *                       type: number
+ *                       example: 85
+ *                     answers:
+ *                       type: object
+ *                       additionalProperties:
+ *                         type: string
+ *                       example: { "3": "some", "5": "bags" }
+ *                     mistakes:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                       example: ["bags."]
+ *                     duration:
+ *                       type: number
+ *                       example: 8
+ *                     started_at:
+ *                       type: string
+ *                       example: "2025-11-02T05:41:26.073Z"
+ *                     finished_at:
+ *                       type: string
+ *                       example: "2025-11-02T05:41:31.757Z"
+ *     responses:
+ *       200:
+ *         description: Phân tích thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 summary:
+ *                   type: string
+ *                   example: "Bạn đã có sự tập trung cao và nhận diện âm khá chính xác ở hầu hết câu."
+ *                 strengths:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   example:
+ *                     - "Nhận diện âm tốt ở câu ngắn"
+ *                     - "Khả năng bắt trọng âm chính xác"
+ *                     - "Thời gian phản ứng nhanh"
+ *                 weaknesses:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   example:
+ *                     - "Dễ sai ở từ có âm /s/ và /ed/"
+ *                     - "Thiếu tập trung ở câu dài"
+ *                     - "Chưa chú ý ngữ điệu cuối câu"
+ *                 improvement_tips:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   example:
+ *                     - "Nghe lại đoạn sai, lặp lại từ khó"
+ *                     - "Luyện shadowing mỗi ngày 10 phút"
+ *                     - "Tập trung vào âm cuối /t/, /d/"
+ *                 recommended_focus:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   example:
+ *                     - "Cấu trúc thì hiện tại hoàn thành"
+ *                     - "Phân biệt âm /s/ và /z/"
+ *                     - "Từ nối (however, although, while)"
+ *       400:
+ *         description: Thiếu hoặc sai dữ liệu đầu vào
+ *       500:
+ *         description: Lỗi hệ thống hoặc model không phản hồi hợp lệ
+ */
+router.post("/dictation-analysis", analyzeDictationController)
 
 export default router;

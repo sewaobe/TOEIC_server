@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from "express";
-import { dictionaryLookup, generateToeicPlan, translateText } from "../services/gemini.service";
+import { analyzeDictationWithAI, dictionaryLookup, generateToeicPlan, translateText } from "../services/gemini.service";
 import { ApiResponse } from "../utils/ApiResponse";
 
 export async function generateToeicPlanController(req: Request, res: Response, next: NextFunction) {
@@ -42,3 +42,21 @@ export const translateController = async (req: Request, res: Response, next: Nex
         next(error);
     }
 };
+
+export const analyzeDictationController = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const { logs, dictation } = req.body
+
+        if (!logs || !Array.isArray(logs) || !dictation) {
+            return res.status(400).json(ApiResponse.fail("Thiếu dữ liệu logs hoặc dictation."))
+        }
+
+        const result = await analyzeDictationWithAI(logs, dictation)
+
+        return res.status(200).json(
+            ApiResponse.success(result, "Phân tích bài luyện Dictation thành công!")
+        )
+    } catch (error) {
+        next(error)
+    }
+}

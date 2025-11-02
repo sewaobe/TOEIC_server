@@ -1,6 +1,7 @@
 import { Types } from "mongoose";
 import { Dictation, IDictation } from "../models/dictation.model"
 import { appEvents } from "../core/appEvents";
+import { TestStatus } from "../models/enums/TestStatus";
 
 export const getAllDictationService = async (page: number, limit: number) => {
     const skip = (page - 1) * limit;
@@ -62,4 +63,11 @@ export const updateDictationService = async (payload: Partial<IDictation>, dicta
 export const deleteDictationService = async (dictationId: string) => {
     const deleted = await Dictation.findByIdAndDelete(dictationId);
     return deleted;
+}
+
+export const getAllDictationPracticeService = async () => {
+    const dictations = await Dictation.find({
+        status: TestStatus.APPROVED
+    }).sort({ created_at: -1 });
+    return dictations;
 }

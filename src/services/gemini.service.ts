@@ -44,7 +44,7 @@ export async function generateToeicPlan(userInput: any) {
                 result.text.slice(0, 300)
             );
 
-            // ✅ Parse JSON kết quả an toàn
+            // Parse JSON kết quả an toàn
             let parsed: any = null;
             try {
                 parsed = JSON.parse(result.text);
@@ -349,4 +349,101 @@ export async function translateText(
     }
 
     throw new Error("Tất cả model Gemini đều quá tải hoặc lỗi xử lý.");
+}
+
+export const DictationAnalysisSchema = {
+    type: Type.OBJECT,
+    properties: {
+        summary: { type: Type.STRING }, // Tóm tắt tổng quan
+        strengths: { type: Type.ARRAY, items: { type: Type.STRING } }, // Điểm mạnh
+        weaknesses: { type: Type.ARRAY, items: { type: Type.STRING } }, // Điểm yếu
+        improvement_tips: { type: Type.ARRAY, items: { type: Type.STRING } }, // Gợi ý cải thiện
+        recommended_focus: { type: Type.ARRAY, items: { type: Type.STRING } }, // Gợi ý luyện tập
+        chart_insights: {
+            type: Type.OBJECT,
+            properties: {
+                accuracy_over_time: { type: Type.ARRAY, items: { type: Type.STRING } },
+                common_mistakes: { type: Type.ARRAY, items: { type: Type.STRING } },
+                pronunciation_patterns: { type: Type.ARRAY, items: { type: Type.STRING } },
+            },
+        },
+    },
+    propertyOrdering: [
+        "summary",
+        "strengths",
+        "weaknesses",
+        "improvement_tips",
+        "recommended_focus",
+        "chart_insights",
+    ],
+}
+
+/**
+ * 🧠 Phân tích bài luyện Dictation bằng Gemini
+ * @param logs Danh sách DictationAttemptLog từ client (index, accuracy, mistakes, duration,...)
+ * @param dictationMeta Thông tin mô tả bài luyện (title, level, sentence count,...)
+ */
+export async function analyzeDictationWithAI(logs: any[], dictationMeta: any) {
+    if (!Array.isArray(logs) || logs.length === 0)
+        throw new Error("Missing attempt logs for analysis.")
+
+    // Tính toán thống kê cơ bản
+    const avgAccuracy = Math.round(logs.reduce((sum, l) => sum + (l.accuracy || 0), 0) / logs.length)
+    const avgTime = Math.round(logs.reduce((sum, l) => sum + (l.duration || 0), 0) / logs.length)
+    const mistakes = logs.flatMap((l) => l.mistakes || [])
+    const totalSentences = logs.length
+
+    const stats = {
+        title: dictationMeta?.title,
+        level: dictationMeta?.level,
+        totalSentences,
+        avgAccuracy,
+        avgTime,
+        mistakes,
+    }
+
+    // Đọc prompt template từ file .txt
+    const promptPath = path.resolve(__dirname, "../configs/dictation_analysis.txt")
+    if (!fs.existsSync(promptPath))
+        throw new Error(`Missing prompt file: ${promptPath}`)
+
+    const promptTemplate = fs.readFileSync(promptPath, "utf8")
+
+    // Thay placeholder
+    const prompt = promptTemplate.replace("{{STATS_JSON}}", JSON.stringify(stats, null, 2))
+
+    // Gọi Gemini
+    for (const model of MODELS) {
+        try {
+            console.log(`🧠 Phân tích Dictation với model: ${model}`)
+            const result = await ai.models.generateContent({
+                model,
+                contents: prompt,
+                config: {
+                    temperature: 0.4,
+                    maxOutputTokens: 4096,
+                    responseMimeType: "application/json",
+                    responseSchema: DictationAnalysisSchema,
+                },
+            })
+
+            const text = result.text?.trim()
+            if (!text) throw new Error("Empty structured response from Gemini.")
+
+            const parsed = JSON.parse(text)
+            console.log("📊 Gemini Dictation Analysis:", parsed)
+
+            return { model, json: parsed }
+        } catch (err: any) {
+            const msg = err?.message || err?.error?.message || ""
+            if (msg.includes("503") || msg.includes("UNAVAILABLE") || msg.includes("overloaded")) {
+                console.warn(`🚧 ${model} quá tải, thử model kế tiếp...`)
+                continue
+            }
+            console.error(`❌ Lỗi khi gọi ${model}:`, msg)
+            throw err
+        }
+    }
+
+    throw new Error("Tất cả model Gemini đều quá tải hoặc lỗi xử lý.")
 }
