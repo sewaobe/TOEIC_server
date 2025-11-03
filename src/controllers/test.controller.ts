@@ -338,6 +338,15 @@ export const updateTestStatusController = async (req: Request, res: Response, ne
       res.status(404).json(ApiResponse.fail("Không tìm thấy đề thi"));
       return;
     }
+    
+    // Gửi thông báo đến admin khi CTV/user thay đổi status
+    const { pushNotificationToAdmin } = await import("../utils/pushNotificationToAdmin");
+    pushNotificationToAdmin(userId, {
+      message: `📝 Bài thi "${updatedTest.title}" đã được chuyển sang trạng thái "${status}".`,
+      type: "test",
+      url: `http://localhost:5174/admin/tests/${updatedTest._id}`,
+    });
+    
     res
       .status(200)
       .json(ApiResponse.success(updatedTest, "Cập nhật trạng thái đề thi thành công!"));

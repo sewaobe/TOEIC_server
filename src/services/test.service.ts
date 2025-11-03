@@ -516,11 +516,13 @@ export const updateStatusTest = async (
     throw new Error("Test not found");
   }
 
-  pushNotificationToAdmin(userId, {
-    message: `📝 Bài thi "${test.title}" đã được chuyển sang trạng thái "${status}".`,
-    type: "test",
-    url: `http://localhost:5174/admin/tests/${test._id}`,
-  });
+  // Chỉ gửi thông báo đến admin khi CTV/user thay đổi status (không phải admin tự thao tác)
+  // Nếu muốn gửi thông báo, gọi từ controller sau khi kiểm tra role
+  // pushNotificationToAdmin(userId, {
+  //   message: `📝 Bài thi "${test.title}" đã được chuyển sang trạng thái "${status}".`,
+  //   type: "test",
+  //   url: `http://localhost:5174/admin/tests/${test._id}`,
+  // });
 
   return test;
 };
