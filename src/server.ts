@@ -47,6 +47,7 @@ import chatFeedbackRouter from "./routes/chat_feedback.route";
 import dictationUserRouter from "./routes/dictation.route";
 import dictationAttemptRouter from "./routes/dictation_attempt.route";
 import shadowingUserRouter from "./routes/shadowing.route";
+import progressUserRouter from "./routes/progress.route";
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
 import { verifyAccessToken } from "./middlewares/verifyAccessToken.middleware";
@@ -89,6 +90,7 @@ app.use("/api/reports", verifyAccessToken, reportRouter);
 app.use("/api/dictations", verifyAccessToken, dictationUserRouter);
 app.use("/api/dictation-attempts", verifyAccessToken, dictationAttemptRouter);
 app.use("/api/shadowings", verifyAccessToken, shadowingUserRouter);
+app.use("/api/progress/statistic-result", verifyAccessToken, progressUserRouter);
 
 // ========= CTV ============
 app.use("/api/ctv", ctvTestRouter);
