@@ -22,12 +22,12 @@ export const ToeicPlanSchema = {
     summary: {
       type: Type.OBJECT,
       properties: {
-        current_score: { type: Type.INTEGER },
-        target_score: { type: Type.INTEGER },
-        estimated_hours: { type: Type.INTEGER },
-        total_weeks: { type: Type.INTEGER },
-        hours_per_day: { type: Type.INTEGER },
-        study_days_per_week: { type: Type.INTEGER },
+        current_score: { type: Type.NUMBER },
+        target_score: { type: Type.NUMBER },
+        estimated_hours: { type: Type.NUMBER },
+        total_weeks: { type: Type.NUMBER },
+        hours_per_day: { type: Type.NUMBER },
+        study_days_per_week: { type: Type.NUMBER },
         start_date: { type: Type.STRING },
         end_date: { type: Type.STRING },
         warning: { type: Type.STRING },
@@ -50,18 +50,18 @@ export const ToeicPlanSchema = {
         type: Type.OBJECT,
         properties: {
           phase: { type: Type.STRING },
-          percentage: { type: Type.INTEGER },
+          percentage: { type: Type.NUMBER },
           hours: { type: Type.NUMBER },
           weeks: { type: Type.NUMBER },
           methods: {
             type: Type.OBJECT,
             properties: {
-              video: { type: Type.INTEGER },
-              flashcard: { type: Type.INTEGER },
-              dictation: { type: Type.INTEGER },
-              shadowing: { type: Type.INTEGER },
-              quiz: { type: Type.INTEGER },
-              mini_test: { type: Type.INTEGER },
+              video: { type: Type.NUMBER },
+              flashcard: { type: Type.NUMBER },
+              dictation: { type: Type.NUMBER },
+              shadowing: { type: Type.NUMBER },
+              quiz: { type: Type.NUMBER },
+              mini_test: { type: Type.NUMBER },
             },
             propertyOrdering: [
               "video",
@@ -89,7 +89,7 @@ export const ToeicPlanSchema = {
       items: {
         type: Type.OBJECT,
         properties: {
-          week: { type: Type.INTEGER },
+          week: { type: Type.NUMBER },
           phase: { type: Type.STRING },
           goal: { type: Type.STRING },
           days: {
@@ -99,7 +99,7 @@ export const ToeicPlanSchema = {
               properties: {
                 date: { type: Type.STRING },
                 activity: { type: Type.STRING },
-                duration: { type: Type.INTEGER },
+                duration: { type: Type.NUMBER },
                 topic: { type: Type.STRING },
               },
               propertyOrdering: ["date", "activity", "duration", "topic"],
@@ -117,6 +117,7 @@ export async function generateToeicPlan(userInput: any) {
   const templatePath = path.resolve(__dirname, "../configs/toeic-plan.txt");
   const promptTemplate = fs.readFileSync(templatePath, "utf8");
 
+  console.log("🧩 Gemini TOEIC Plan - User Input:", userInput);
   const prompt = promptTemplate.replace(
     "{{USER_INPUT}}",
     JSON.stringify(userInput, null, 2)
@@ -130,8 +131,8 @@ export async function generateToeicPlan(userInput: any) {
         model,
         contents: prompt,
         config: {
-          temperature: 0.3,
-          maxOutputTokens: 32000,
+          temperature: 0.1,
+          maxOutputTokens: 62000,
           responseMimeType: "application/json",
           responseSchema: ToeicPlanSchema,
         },
