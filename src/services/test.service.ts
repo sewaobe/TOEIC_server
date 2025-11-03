@@ -33,7 +33,7 @@ export const getFullTest = async (testId: string): Promise<any | null> => {
     })
     .populate({
       path: "created_by",
-      select: "profile.fullname"
+      select: "profile.fullname",
     })
     .lean();
 
@@ -135,11 +135,9 @@ export const submitTest = async (
     };
   });
 
-  // Tính tổng điểm
-  const score =
-    (detailedAnswers.filter((a) => a.isCorrect).length /
-      detailedAnswers.length) *
-    990;
+  // Tính tổng điểm: mỗi câu đúng = 5 điểm, tối đa 990
+  const correctCount = detailedAnswers.filter((a) => a.isCorrect).length;
+  const score = Math.min(correctCount * 5, 990);
 
   // Chuyển stats thành parts array
   const parts = Object.entries(partStats).map(([part_name, stat]) => ({
@@ -504,7 +502,11 @@ export const updateTest = async (
   return await finalizeTestWithGroups(test, newGroupIds);
 };
 
-export const updateStatusTest = async (testId: string, status: TestStatus, userId: string) => {
+export const updateStatusTest = async (
+  testId: string,
+  status: TestStatus,
+  userId: string
+) => {
   const test = await Test.findByIdAndUpdate(
     testId,
     { status, updated_at: new Date() },
@@ -517,8 +519,8 @@ export const updateStatusTest = async (testId: string, status: TestStatus, userI
   pushNotificationToAdmin(userId, {
     message: `📝 Bài thi "${test.title}" đã được chuyển sang trạng thái "${status}".`,
     type: "test",
-    url: `http://localhost:5174/admin/tests/${test._id}`
-  })
+    url: `http://localhost:5174/admin/tests/${test._id}`,
+  });
 
   return test;
 };

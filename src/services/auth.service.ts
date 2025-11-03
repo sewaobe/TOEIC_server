@@ -1,8 +1,8 @@
-import { User, IUser } from '../models/user.model';
-import { comparePassword, hashPassword } from '../utils/hash';
-import { generateAccessToken, generateRefreshToken } from '../utils/jwt';
-import { Role } from '../models/role.model';
-import admin from '../utils/firebase';
+import { User, IUser } from "../models/user.model";
+import { comparePassword, hashPassword } from "../utils/hash";
+import { generateAccessToken, generateRefreshToken } from "../utils/jwt";
+import { Role } from "../models/role.model";
+import admin from "../utils/firebase";
 
 interface LoginRequest {
   username: string;
@@ -25,14 +25,34 @@ export const loginService = async ({
   role_name: string;
   user_id: string;
 }> => {
-  const user: IUser | null = await User
-    .findOne({ username })
+  const user: IUser | null = await User.findOne({ username })
     .populate("role_id", "name")
+    .populate("banned_by", "profile.fullname username email")
     .lean();
-  if (!user) throw new Error('Username does not exist');
+  if (!user) throw new Error("Username does not exist");
 
   const match = await comparePassword(password, user.passwordHash);
-  if (!match) throw new Error('Password is not correct');
+  if (!match) throw new Error("Password is not correct");
+
+  // Kiểm tra trạng thái ban
+  if (user.status === "banned" || user.status === "banned_permanent") {
+    const bannedByName = user.banned_by
+      ? (user.banned_by as any).profile?.fullname ||
+        (user.banned_by as any).username ||
+        "Quản trị viên"
+      : "Quản trị viên";
+
+    const error: any = new Error("Account is banned");
+    error.code = "ACCOUNT_BANNED";
+    error.details = {
+      status: user.status,
+      banned_reason: user.banned_reason || "Không có lý do cụ thể",
+      banned_at: user.banned_at,
+      banned_by: bannedByName,
+      is_permanent: user.status === "banned_permanent",
+    };
+    throw error;
+  }
 
   const accessToken = generateAccessToken(user);
   const refreshToken = generateRefreshToken(user);
@@ -41,7 +61,7 @@ export const loginService = async ({
     accessToken,
     refreshToken,
     role_name: (user.role_id as any)?.name || null,
-    user_id: user._id.toString()
+    user_id: user._id.toString(),
   };
 };
 
@@ -52,12 +72,12 @@ export const registerService = async ({
   username,
 }: RegisterRequest): Promise<{ message: string }> => {
   const isEmailExist = await User.findOne({ email });
-  if (isEmailExist) throw new Error('Email already exists');
+  if (isEmailExist) throw new Error("Email already exists");
 
   const isUsernameExist = await User.findOne({ username });
-  if (isUsernameExist) throw new Error('Username already exists');
+  if (isUsernameExist) throw new Error("Username already exists");
 
-  const studentRole = await Role.findOne({ name: 'student' });
+  const studentRole = await Role.findOne({ name: "student" });
   if (!studentRole)
     throw new Error('Default role "student" not found. Please seed it in DB.');
 
@@ -67,7 +87,7 @@ export const registerService = async ({
     passwordHash: hashedPassword,
     profile: {
       fullname: fullname,
-      avatar: '',
+      avatar: "",
     },
     username,
     role_id: studentRole._id,
@@ -75,7 +95,7 @@ export const registerService = async ({
   await user.save();
 
   return {
-    message: 'Register Successfully',
+    message: "Register Successfully",
   };
 };
 
@@ -92,23 +112,24 @@ export const loginWithGoogleService = async (
   const { uid, email, name, picture } = decoded;
 
   if (!email) {
-    throw new Error('Google account does not provide email');
+    throw new Error("Google account does not provide email");
   }
 
   // 2. Tìm user trong DB
-  let user: IUser | null = await User.findOne({ firebaseUid: uid }).populate(
-    'role_id',
-    'name'
-  );
+  let user: IUser | null = await User.findOne({ firebaseUid: uid })
+    .populate("role_id", "name")
+    .populate("banned_by", "profile.fullname username email");
 
   // Nếu chưa có thì tìm theo email (phòng trường hợp trước đó user đăng ký bằng email/password)
   if (!user) {
-    user = await User.findOne({ email }).populate('role_id', 'name');
+    user = await User.findOne({ email })
+      .populate("role_id", "name")
+      .populate("banned_by", "profile.fullname username email");
   }
 
   // Nếu vẫn chưa có thì tạo mới
   if (!user) {
-    const defaultRole = await Role.findOne({ name: 'student' });
+    const defaultRole = await Role.findOne({ name: "student" });
     if (!defaultRole) {
       throw new Error(
         'Default role "student" not found. Please seed it in DB.'
@@ -119,16 +140,36 @@ export const loginWithGoogleService = async (
       firebaseUid: uid,
       email,
       profile: {
-        fullname: name || 'No name',
-        avatar: picture || '',
+        fullname: name || "No name",
+        avatar: picture || "",
       },
-      username: email.split('@')[0], // auto tạo username từ email
+      username: email.split("@")[0], // auto tạo username từ email
       role_id: defaultRole._id,
     });
   } else if (!user.firebaseUid) {
     // Nếu user đã tồn tại bằng email nhưng chưa có firebaseUid thì cập nhật
     user.firebaseUid = uid;
     await user.save();
+  }
+
+  // Kiểm tra trạng thái ban
+  if (user.status === "banned" || user.status === "banned_permanent") {
+    const bannedByName = user.banned_by
+      ? (user.banned_by as any).profile?.fullname ||
+        (user.banned_by as any).username ||
+        "Quản trị viên"
+      : "Quản trị viên";
+
+    const error: any = new Error("Account is banned");
+    error.code = "ACCOUNT_BANNED";
+    error.details = {
+      status: user.status,
+      banned_reason: user.banned_reason || "Không có lý do cụ thể",
+      banned_at: user.banned_at,
+      banned_by: bannedByName,
+      is_permanent: user.status === "banned_permanent",
+    };
+    throw error;
   }
 
   // 3. Tạo JWT
@@ -138,6 +179,6 @@ export const loginWithGoogleService = async (
     accessToken,
     refreshToken,
     role_name: (user.role_id as any)?.name || null,
-    user_id: user._id.toString()
+    user_id: user._id.toString(),
   };
 };
