@@ -16,6 +16,10 @@ export interface IUser extends Document {
   };
   badges?: Types.ObjectId[];
   topic_vocabularies?: Types.ObjectId[];
+  // trạng thái người dùng: 'active' | 'banned' | 'banned_permanent'
+  status?: "active" | "banned" | "banned_permanent";
+  // lý do bị ban
+  banned_reason?: string | null;
   master_parts: IPartAccuracy[];
   created_at: Date;
   updated_at: Date;
@@ -50,6 +54,14 @@ const UserSchema = new Schema<IUser>({
   updated_at: Date,
   banned_at: Date,
   banned_by: { type: Schema.Types.ObjectId, ref: "User" },
+  // Lý do bị ban (để FE hiển thị)
+  banned_reason: { type: String, default: null },
+  // Trạng thái hiện tại (active | banned | banned_permanent)
+  status: {
+    type: String,
+    enum: ["active", "banned", "banned_permanent"],
+    default: "active",
+  },
 
   // 🕓 Thêm mới: thời điểm hoạt động gần nhất
   last_active: { type: Date, default: null },

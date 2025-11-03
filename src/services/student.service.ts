@@ -3,7 +3,6 @@ import {
   UserActivity,
   UserTest,
   GroupUser,
-  UserLearningPath,
   LearningPath,
   UserProgress,
 } from "../models";
@@ -17,12 +16,120 @@ export const getStudentsService = async (
   limit: number,
   search: string,
   status: string,
-  targetScore: number
+  targetScore: number,
+  mentorId: string
 ) => {
   const skip = (page - 1) * limit;
+
+  // 🎯 Lấy danh sách students thuộc group của CTV hiện tại
+  const groupDoc = await GroupUser.findOne({ mentor_id: mentorId }).lean();
+  if (!groupDoc || !groupDoc.students || groupDoc.students.length === 0) {
+    console.log(`🔍 Không tìm thấy group cho mentor ${mentorId}`);
+    return {
+      items: [],
+      total: 0,
+      pageCount: 0,
+    };
+  }
+
+  const studentIds = groupDoc.students; // Array of ObjectId
+  console.log(`🔍 Found ${studentIds.length} students in group:`, studentIds);
+
+  // 🔍 Kiểm tra xem có UserProgress nào cho các students này không
+  const progressCount = await UserProgress.countDocuments({
+    user_id: { $in: studentIds },
+  });
+  console.log(
+    `🔍 Found ${progressCount} UserProgress records for these students`
+  );
+
+  // 🛠️ Nếu thiếu UserProgress cho một số students, tạo records từ LearningPath
+  if (progressCount < studentIds.length) {
+    const existingProgressUserIds = await UserProgress.find({
+      user_id: { $in: studentIds },
+    }).distinct("user_id");
+
+    const missingUserIds = studentIds.filter(
+      (id) =>
+        !existingProgressUserIds.some(
+          (existing) => existing.toString() === id.toString()
+        )
+    );
+
+    console.log(
+      `🛠️ Creating UserProgress from LearningPath for ${missingUserIds.length} students:`,
+      missingUserIds
+    );
+
+    // 📋 Lấy LearningPath cho các students thiếu (user-specific)
+    const learningPaths = await LearningPath.find({
+      user_id: { $in: missingUserIds },
+    }).lean();
+
+    // Tạo UserProgress từ thông tin LearningPath thật
+    const defaultProgressRecords = await Promise.all(
+      missingUserIds.map(async (userId) => {
+        const learningPath = learningPaths.find(
+          (lp) => lp.user_id?.toString() === userId.toString()
+        );
+
+        // Lấy thông tin từ LearningPath hoặc fallback mặc định
+        const targetScore = learningPath?.target_score || 600;
+        const totalLessons = (learningPath?.week_study_ids?.length || 10) * 7; // Tính từ số tuần * 7 ngày
+
+        return {
+          user_id: userId,
+          learningPath_id: learningPath?._id || null,
+          completion_rate: 0,
+          total_lessons: totalLessons,
+          target_score: targetScore,
+          current_score: 0,
+          streak_days: 0,
+          total_study_time: 0,
+          listening_score: 0,
+          reading_score: 0,
+          vocabulary_score: 0,
+          grammar_score: 0,
+          created_at: new Date(),
+          updated_at: new Date(),
+        };
+      })
+    );
+
+    if (defaultProgressRecords.length > 0) {
+      await UserProgress.insertMany(defaultProgressRecords);
+      console.log(
+        `✅ Created ${defaultProgressRecords.length} UserProgress records from LearningPath data`
+      );
+    }
+  }
+
   const pipeline: any[] = [];
 
-  // 1️⃣ Join với User collection thật
+  // 1️⃣ Filter chỉ lấy students trong group của CTV hiện tại
+  pipeline.push({
+    $match: {
+      user_id: { $in: studentIds },
+    },
+  });
+
+  // 2️⃣ Group theo user_id để tránh duplicate (lấy progress record mới nhất)
+  pipeline.push({
+    $sort: { user_id: 1, created_at: -1 },
+  });
+
+  pipeline.push({
+    $group: {
+      _id: "$user_id",
+      latestProgress: { $first: "$$ROOT" },
+    },
+  });
+
+  pipeline.push({
+    $replaceRoot: { newRoot: "$latestProgress" },
+  });
+
+  // 3️⃣ Join với User collection thật
   pipeline.push({
     $lookup: {
       from: "users",
@@ -35,7 +142,7 @@ export const getStudentsService = async (
   // Flatten user
   pipeline.push({ $unwind: "$user" });
 
-  // 2️⃣ Join thêm learningPath và mentor nếu cần
+  // 4️⃣ Join thêm learningPath và mentor nếu cần
   pipeline.push({
     $lookup: {
       from: "learningpaths",
@@ -44,7 +151,9 @@ export const getStudentsService = async (
       as: "learningPath",
     },
   });
-  pipeline.push({ $unwind: { path: "$learningPath", preserveNullAndEmptyArrays: true } });
+  pipeline.push({
+    $unwind: { path: "$learningPath", preserveNullAndEmptyArrays: true },
+  });
 
   pipeline.push({
     $lookup: {
@@ -54,9 +163,11 @@ export const getStudentsService = async (
       as: "mentor",
     },
   });
-  pipeline.push({ $unwind: { path: "$mentor", preserveNullAndEmptyArrays: true } });
+  pipeline.push({
+    $unwind: { path: "$mentor", preserveNullAndEmptyArrays: true },
+  });
 
-  // 3️⃣ Bộ lọc tìm kiếm (tên hoặc email)
+  // 5️⃣ Bộ lọc tìm kiếm (tên hoặc email)
   const match: any = {};
   if (search) {
     match.$or = [
@@ -72,19 +183,30 @@ export const getStudentsService = async (
 
   pipeline.push({ $match: match });
 
-  // 4️⃣ Lọc theo trạng thái (trước hoặc sau match đều được)
+  // 6️⃣ Lọc theo trạng thái (trước hoặc sau match đều được)
   if (status && status !== "all") {
     pipeline.push({
       $match: {
         $expr: {
           $switch: {
             branches: [
-              { case: { $eq: [status, "completed"] }, then: { $gte: ["$completion_rate", 100] } },
+              {
+                case: { $eq: [status, "completed"] },
+                then: { $gte: ["$completion_rate", 100] },
+              },
               {
                 case: { $eq: [status, "active"] },
-                then: { $and: [{ $gt: ["$completion_rate", 0] }, { $lt: ["$completion_rate", 100] }] },
+                then: {
+                  $and: [
+                    { $gt: ["$completion_rate", 0] },
+                    { $lt: ["$completion_rate", 100] },
+                  ],
+                },
               },
-              { case: { $eq: [status, "inactive"] }, then: { $eq: ["$completion_rate", 0] } },
+              {
+                case: { $eq: [status, "inactive"] },
+                then: { $eq: ["$completion_rate", 0] },
+              },
             ],
             default: true,
           },
@@ -93,19 +215,19 @@ export const getStudentsService = async (
     });
   }
 
-  // 5️⃣ Tổng số kết quả
+  // 7️⃣ Tổng số kết quả (sau khi đã group và filter)
   const totalCountPipeline = [...pipeline, { $count: "total" }];
   const totalResult = await UserProgress.aggregate(totalCountPipeline);
   const total = totalResult[0]?.total || 0;
 
-  // 6️⃣ Phân trang
+  // 8️⃣ Phân trang
   pipeline.push({ $skip: skip });
   pipeline.push({ $limit: limit });
 
-  // 7️⃣ Thực thi
+  // 9️⃣ Thực thi
   const stats = await UserProgress.aggregate(pipeline);
 
-  // 8️⃣ Format kết quả
+  // 🔟 Format kết quả
   const items = stats.map((s: any) => {
     const completionRate = s.completion_rate || 0;
     const totalLessons = s.total_lessons || 100;
@@ -155,42 +277,76 @@ export const getStudentsService = async (
  */
 export const getStudentDetailService = async (id: string) => {
   const user = await User.findById(id).lean();
-  const stat = await UserProgress.findOne({ user_id: id })
+
+  // 🔹 Tìm UserProgress, nếu không có thì tạo từ LearningPath
+  let stat = await UserProgress.findOne({ user_id: id })
     .populate("learningPath_id")
     .populate("mentor_id")
     .lean();
 
-  if (!user || !stat) return null;
+  if (!user) return null;
+
+  // 🔹 Lấy LearningPath trực tiếp để có thông tin
+  const learningPath = await LearningPath.findOne({ user_id: id }).lean();
+
+  // 🛠️ Nếu không có UserProgress, tạo từ LearningPath
+  if (!stat && learningPath) {
+    const newProgress = {
+      user_id: id,
+      learningPath_id: learningPath._id || null,
+      completion_rate: 0,
+      total_lessons: (learningPath.week_study_ids?.length || 10) * 7,
+      target_score: learningPath.target_score || 600,
+      current_score: 0,
+      streak_days: 0,
+      total_study_time: 0,
+      listening_score: 0,
+      reading_score: 0,
+      vocabulary_score: 0,
+      grammar_score: 0,
+      created_at: new Date(),
+      updated_at: new Date(),
+    };
+
+    const createdStat = await UserProgress.create(newProgress);
+    stat = await UserProgress.findById(createdStat._id)
+      .populate("learningPath_id")
+      .populate("mentor_id")
+      .lean();
+
+    console.log(
+      `✅ Created UserProgress for student ${id} from LearningPath data`
+    );
+  }
+
+  if (!stat) return null;
 
   const lp = stat.learningPath_id as any;
 
-  // 🔹 Cấu hình lộ trình từ UserLearningPath
-  const userLP = await UserLearningPath.findOne({ user_id: id })
-    .populate("learningPath_id")
-    .lean();
-
-  const learningPathConfig = userLP
+  // 🔹 Cấu hình lộ trình từ LearningPath
+  const learningPathConfig = learningPath
     ? {
-        lessonsPerWeek: userLP.days_per_week || 3,
-        hoursPerDay: userLP.time_per_day || 1,
+        lessonsPerWeek: learningPath.days_per_week || 3,
+        hoursPerDay: learningPath.time_per_day || 1,
         focusAreas:
           lp?.title?.toLowerCase().includes("vocab") ||
           lp?.title?.toLowerCase().includes("grammar")
             ? ["Vocabulary", "Grammar"]
             : ["Listening", "Reading"],
-        startDate:
-          userLP.target_completion_date instanceof Date
-            ? userLP.target_completion_date.toISOString().split("T")[0]
-            : user?.created_at?.toISOString().split("T")[0] || "",
+        startDate: user?.created_at?.toISOString().split("T")[0] || "",
         targetDate:
-          userLP.target_completion_date instanceof Date
-            ? userLP.target_completion_date.toISOString().split("T")[0]
+          learningPath.target_completion_date instanceof Date
+            ? learningPath.target_completion_date.toISOString().split("T")[0]
             : "",
       }
     : {
         lessonsPerWeek: 3,
         hoursPerDay: 1,
-        focusAreas: ["Listening", "Reading"],
+        focusAreas:
+          lp?.title?.toLowerCase().includes("vocab") ||
+          lp?.title?.toLowerCase().includes("grammar")
+            ? ["Vocabulary", "Grammar"]
+            : ["Listening", "Reading"],
         startDate: user?.created_at?.toISOString().split("T")[0] || "",
         targetDate: "",
       };

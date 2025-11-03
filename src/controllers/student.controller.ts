@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { Types } from "mongoose";
 import * as studentService from "../services/student.service";
 import { ApiResponse } from "../utils/ApiResponse";
+import { JwtUserPayload } from "../middlewares/verifyAccessToken.middleware";
 
 // ==========================
 // 🧩 Lấy danh sách học viên
@@ -14,12 +15,21 @@ export const getStudentsController = async (
   try {
     // 📦 Lấy query params từ URL
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
+    const limit = req.query.limit
+      ? parseInt(req.query.limit as string, 10)
+      : 10;
     const search = req.query.search ? String(req.query.search) : "";
     const status = req.query.status ? String(req.query.status) : "";
     const targetScore = req.query.targetScore
       ? parseInt(req.query.targetScore as string, 10)
       : 0;
+
+    // 🧑‍🏫 Lấy user hiện tại (CTV)
+    const currentUser = req.user;
+    if (!currentUser) {
+      res.status(401).json(ApiResponse.fail("Không có thông tin người dùng!"));
+      return;
+    }
 
     // ⚙️ Gọi service xử lý
     const { items, total, pageCount } = await studentService.getStudentsService(
@@ -27,16 +37,19 @@ export const getStudentsController = async (
       limit,
       search,
       status,
-      targetScore
+      targetScore,
+      currentUser._id // pass CTV id để filter
     );
 
     // ✅ Trả về kết quả
-    res.status(200).json(
-      ApiResponse.success(
-        { items, total, pageCount },
-        "Lấy danh sách học viên thành công!"
-      )
-    );
+    res
+      .status(200)
+      .json(
+        ApiResponse.success(
+          { items, total, pageCount },
+          "Lấy danh sách học viên thành công!"
+        )
+      );
   } catch (error) {
     next(error);
   }
@@ -75,7 +88,6 @@ export const getStudentDetailController = async (
     next(error);
   }
 };
-
 
 // ===================================
 // 📊 Lấy báo cáo nhóm học viên
