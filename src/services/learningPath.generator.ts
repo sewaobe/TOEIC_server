@@ -4,8 +4,10 @@ import {
   Lesson,
   LessonSection,
   TopicVocabulary,
+  Vocabulary,
   FlashCardPlan,
   Quiz,
+  Question,
   QuizPlan,
   ShadowingPlan,
   DictationPlan,
@@ -13,13 +15,20 @@ import {
   WeekStudy,
   DayStudy,
   Media,
+  User,
+  Role,
+  GroupUser,
 } from "../models";
+import { LESSON_SEEDS } from "../mocks/seedLessons";
 import { Shadowing } from "../models/shadowing.model";
 import { Dictation } from "../models/dictation.model";
 import {
-  createUserLearningPath,
-  generateWeeklyDayStudies,
-} from "./user_learningPath.service";
+  MOCK_FLASHCARDS,
+  MOCK_QUIZZES,
+  MOCK_SHADOWINGS,
+  MOCK_DICTATIONS,
+} from "../mocks/mockActivities";
+import { generateWeeklyDayStudies } from "./user_learningPath.service";
 import { PartType } from "../models/enums/PartType";
 import { TestStatus } from "../models/enums/TestStatus";
 import { CERFLevel } from "../models/topic_vocabulary.model";
@@ -240,47 +249,329 @@ export async function buildLearningPathFromGemini(
           } as any);
           const isVideo = /video|youtube|watch|watch\?/i.test(rawTitle);
           let section;
-          if (isVideo) {
-            const media = await Media.create({
-              topic: rawTitle,
-              url: "https://youtu.be/CKgCahkAkQ8?list=PL8ttwakxyDAEKWvNtd_Pzs3Mou75JqeCe",
-              type: "video",
-              created_at: new Date(),
-              updated_at: new Date(),
-            } as any);
-            section = await LessonSection.create({
-              lesson_id: lesson._id,
-              order: 0,
-              title: "Video",
-              type: "media",
-              medias_id: [media._id],
-              created_at: new Date(),
-              updated_at: new Date(),
-            } as any);
+          // try to find a seed matching this lesson title
+          const seed = LESSON_SEEDS.find(
+            (s) =>
+              rawTitle &&
+              s.title &&
+              rawTitle.toLowerCase().includes(s.title.toLowerCase())
+          );
+          if (seed) {
+            // create media + multiple sections from seed
+            const createdSectionIds: Types.ObjectId[] = [];
+            let order = 0;
+            const seedSections = (seed.sections || []) as any[];
+            for (const s of seedSections) {
+              const secObj: any = s;
+              if (secObj.type === "media") {
+                try {
+                  const media = await Media.create({
+                    topic: seed.title,
+                    url: s.mediaUrl || seed.url,
+                    type: "video",
+                    created_at: new Date(),
+                    updated_at: new Date(),
+                  } as any);
+                  const sec = await LessonSection.create({
+                    lesson_id: lesson._id,
+                    order: order++,
+                    title: s.title || "Video",
+                    type: "media",
+                    medias_id: [media._id],
+                    created_at: new Date(),
+                    updated_at: new Date(),
+                  } as any);
+                  createdSectionIds.push(sec._id as Types.ObjectId);
+                } catch (e) {
+                  console.warn(
+                    "Failed to create media section for seed",
+                    seed.title,
+                    e
+                  );
+                }
+              } else if (secObj.type === "text") {
+                const sec = await LessonSection.create({
+                  lesson_id: lesson._id,
+                  order: order++,
+                  title: secObj.title || "Text",
+                  type: "text",
+                  content: secObj.content || "",
+                  created_at: new Date(),
+                  updated_at: new Date(),
+                } as any);
+                createdSectionIds.push(sec._id as Types.ObjectId);
+              } else if (secObj.type === "example") {
+                const sec = await LessonSection.create({
+                  lesson_id: lesson._id,
+                  order: order++,
+                  title: secObj.title || "Example",
+                  type: "example",
+                  example: secObj.example || {},
+                  created_at: new Date(),
+                  updated_at: new Date(),
+                } as any);
+                createdSectionIds.push(sec._id as Types.ObjectId);
+              } else if (secObj.type === "error") {
+                const sec = await LessonSection.create({
+                  lesson_id: lesson._id,
+                  order: order++,
+                  title: secObj.title || "Common error",
+                  type: "error",
+                  error: secObj.error || {},
+                  created_at: new Date(),
+                  updated_at: new Date(),
+                } as any);
+                createdSectionIds.push(sec._id as Types.ObjectId);
+              } else if (secObj.type === "table") {
+                const sec = await LessonSection.create({
+                  lesson_id: lesson._id,
+                  order: order++,
+                  title: secObj.title || "Table",
+                  type: "table",
+                  tableData: secObj.tableData || [],
+                  created_at: new Date(),
+                  updated_at: new Date(),
+                } as any);
+                createdSectionIds.push(sec._id as Types.ObjectId);
+              }
+            }
+            // Ensure all five section types exist for the lesson. If seed omitted some types, create placeholders.
+            const existingTypes = new Set<string>();
+            if (createdSectionIds.length) {
+              const createdSecs = await LessonSection.find({
+                _id: { $in: createdSectionIds },
+              });
+              for (const cs of createdSecs) existingTypes.add(cs.type);
+            }
+            const requiredTypes = [
+              "text",
+              "example",
+              "error",
+              "media",
+              "table",
+            ] as const;
+            for (const t of requiredTypes) {
+              if (existingTypes.has(t)) continue;
+              // create placeholder for missing type
+              if (t === "media") {
+                try {
+                  const media = await Media.create({
+                    topic: seed.title,
+                    url: seed.url || TEMP_AUDIO_URL,
+                    type: isVideo ? "video" : "audio",
+                    created_at: new Date(),
+                    updated_at: new Date(),
+                  } as any);
+                  const sec = await LessonSection.create({
+                    lesson_id: lesson._id,
+                    order: order++,
+                    title: "Video",
+                    type: "media",
+                    medias_id: [media._id],
+                    created_at: new Date(),
+                    updated_at: new Date(),
+                  } as any);
+                  createdSectionIds.push(sec._id as Types.ObjectId);
+                } catch (e) {
+                  console.warn(
+                    "Failed to create placeholder media for seed",
+                    seed.title,
+                    e
+                  );
+                }
+              } else if (t === "text") {
+                const textContent =
+                  seedSections.find((x: any) => x.type === "text")?.content ||
+                  `AI generated placeholder for ${rawTitle}`;
+                const sec = await LessonSection.create({
+                  lesson_id: lesson._id,
+                  order: order++,
+                  title: "Meta",
+                  type: "text",
+                  content: textContent,
+                  created_at: new Date(),
+                  updated_at: new Date(),
+                } as any);
+                createdSectionIds.push(sec._id as Types.ObjectId);
+              } else if (t === "example") {
+                const sec = await LessonSection.create({
+                  lesson_id: lesson._id,
+                  order: order++,
+                  title: "Example",
+                  type: "example",
+                  example: { en: "Example sentence.", vi: "Câu ví dụ." },
+                  created_at: new Date(),
+                  updated_at: new Date(),
+                } as any);
+                createdSectionIds.push(sec._id as Types.ObjectId);
+              } else if (t === "error") {
+                const sec = await LessonSection.create({
+                  lesson_id: lesson._id,
+                  order: order++,
+                  title: "Common error",
+                  type: "error",
+                  error: { en: "Common mistake.", vi: "Lỗi phổ biến." },
+                  created_at: new Date(),
+                  updated_at: new Date(),
+                } as any);
+                createdSectionIds.push(sec._id as Types.ObjectId);
+              } else if (t === "table") {
+                const sec = await LessonSection.create({
+                  lesson_id: lesson._id,
+                  order: order++,
+                  title: "Table",
+                  type: "table",
+                  tableData: [],
+                  created_at: new Date(),
+                  updated_at: new Date(),
+                } as any);
+                createdSectionIds.push(sec._id as Types.ObjectId);
+              }
+            }
+            lesson.sections_id = createdSectionIds as any;
+            await lesson.save();
           } else {
-            section = await LessonSection.create({
-              lesson_id: lesson._id,
-              order: 0,
-              title: "Meta",
-              type: "text",
-              content: `AI generated placeholder for ${rawTitle}`,
-              created_at: new Date(),
-              updated_at: new Date(),
-            } as any);
+            // default behaviour: create a single section (media if rawTitle looks like video)
+            const createdSectionIds: Types.ObjectId[] = [];
+            let order = 0;
+            if (isVideo) {
+              const media = await Media.create({
+                topic: rawTitle,
+                url: "https://youtu.be/CKgCahkAkQ8?list=PL8ttwakxyDAEKWvNtd_Pzs3Mou75JqeCe",
+                type: "video",
+                created_at: new Date(),
+                updated_at: new Date(),
+              } as any);
+              const sec = await LessonSection.create({
+                lesson_id: lesson._id,
+                order: order++,
+                title: "Video",
+                type: "media",
+                medias_id: [media._id],
+                created_at: new Date(),
+                updated_at: new Date(),
+              } as any);
+              createdSectionIds.push(sec._id as Types.ObjectId);
+            } else {
+              const sec = await LessonSection.create({
+                lesson_id: lesson._id,
+                order: order++,
+                title: "Meta",
+                type: "text",
+                content: `AI generated placeholder for ${rawTitle}`,
+                created_at: new Date(),
+                updated_at: new Date(),
+              } as any);
+              createdSectionIds.push(sec._id as Types.ObjectId);
+            }
+            // create other placeholder sections so we always have all five types
+            const requiredTypes = [
+              "text",
+              "example",
+              "error",
+              "media",
+              "table",
+            ] as const;
+            const existingSecs = await LessonSection.find({
+              _id: { $in: createdSectionIds },
+            });
+            const existingTypes = new Set(existingSecs.map((s) => s.type));
+            for (const t of requiredTypes) {
+              if (existingTypes.has(t)) continue;
+              if (t === "media") {
+                try {
+                  const media = await Media.create({
+                    topic: rawTitle,
+                    url: TEMP_AUDIO_URL,
+                    type: isVideo ? "video" : "audio",
+                    created_at: new Date(),
+                    updated_at: new Date(),
+                  } as any);
+                  const sec = await LessonSection.create({
+                    lesson_id: lesson._id,
+                    order: order++,
+                    title: "Video",
+                    type: "media",
+                    medias_id: [media._id],
+                    created_at: new Date(),
+                    updated_at: new Date(),
+                  } as any);
+                  createdSectionIds.push(sec._id as Types.ObjectId);
+                } catch (e) {
+                  console.warn(
+                    "Failed to create default media section",
+                    rawTitle,
+                    e
+                  );
+                }
+              } else if (t === "text") {
+                const sec = await LessonSection.create({
+                  lesson_id: lesson._id,
+                  order: order++,
+                  title: "Meta",
+                  type: "text",
+                  content: `AI generated placeholder for ${rawTitle}`,
+                  created_at: new Date(),
+                  updated_at: new Date(),
+                } as any);
+                createdSectionIds.push(sec._id as Types.ObjectId);
+              } else if (t === "example") {
+                const sec = await LessonSection.create({
+                  lesson_id: lesson._id,
+                  order: order++,
+                  title: "Example",
+                  type: "example",
+                  example: { en: "Example sentence.", vi: "Câu ví dụ." },
+                  created_at: new Date(),
+                  updated_at: new Date(),
+                } as any);
+                createdSectionIds.push(sec._id as Types.ObjectId);
+              } else if (t === "error") {
+                const sec = await LessonSection.create({
+                  lesson_id: lesson._id,
+                  order: order++,
+                  title: "Common error",
+                  type: "error",
+                  error: { en: "Common mistake.", vi: "Lỗi phổ biến." },
+                  created_at: new Date(),
+                  updated_at: new Date(),
+                } as any);
+                createdSectionIds.push(sec._id as Types.ObjectId);
+              } else if (t === "table") {
+                const sec = await LessonSection.create({
+                  lesson_id: lesson._id,
+                  order: order++,
+                  title: "Table",
+                  type: "table",
+                  tableData: [],
+                  created_at: new Date(),
+                  updated_at: new Date(),
+                } as any);
+                createdSectionIds.push(sec._id as Types.ObjectId);
+              }
+            }
+            lesson.sections_id = createdSectionIds as any;
+            await lesson.save();
           }
-          lesson.sections_id = [section._id as Types.ObjectId];
-          await lesson.save();
         }
         return lesson;
       };
 
       // switch-case (pattern matching) — create only required items
       if (/flashcard|vocab|vocabulary|từ vựng/i.test(activity)) {
+        // try to find a matching mock topic by title; otherwise fall back to AI generated
+        const mockFlash =
+          MOCK_FLASHCARDS.find((m) =>
+            m.title.toLowerCase().includes(rawTitle.toLowerCase())
+          ) || MOCK_FLASHCARDS[0];
+
         topicVocab = await TopicVocabulary.create({
-          title: rawTitle,
-          description: `[AI GENERATED] ${rawTitle}`,
-          tags: [],
-          level: CERFLevel.A2,
+          title: mockFlash ? mockFlash.title : rawTitle,
+          description: mockFlash
+            ? mockFlash.description
+            : `[AI GENERATED] ${rawTitle}`,
+          tags: mockFlash?.tags || [],
+          level: mockFlash?.level ?? CERFLevel.A2,
           iconName: "",
           bgColor: "ffffff",
           gradient: "",
@@ -290,6 +581,35 @@ export async function buildLearningPathFromGemini(
           created_at: new Date(),
           created_by: DEFAULT_CREATOR_ID,
         } as any);
+        // If mock provides vocabulary items, persist them as Vocabulary documents and link to topicVocab
+        try {
+          const mockItems = (mockFlash && mockFlash.items) || [];
+          if (mockItems && mockItems.length) {
+            const vocabPayloads = mockItems.map((it: any) => ({
+              word: it.term || it.word || "",
+              phonetic: it.phonetic || "",
+              type: it.pos || "",
+              part_type: it.part_type || "listening",
+              weight: it.weight ?? 0,
+              definition: it.meaning || "",
+              examples: [{ en: it.example || "", vi: it.meaning || "" }],
+              image: it.image || "",
+              audio: it.audio_url || it.audio || "",
+              tags: mockFlash?.tags || [],
+              notes: it.notes || "",
+              created_at: new Date(),
+              updated_at: new Date(),
+            }));
+            const createdVocs = await Vocabulary.insertMany(
+              vocabPayloads as any[]
+            );
+            topicVocab.vocabularies_id = createdVocs.map((v: any) => v._id);
+            await topicVocab.save();
+          }
+        } catch (err) {
+          // non-fatal: if vocab creation fails, keep topicVocab without linked vocabularies
+          console.warn("Failed to create vocabularies from mock:", err);
+        }
         const flashPlan = await FlashCardPlan.create({
           user_id: userObjectId,
           topic_vocabulary_id: topicVocab._id,
@@ -298,15 +618,55 @@ export async function buildLearningPathFromGemini(
         } as any);
         plans.flash = { _id: flashPlan._id, part_type: part };
       } else if (/quiz/i.test(activity)) {
+        // try to seed quiz with a mock matching topic
+        const mockQuiz =
+          MOCK_QUIZZES.find((m) =>
+            m.title.toLowerCase().includes(rawTitle.toLowerCase())
+          ) || MOCK_QUIZZES[0];
+
         quiz = await Quiz.create({
-          title: rawTitle,
+          title: mockQuiz ? mockQuiz.title : rawTitle,
           question_ids: [],
-          part_type: part,
-          level: CERFLevel.A2,
+          part_type: mockQuiz?.part_type ?? part,
+          level: mockQuiz?.level ?? CERFLevel.A2,
           status: TestStatus.APPROVED,
           planned_completion_time: 5,
           weight: 0.1,
         } as any);
+        // If mockQuiz contains questions, persist them as Question documents and attach
+        try {
+          const qItems = (mockQuiz && mockQuiz.questions) || [];
+          if (qItems && qItems.length) {
+            const letter = (i: number) => String.fromCharCode(65 + i); // 0->A,1->B
+            const questionPayloads = qItems.map((q: any, idx: number) => {
+              const choicesMap: any = {};
+              (q.choices || []).forEach((c: string, ci: number) => {
+                choicesMap[letter(ci)] = c;
+              });
+              return {
+                name: `${quiz.title} - Q${idx + 1}`,
+                textQuestion: q.question || "",
+                choices: choicesMap,
+                correctAnswer:
+                  typeof q.correctIndex === "number"
+                    ? letter(q.correctIndex)
+                    : "",
+                explanation: q.explanation || "",
+                tags: q.tags || [],
+                planned_time: q.planned_time || 0,
+                created_at: new Date(),
+                created_by: DEFAULT_CREATOR_ID,
+              } as any;
+            });
+            const createdQs = await Question.insertMany(
+              questionPayloads as any[]
+            );
+            quiz.question_ids = createdQs.map((c: any) => c._id);
+            await quiz.save();
+          }
+        } catch (err) {
+          console.warn("Failed to create questions from mock quiz:", err);
+        }
         const quizPlan = await QuizPlan.create({
           user_id: userObjectId,
           quiz_id: quiz._id,
@@ -315,11 +675,18 @@ export async function buildLearningPathFromGemini(
         } as any);
         plans.quiz = { _id: quizPlan._id, part_type: part };
       } else if (/dictation|nghe chép|nghe chép chính tả/i.test(activity)) {
+        // use mock dictation if available to create more realistic audio/transcript
+        const mockDict =
+          MOCK_DICTATIONS.find((m) =>
+            m.title.toLowerCase().includes(rawTitle.toLowerCase())
+          ) || MOCK_DICTATIONS[0];
+
         const dictationPayload = {
           ...DICTATION_TEMPLATE,
-          title: rawTitle,
-          part_type: part,
-          level: CERFLevel.A2,
+          ...(mockDict || {}),
+          title: mockDict ? mockDict.title : rawTitle,
+          part_type: mockDict?.part_type ?? part,
+          level: mockDict?.level ?? CERFLevel.A2,
           status: TestStatus.APPROVED,
           created_at: new Date(),
           updated_at: new Date(),
@@ -334,11 +701,18 @@ export async function buildLearningPathFromGemini(
         } as any);
         plans.dict = { _id: dictPlan._id, part_type: part };
       } else if (/shadowing|repeat|speak/i.test(activity)) {
+        // seed shadowing with a realistic template if available
+        const mockShadow =
+          MOCK_SHADOWINGS.find((m) =>
+            m.title.toLowerCase().includes(rawTitle.toLowerCase())
+          ) || MOCK_SHADOWINGS[0];
+
         const shadowingPayload = {
           ...SHADOWING_TEMPLATE,
-          title: rawTitle,
-          part_type: part,
-          level: CERFLevel.A2,
+          ...(mockShadow || {}),
+          title: mockShadow ? mockShadow.title : rawTitle,
+          part_type: mockShadow?.part_type ?? part,
+          level: mockShadow?.level ?? CERFLevel.A2,
           status: TestStatus.APPROVED,
           created_at: new Date(),
           updated_at: new Date(),
@@ -419,12 +793,47 @@ export async function buildLearningPathFromGemini(
     options?.targetScore || parsed?.summary?.target_score || 700;
   const level = targetScore >= 750 ? CERFLevel.C1 : CERFLevel.B2;
 
+  // Determine time_per_day (minutes): prefer explicit hours_per_day from Gemini
+  // fallbacks: parsed.summary.hours_per_day, parsed.hours_per_day,
+  // or compute from estimated_hours / (total_weeks * 7). Default to 1.5h (90 minutes).
+  const hoursPerDayFromGemini =
+    parsed?.hours_per_day ??
+    parsed?.summary?.hours_per_day ??
+    (parsed && parsed.estimated_hours && parsed.total_weeks
+      ? parsed.estimated_hours / (parsed.total_weeks * 7)
+      : null);
+
+  let resolvedHoursPerDay = 1.5; // default 1.5 hours
+  if (
+    typeof hoursPerDayFromGemini === "number" &&
+    !isNaN(hoursPerDayFromGemini)
+  ) {
+    resolvedHoursPerDay = hoursPerDayFromGemini;
+  }
+  const timePerDayMinutes = Math.max(10, Math.round(resolvedHoursPerDay * 60));
+
+  // prefer Gemini-provided study-days and end-date when available
+  const daysPerWeekResolved =
+    parsed?.study_days_per_week ?? parsed?.days_per_week ?? 7;
+  const targetCompletionDateResolved = options?.endDate
+    ? new Date(options.endDate)
+    : parsed?.end_date
+    ? new Date(parsed.end_date)
+    : null;
+
   const learningPath = new LearningPath({
     title,
     description,
     level,
     isActive: true,
     week_study_ids: [],
+    // Embed user-specific planning fields directly into LearningPath
+    user_id: userObjectId,
+    target_score: targetScore,
+    time_per_day: timePerDayMinutes,
+    days_per_week: daysPerWeekResolved,
+    target_completion_date: targetCompletionDateResolved,
+    current_week: 1,
     created_by: userObjectId,
     created_at: new Date(),
   } as any);
@@ -618,20 +1027,107 @@ export async function buildLearningPathFromGemini(
 
   learningPath.week_study_ids = weekIds;
   await learningPath.save();
+  // --- Auto-assign new student to a collaborator (CTV) group ---
+  // Rule: choose collaborator with fewest students; if tie, choose one with highest contribution
+  (async () => {
+    try {
+      const collRole = await Role.findOne({ name: "collaborator" }).lean();
+      if (!collRole) return;
 
-  const userLP = await createUserLearningPath(
-    userId,
-    (learningPath._id as Types.ObjectId).toString(),
-    options?.targetScore || parsed?.summary?.target_score || 700,
-    90,
-    7,
-    options?.endDate ? new Date(options.endDate) : new Date()
-  );
+      const collaborators = await User.find({ role_id: collRole._id }).lean();
+      if (!collaborators || collaborators.length === 0) return;
+
+      const mentorIds = collaborators.map((c: any) => c._id);
+
+      // Load existing groups for these mentors
+      const groups = await GroupUser.find({
+        mentor_id: { $in: mentorIds },
+      }).lean();
+      const groupMap = new Map<string, any>();
+      for (const g of groups) groupMap.set((g.mentor_id || "").toString(), g);
+
+      // student counts (0 when no group exists)
+      const studentCount = new Map<string, number>();
+      for (const m of collaborators) {
+        const key = (m._id || "").toString();
+        const g = groupMap.get(key);
+        studentCount.set(
+          key,
+          g && Array.isArray(g.students) ? g.students.length : 0
+        );
+      }
+
+      // contribution counts: sum of created Lessons + Quizzes + TopicVocabularies
+      const contribMap = new Map<string, number>();
+      await Promise.all(
+        collaborators.map(async (m: any) => {
+          try {
+            const [l, q, t] = await Promise.all([
+              Lesson.countDocuments({ created_by: m._id }),
+              Quiz.countDocuments({ created_by: m._id }),
+              TopicVocabulary.countDocuments({ created_by: m._id }),
+            ]);
+            contribMap.set(
+              (m._id || "").toString(),
+              (l || 0) + (q || 0) + (t || 0)
+            );
+          } catch (err) {
+            contribMap.set((m._id || "").toString(), 0);
+          }
+        })
+      );
+
+      // find mentors with minimal students
+      let minStudents = Infinity;
+      for (const v of studentCount.values())
+        if (typeof v === "number") minStudents = Math.min(minStudents, v);
+      const candidates = collaborators.filter(
+        (m: any) => studentCount.get((m._id || "").toString()) === minStudents
+      );
+      if (!candidates || candidates.length === 0) return;
+
+      // tie-breaker: highest contribution
+      candidates.sort((a: any, b: any) => {
+        const ca = contribMap.get((a._id || "").toString()) || 0;
+        const cb = contribMap.get((b._id || "").toString()) || 0;
+        if (ca !== cb) return cb - ca; // descending
+        // deterministic fallback: compare ids
+        return (a._id || "").toString().localeCompare((b._id || "").toString());
+      });
+
+      const chosen = candidates[0];
+      if (!chosen) return;
+
+      const chosenKey = (chosen._id || "").toString();
+      const existingGroup = groupMap.get(chosenKey);
+
+      if (existingGroup) {
+        // add student id atomically (avoid duplicates)
+        await GroupUser.updateOne(
+          { _id: existingGroup._id },
+          { $addToSet: { students: userObjectId } }
+        );
+      } else {
+        // create new group for this mentor
+        const groupName = chosen.profile?.fullname
+          ? `Nhóm ${chosen.profile.fullname}`
+          : "Nhóm học viên";
+        await GroupUser.create({
+          name: groupName,
+          mentor_id: chosen._id,
+          students: [userObjectId],
+          created_at: new Date(),
+        } as any);
+      }
+    } catch (e) {
+      // Non-fatal: if mentor assignment fails, proceed but log warning
+      console.warn("Auto-assign mentor failed:", e);
+    }
+  })();
 
   return {
     model: gen?.model ?? parsed?.model ?? null,
     geminiPlan: parsed,
     learningPath,
-    userLearningPath: userLP,
   };
 }

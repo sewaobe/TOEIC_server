@@ -33,12 +33,13 @@ import ctvStudentRouter from "./routes/ctv/ctv_student.route";
 import ctvLessonManagerRouter from "./routes/ctv/ctv_lesson_manager.route";
 import ctvLessonRouter from "./routes/ctv/ctv_lesson.route";
 import ctvQuizRouteRouter from "./routes/ctv/ctv_quiz.route";
+import ctvDashboardRouter from "./routes/ctv/ctv_dashboard.route"; // Import dashboard route
 import adminUsersRouter from "./routes/admin/admin.users.route";
 import adminTestsRouter from "./routes/admin/admin.tests.route";
 import adminLessonsRouter from "./routes/admin/admin.lessons.route";
 import adminRequestCollaboratorRouter from "./routes/admin/admin_request_collaborator.route";
 import adminReportsRouter from "./routes/admin/admin.report.route";
-// import ctvReportRouter from './routes/ctv/ctv_report.route';
+import ctvReportRouter from "./routes/ctv/ctv_report.route";
 import geminiRouter from "./routes/gemini.route";
 import ragRouter from "./routes/rag.route";
 import chatRouter from "./routes/chat.route";
@@ -102,7 +103,8 @@ app.use("/api/ctv/students", verifyAccessToken, ctvStudentRouter);
 app.use("/api/ctv/lesson-manager", verifyAccessToken, ctvLessonManagerRouter);
 app.use("/api/ctv/lesson", verifyAccessToken, ctvLessonRouter);
 app.use("/api/ctv/quiz", verifyAccessToken, ctvQuizRouteRouter);
-// app.use("/api/ctv/reports", verifyAccessToken, ctvReportRouter);
+app.use("/api/ctv/dashboard", verifyAccessToken, ctvDashboardRouter); // Use dashboard route
+app.use("/api/ctv/reports", verifyAccessToken, ctvReportRouter);
 // Admin user management routes (list/detail/ban/unban)
 app.use("/api/admin/users", verifyAccessToken, adminUsersRouter);
 // Admin test approval routes

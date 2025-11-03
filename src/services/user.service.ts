@@ -87,13 +87,14 @@ export const getUserById = async (id: string) => {
 const mapUserDocToDto = (userDoc: any) => {
   if (!userDoc) return null;
 
-  // Nếu có dấu hiệu bị ban (banned_at hoặc banned_by) -> suspended ưu tiên hơn inactive
-  const status =
-    userDoc.banned_at || userDoc.banned_by
-      ? "suspended"
-      : !userDoc.isActive
-      ? "inactive"
-      : "active";
+  // Prefer explicit status if present, otherwise infer for backward compatibility
+  const status = userDoc.status
+    ? userDoc.status
+    : userDoc.banned_at || userDoc.banned_by
+    ? "banned"
+    : !userDoc.isActive
+    ? "inactive"
+    : "active";
 
   return {
     id: userDoc._id.toString(),
@@ -113,9 +114,11 @@ const mapUserDocToDto = (userDoc: any) => {
     badges: userDoc.badges || [],
     topic_vocabularies: userDoc.topic_vocabularies || [],
     master_parts: userDoc.master_parts || [],
-    // Trả thông tin ban để FE có thể hiện nút Mở khóa
+    // Trả thông tin ban để FE có thể hiện nút Mở khóa / hiển thị lý do
     banned_at: userDoc.banned_at || null,
-    banned_by: userDoc.banned_by ? (userDoc.banned_by as any).toString() : null,
+    banned_by: userDoc.banned_by ? 
+      (userDoc.banned_by.profile?.fullname || userDoc.banned_by.username || userDoc.banned_by.email || userDoc.banned_by.toString()) : null,
+    banned_reason: userDoc.banned_reason || null,
   };
 };
 
@@ -136,13 +139,29 @@ export const listUsers = async (params: {
 
   // status mapping: active | inactive | suspended
   if (status) {
+    // support new status values: active | inactive | banned | banned_permanent
     if (status === "active") {
-      filter.isActive = true;
-      filter.banned_at = { $exists: false };
+      // either explicit status or legacy fields
+      filter.$or = [
+        { status: "active" },
+        {
+          status: { $exists: false },
+          isActive: true,
+          banned_at: { $exists: false },
+        },
+      ];
     } else if (status === "inactive") {
-      filter.isActive = false;
-    } else if (status === "suspended") {
-      filter.banned_at = { $exists: true };
+      filter.$or = [
+        { status: "inactive" },
+        { status: { $exists: false }, isActive: false },
+      ];
+    } else if (status === "banned") {
+      filter.$or = [
+        { status: "banned" },
+        { status: { $exists: false }, banned_at: { $exists: true } },
+      ];
+    } else if (status === "banned_permanent") {
+      filter.status = "banned_permanent";
     }
   }
 
@@ -164,6 +183,7 @@ export const listUsers = async (params: {
     User.find(filter)
       .select("-passwordHash")
       .populate("role_id", "name")
+      .populate("banned_by", "profile.fullname username email") // ✅ Populate thông tin người ban
       .sort({ created_at: -1 })
       .skip(skip)
       .limit(limit)
@@ -180,8 +200,9 @@ export const getUserDetailById = async (id: string) => {
   const user = await User.findById(id)
     .select("-passwordHash")
     .populate("role_id", "name")
+    .populate("banned_by", "profile.fullname username email") // ✅ Populate thông tin người ban
     .populate("badges")
-    .populate("topic_vocabularies")
+    // .populate("topic_vocabularies")
     .lean();
 
   if (!user) return null;
@@ -206,7 +227,16 @@ export const banUser = async (
     banned_by: adminObjId,
     isActive: false,
     updated_at: now,
+    banned_reason: options.reason || null,
   };
+
+  // set ban type / status / expiry
+  if (options.type === "perm") {
+    update.status = "banned_permanent";
+  } else {
+    // temporary ban; expiry is stored in activity metadata, not on User
+    update.status = "banned";
+  }
 
   // we can't persist arbitrary fields if schema doesn't allow; store duration in activity metadata
 
@@ -217,6 +247,7 @@ export const banUser = async (
   )
     .select("-passwordHash")
     .populate("role_id", "name")
+    .populate("banned_by", "profile.fullname username email") // ✅ Populate thông tin người ban
     .lean();
 
   // Log activity for audit
@@ -239,10 +270,18 @@ export const banUser = async (
 export const unbanUser = async (userId: string, adminId?: string) => {
   const userObjId = new Types.ObjectId(userId);
 
+  // Prevent unbanning permanent bans via this endpoint
+  const existing = await User.findById(userObjId).lean();
+  if (existing && existing.status === "banned_permanent") {
+    throw new Error("Cannot unban a permanently banned user");
+  }
+
   const update: any = {
     banned_at: null,
     banned_by: null,
+    banned_reason: null,
     isActive: true,
+    status: "active",
     updated_at: new Date(),
   };
 
@@ -253,6 +292,7 @@ export const unbanUser = async (userId: string, adminId?: string) => {
   )
     .select("-passwordHash")
     .populate("role_id", "name")
+    .populate("banned_by", "profile.fullname username email") // ✅ Populate thông tin người ban (sẽ là null sau unban)
     .lean();
 
   // Log unban activity
