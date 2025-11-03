@@ -14,6 +14,11 @@ import {
   QuizPlan,
   ShadowingPlan,
   WeekStudy,
+  UserProgress,
+  QuizAttempt,
+  DictationAttempt,
+  ShadowingAttempt,
+  FlashCardAttempt,
 } from "../models"; // ✅ gom từ index
 import { generateToeicPlan } from "./gemini.service";
 import { buildLearningPathFromGemini } from "./learningPath.generator";
@@ -479,3 +484,371 @@ export function generateWeeklyDayStudies(
 
   return result;
 }
+
+/* ========== LẤY LEARNING PROGRESS ========== */
+export const getLearningProgressService = async (userId: string) => {
+  const userObjectId = new Types.ObjectId(userId);
+
+  // 1. Tìm LearningPath của user
+  const learningPath = await LearningPath.findOne({ 
+    user_id: userObjectId,
+    isActive: true 
+  })
+    .populate({
+      path: "week_study_ids",
+      populate: {
+        path: "days",
+        model: "DayStudy",
+      },
+    })
+    .lean();
+
+  if (!learningPath) {
+    throw new Error("Không tìm thấy lộ trình học");
+  }
+
+  // 2. Lấy UserProgress để có thống kê tổng quan
+  const userProgress = await UserProgress.findOne({
+    user_id: userObjectId,
+    learningPath_id: learningPath._id,
+  }).lean();
+
+  // 3. Tính toán progress cho từng tuần
+  const weeks = await Promise.all(
+    (learningPath.week_study_ids as any[]).map(async (week: any) => {
+      // Đếm số ngày đã hoàn thành trong tuần
+      const completedDays = week.days.filter(
+        (day: any) => day.status === WeekStudyStatus.COMPLETED
+      ).length;
+      const totalDays = week.days.length;
+
+      return {
+        _id: week._id.toString(),
+        week_no: week.no,
+        status: week.status,
+        progress: totalDays > 0 ? (completedDays / totalDays) * 100 : 0,
+        accuracy: week.accuracy_overall || 0,
+        started_at: week.started_at,
+        ended_at: week.ended_at,
+        is_current: week.no === learningPath.current_week,
+        days: week.days.map((d: any) => ({
+          _id: d._id.toString(),
+          dayOfWeek: d.dayOfWeek,
+          status: d.status,
+        })),
+      };
+    })
+  );
+
+  return {
+    overview: {
+      completed_lessons: userProgress?.completed_lessons || 0,
+      total_lessons: userProgress?.total_lessons || 0,
+      completion_rate: userProgress?.completion_rate || 0,
+      total_study_time: userProgress?.total_study_time || 0,
+      streak_days: userProgress?.streak_days || 0,
+      current_score: userProgress?.current_score || 0,
+      target_score: learningPath.target_score || 0,
+    },
+    weeks: weeks,
+    current_week: learningPath.current_week || 1,
+  };
+};
+
+/* ========== LẤY CHI TIẾT 1 TUẦN ========== */
+export const getWeekDetailService = async (weekId: string, userId: string) => {
+  const userObjectId = new Types.ObjectId(userId);
+  const weekObjectId = new Types.ObjectId(weekId);
+
+  const week = await WeekStudy.findById(weekObjectId).populate("days").lean();
+
+  if (!week) {
+    throw new Error("Không tìm thấy tuần học");
+  }
+
+  // Tính toán cho từng ngày
+  const days = await Promise.all(
+    (week.days as any[]).map(async (day: any) => {
+      // Đếm số sessions đã hoàn thành
+      const completedSessions = day.sessions.filter(
+        (s: any) => s.status === WeekStudyStatus.COMPLETED
+      ).length;
+      const totalSessions = day.sessions.length;
+
+      // Chi tiết từng session
+      const sessionsDetail = await Promise.all(
+        day.sessions.map(async (session: any) => {
+          // Kiểm tra từng item trong session đã hoàn thành chưa
+          const itemsStatus = await Promise.all(
+            session.items.map(async (item: any) => {
+              let completed = false;
+
+              // Kiểm tra completion theo từng loại
+              switch (item.kind) {
+                case SessionType.QUIZ:
+                  completed = !!(await QuizAttempt.exists({
+                    user_id: userObjectId,
+                    quiz_id: item.activity_id,
+                  }));
+                  break;
+                case SessionType.DICTATION:
+                  completed = !!(await DictationAttempt.exists({
+                    user_id: userObjectId,
+                    dictation_id: item.activity_id,
+                  }));
+                  break;
+                case SessionType.SHADOWING:
+                  completed = !!(await ShadowingAttempt.exists({
+                    user_id: userObjectId,
+                    shadowing_id: item.activity_id,
+                  }));
+                  break;
+                case SessionType.FLASH_CARD:
+                  completed = !!(await FlashCardAttempt.exists({
+                    user_id: userObjectId,
+                    flashcard_plan_id: item.activity_id,
+                  }));
+                  break;
+                // lesson và mini_test không cần check attempt
+              }
+
+              return {
+                kind: item.kind,
+                activity_id: item.activity_id,
+                status: item.status,
+                completed: completed,
+              };
+            })
+          );
+
+          return {
+            session_no: session.session_no,
+            status: session.status,
+            part_type: session.part_type,
+            items: itemsStatus,
+          };
+        })
+      );
+
+      return {
+        dayOfWeek: day.dayOfWeek,
+        status: day.status,
+        accuracy: day.accuracy_overall || 0,
+        progress: totalSessions > 0 ? (completedSessions / totalSessions) * 100 : 0,
+        sessions: sessionsDetail,
+      };
+    })
+  );
+
+  return {
+    week_no: week.no,
+    description: week.description,
+    status: week.status,
+    accuracy: week.accuracy_overall || 0,
+    days: days,
+  };
+};
+
+/* ========== LẤY CHI TIẾT NGÀY HỌC ========== */
+export const getDayDetailService = async (
+  dayId: string,
+  userId: string,
+  date?: string
+) => {
+  const userObjectId = new Types.ObjectId(userId);
+  const dayObjectId = new Types.ObjectId(dayId);
+
+  const day = await DayStudy.findById(dayObjectId).lean();
+
+  if (!day) {
+    throw new Error("Không tìm thấy ngày học");
+  }
+
+  const targetDate = date ? new Date(date) : new Date();
+  const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
+  const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
+
+  // Lấy tất cả attempts trong ngày
+  const [quizAttempts, dictationAttempts, shadowingAttempts, flashcardAttempts] = await Promise.all([
+    QuizAttempt.find({
+      user_id: userObjectId,
+      started_at: { $gte: startOfDay, $lte: endOfDay },
+    }).lean(),
+    DictationAttempt.find({
+      user_id: userObjectId,
+      created_at: { $gte: startOfDay, $lte: endOfDay },
+    }).lean(),
+    ShadowingAttempt.find({
+      user_id: userObjectId,
+      created_at: { $gte: startOfDay, $lte: endOfDay },
+    }).lean(),
+    FlashCardAttempt.find({
+      user_id: userObjectId,
+      created_at: { $gte: startOfDay, $lte: endOfDay },
+    }).lean(),
+  ]);
+
+  // Build sessions từ attempts
+  interface SessionData {
+    start: string;
+    end: string;
+    activity: string;
+    focus: number;
+    understanding: number;
+    correct: number;
+    total: number;
+    duration: number;
+  }
+
+  const sessions: SessionData[] = [];
+
+  quizAttempts.forEach((attempt: any) => {
+    const duration = attempt.finished_at
+      ? Math.floor((new Date(attempt.finished_at).getTime() - new Date(attempt.started_at).getTime()) / 60000)
+      : 0;
+    sessions.push({
+      start: new Date(attempt.started_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+      end: attempt.finished_at ? new Date(attempt.finished_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '',
+      activity: 'Quiz',
+      focus: 8,
+      understanding: 4,
+      correct: attempt.answers.filter((a: any) => a.correct).length,
+      total: attempt.answers.length,
+      duration: duration,
+    });
+  });
+
+  dictationAttempts.forEach((attempt: any) => {
+    sessions.push({
+      start: new Date(attempt.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+      end: '',
+      activity: 'Dictation',
+      focus: 7,
+      understanding: 4,
+      correct: Math.floor((attempt.accuracy / 100) * (attempt.answers?.length || 0)),
+      total: attempt.answers?.length || 0,
+      duration: Math.floor(attempt.duration / 60) || 0,
+    });
+  });
+
+  shadowingAttempts.forEach((attempt: any) => {
+    sessions.push({
+      start: new Date(attempt.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+      end: '',
+      activity: 'Shadowing',
+      focus: 8,
+      understanding: 5,
+      correct: attempt.accuracy_score || 0,
+      total: 100,
+      duration: 15,
+    });
+  });
+
+  flashcardAttempts.forEach((attempt: any) => {
+    sessions.push({
+      start: new Date(attempt.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+      end: '',
+      activity: 'Flashcards',
+      focus: 7,
+      understanding: 4,
+      correct: attempt.correct_count || 0,
+      total: attempt.total_cards || 0,
+      duration: 20,
+    });
+  });
+
+  // Tính metrics
+  const dayMinutesActual = sessions.reduce((sum, s) => sum + s.duration, 0);
+  const dayMinutesPlanned = 90; // default
+  const dailyEfficiency = sessions.length > 0
+    ? Math.round(sessions.reduce((sum, s) => sum + s.focus, 0) / sessions.length * 10)
+    : 0;
+
+  return {
+    day_of_week: day.dayOfWeek,
+    status: day.status,
+    accuracy: day.accuracy_overall || 0,
+    sessions: sessions,
+    metrics: {
+      dayMinutesActual,
+      dayMinutesPlanned,
+      dailyEfficiency,
+    },
+  };
+};
+
+/* ========== LẤY THỐNG KÊ TUẦN ========== */
+export const getWeekStatsService = async (weekId: string, userId: string) => {
+  const userObjectId = new Types.ObjectId(userId);
+  const weekObjectId = new Types.ObjectId(weekId);
+
+  const week = await WeekStudy.findById(weekObjectId).populate("days").lean();
+
+  if (!week) {
+    throw new Error("Không tìm thấy tuần học");
+  }
+
+  // Tính thời gian học cho từng ngày trong tuần
+  const weeklyActualPerDay: number[] = [];
+  const weeklyPlannedPerDay: number[] = [90, 90, 90, 90, 90, 60, 60]; // default plan
+
+  for (const day of week.days as any[]) {
+    // Đếm số minutes thực tế cho ngày này
+    // Tạm thời dùng sessions count * 30 minutes
+    const sessionsCompleted = day.sessions.filter(
+      (s: any) => s.status === WeekStudyStatus.COMPLETED
+    ).length;
+    weeklyActualPerDay.push(sessionsCompleted * 30);
+  }
+
+  const weekActual = weeklyActualPerDay.reduce((sum, m) => sum + m, 0);
+  const weekPlanned = weeklyPlannedPerDay.reduce((sum, m) => sum + m, 0);
+
+  return {
+    week_no: week.no,
+    weekActual,
+    weekPlanned,
+    weeklyActualPerDay,
+    weeklyPlannedPerDay,
+  };
+};
+
+/* ========== LẤY DỮ LIỆU TÍCH LŨY (CUMULATIVE) ========== */
+export const getCumulativeStatsService = async (userId: string) => {
+  const userObjectId = new Types.ObjectId(userId);
+
+  const learningPath = await LearningPath.findOne({
+    user_id: userObjectId,
+    isActive: true,
+  })
+    .populate("week_study_ids")
+    .lean();
+
+  if (!learningPath) {
+    throw new Error("Không tìm thấy lộ trình học");
+  }
+
+  const weeks = learningPath.week_study_ids as any[];
+  const cumulativePlanned: number[] = [];
+  const cumulativeActual: number[] = [];
+
+  let totalPlanned = 0;
+  let totalActual = 0;
+
+  weeks.forEach((week, index) => {
+    // Planned: 6.5h per week (assumption)
+    totalPlanned += 6.5;
+    cumulativePlanned.push(totalPlanned);
+
+    // Actual: based on completed status
+    const hoursThisWeek = week.status === WeekStudyStatus.COMPLETED ? 6 : 
+                          week.status === WeekStudyStatus.IN_PROGRESS ? 3 : 0;
+    totalActual += hoursThisWeek;
+    cumulativeActual.push(totalActual);
+  });
+
+  return {
+    cumulativePlanned,
+    cumulativeActual,
+  };
+};
