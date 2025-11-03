@@ -42,20 +42,9 @@ interface CreateLearningPathPayload {
 export const getUserLearningPathService = async (userId: string) => {
   const userObjectId = new Types.ObjectId(userId);
 
-  return await UserLearningPath.findOne({ user_id: userObjectId })
-    .populate({
-      path: "learningPath_id",
-      populate: [
-        {
-          path: "week_study_ids",
-          populate: { path: "days" },
-        },
-        {
-          path: "additional_week_studies",
-          populate: { path: "days" },
-        },
-      ],
-    })
+  return await LearningPath.findOne({ user_id: userObjectId })
+    .populate({ path: "week_study_ids", populate: { path: "days" } })
+    .populate({ path: "additional_week_studies", populate: { path: "days" } })
     .lean();
 };
 
@@ -490,9 +479,9 @@ export const getLearningProgressService = async (userId: string) => {
   const userObjectId = new Types.ObjectId(userId);
 
   // 1. Tìm LearningPath của user
-  const learningPath = await LearningPath.findOne({ 
+  const learningPath = await LearningPath.findOne({
     user_id: userObjectId,
-    isActive: true 
+    isActive: true,
   })
     .populate({
       path: "week_study_ids",
@@ -634,7 +623,8 @@ export const getWeekDetailService = async (weekId: string, userId: string) => {
         dayOfWeek: day.dayOfWeek,
         status: day.status,
         accuracy: day.accuracy_overall || 0,
-        progress: totalSessions > 0 ? (completedSessions / totalSessions) * 100 : 0,
+        progress:
+          totalSessions > 0 ? (completedSessions / totalSessions) * 100 : 0,
         sessions: sessionsDetail,
       };
     })
@@ -669,7 +659,12 @@ export const getDayDetailService = async (
   const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
 
   // Lấy tất cả attempts trong ngày
-  const [quizAttempts, dictationAttempts, shadowingAttempts, flashcardAttempts] = await Promise.all([
+  const [
+    quizAttempts,
+    dictationAttempts,
+    shadowingAttempts,
+    flashcardAttempts,
+  ] = await Promise.all([
     QuizAttempt.find({
       user_id: userObjectId,
       started_at: { $gte: startOfDay, $lte: endOfDay },
@@ -704,12 +699,24 @@ export const getDayDetailService = async (
 
   quizAttempts.forEach((attempt: any) => {
     const duration = attempt.finished_at
-      ? Math.floor((new Date(attempt.finished_at).getTime() - new Date(attempt.started_at).getTime()) / 60000)
+      ? Math.floor(
+          (new Date(attempt.finished_at).getTime() -
+            new Date(attempt.started_at).getTime()) /
+            60000
+        )
       : 0;
     sessions.push({
-      start: new Date(attempt.started_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-      end: attempt.finished_at ? new Date(attempt.finished_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '',
-      activity: 'Quiz',
+      start: new Date(attempt.started_at).toLocaleTimeString("vi-VN", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      end: attempt.finished_at
+        ? new Date(attempt.finished_at).toLocaleTimeString("vi-VN", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "",
+      activity: "Quiz",
       focus: 8,
       understanding: 4,
       correct: attempt.answers.filter((a: any) => a.correct).length,
@@ -720,12 +727,17 @@ export const getDayDetailService = async (
 
   dictationAttempts.forEach((attempt: any) => {
     sessions.push({
-      start: new Date(attempt.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-      end: '',
-      activity: 'Dictation',
+      start: new Date(attempt.created_at).toLocaleTimeString("vi-VN", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      end: "",
+      activity: "Dictation",
       focus: 7,
       understanding: 4,
-      correct: Math.floor((attempt.accuracy / 100) * (attempt.answers?.length || 0)),
+      correct: Math.floor(
+        (attempt.accuracy / 100) * (attempt.answers?.length || 0)
+      ),
       total: attempt.answers?.length || 0,
       duration: Math.floor(attempt.duration / 60) || 0,
     });
@@ -733,9 +745,12 @@ export const getDayDetailService = async (
 
   shadowingAttempts.forEach((attempt: any) => {
     sessions.push({
-      start: new Date(attempt.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-      end: '',
-      activity: 'Shadowing',
+      start: new Date(attempt.created_at).toLocaleTimeString("vi-VN", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      end: "",
+      activity: "Shadowing",
       focus: 8,
       understanding: 5,
       correct: attempt.accuracy_score || 0,
@@ -746,9 +761,12 @@ export const getDayDetailService = async (
 
   flashcardAttempts.forEach((attempt: any) => {
     sessions.push({
-      start: new Date(attempt.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-      end: '',
-      activity: 'Flashcards',
+      start: new Date(attempt.created_at).toLocaleTimeString("vi-VN", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      end: "",
+      activity: "Flashcards",
       focus: 7,
       understanding: 4,
       correct: attempt.correct_count || 0,
@@ -760,9 +778,12 @@ export const getDayDetailService = async (
   // Tính metrics
   const dayMinutesActual = sessions.reduce((sum, s) => sum + s.duration, 0);
   const dayMinutesPlanned = 90; // default
-  const dailyEfficiency = sessions.length > 0
-    ? Math.round(sessions.reduce((sum, s) => sum + s.focus, 0) / sessions.length * 10)
-    : 0;
+  const dailyEfficiency =
+    sessions.length > 0
+      ? Math.round(
+          (sessions.reduce((sum, s) => sum + s.focus, 0) / sessions.length) * 10
+        )
+      : 0;
 
   return {
     day_of_week: day.dayOfWeek,
@@ -841,8 +862,12 @@ export const getCumulativeStatsService = async (userId: string) => {
     cumulativePlanned.push(totalPlanned);
 
     // Actual: based on completed status
-    const hoursThisWeek = week.status === WeekStudyStatus.COMPLETED ? 6 : 
-                          week.status === WeekStudyStatus.IN_PROGRESS ? 3 : 0;
+    const hoursThisWeek =
+      week.status === WeekStudyStatus.COMPLETED
+        ? 6
+        : week.status === WeekStudyStatus.IN_PROGRESS
+        ? 3
+        : 0;
     totalActual += hoursThisWeek;
     cumulativeActual.push(totalActual);
   });
