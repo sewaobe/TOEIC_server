@@ -74,17 +74,21 @@ export const approveTestController = async (
       return res.status(403).json({ message: "Forbidden: admin only" });
 
     const { id } = req.params;
-    const updated = await testService.updateTest(id, {
-      status: TestStatus.APPROVED,
-    } as any);
+    // Chỉ cập nhật status, không làm mất dữ liệu
+    const updated = await testService.updateStatusTest(id, TestStatus.APPROVED, userId);
     if (!updated) return res.status(404).json({ message: "Test not found" });
 
-    pushNotification({
-      senderId: userId,
-      recipientId: updated.created_by.toString(),
-      message: `📝 Bài thi "${updated.title}" đã được phê duyệt.`,
-      type: "test"
-    })
+    // Lấy thông tin created_by để gửi thông báo
+    const fullTest = await testService.getFullTest(id);
+    if (fullTest?.created_by) {
+      pushNotification({
+        senderId: userId,
+        recipientId: fullTest.created_by.toString(),
+        message: `📝 Bài thi "${updated.title}" đã được phê duyệt.`,
+        type: "test"
+      });
+    }
+    
     return res.status(200).json({ data: updated });
   } catch (err) {
     next(err);
@@ -103,19 +107,22 @@ export const rejectTestController = async (
       return res.status(403).json({ message: "Forbidden: admin only" });
 
     const { id } = req.params;
-    // Không có trạng thái "rejected" trong enum hiện tại, dùng CLOSED để biểu thị từ chối
-    const updated = await testService.updateTest(id, {
-      status: TestStatus.REJECTED,
-    } as any);
+    // Chỉ cập nhật status, không làm mất dữ liệu
+    const updated = await testService.updateStatusTest(id, TestStatus.REJECTED, userId);
     if (!updated) return res.status(404).json({ message: "Test not found" });
 
-    pushNotification({
-      senderId: userId,
-      recipientId: updated.created_by.toString(),
-      message: `📝 Bài thi "${updated.title}" đã bị từ chối.`,
-      description: req.body?.reason,
-      type: "test"
-    })
+    // Lấy thông tin created_by để gửi thông báo
+    const fullTest = await testService.getFullTest(id);
+    if (fullTest?.created_by) {
+      pushNotification({
+        senderId: userId,
+        recipientId: fullTest.created_by.toString(),
+        message: `📝 Bài thi "${updated.title}" đã bị từ chối.`,
+        description: req.body?.reason,
+        type: "test"
+      });
+    }
+    
     return res.status(200).json({ data: updated });
   } catch (err) {
     next(err);
@@ -128,15 +135,14 @@ export const softDeleteTestController = async (
   next: NextFunction
 ) => {
   try {
+    const userId = req.user._id;
     const payload: any = req.user;
     if (!isAdminPayload(payload))
       return res.status(403).json({ message: "Forbidden: admin only" });
 
     const { id } = req.params;
-    // Soft delete: set status to CLOSED
-    const updated = await testService.updateTest(id, {
-      status: TestStatus.CLOSED,
-    } as any);
+    // Soft delete: chỉ set status to CLOSED, không xóa dữ liệu
+    const updated = await testService.updateStatusTest(id, TestStatus.CLOSED, userId);
     if (!updated) return res.status(404).json({ message: "Test not found" });
 
     return res.status(200).json({ data: updated });
