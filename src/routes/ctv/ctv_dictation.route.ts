@@ -1,11 +1,11 @@
-import { Router } from 'express';
+import { Router } from "express";
 import {
-    getAllDictationController,
-    createDictationController,
-    updateDictationController,
-    deleteDictationController,
-    getDictationByIdController
-} from '../../controllers/dictation.controller';
+  getAllDictationController,
+  createDictationController,
+  updateDictationController,
+  deleteDictationController,
+  getDictationByIdController,
+} from "../../controllers/dictation.controller";
 
 const router = Router();
 
@@ -40,7 +40,7 @@ const router = Router();
  *               properties:
  *                 items:
  *                   type: array
- *                   items: 
+ *                   items:
  *                      $ref: '#/components/schemas/Dictation'
  *                 total:
  *                   type: integer
@@ -134,14 +134,20 @@ router.get("/:id", getDictationByIdController);
  *             type: object
  *             required:
  *               - topic
+ *               - title
  *               - level
  *               - transcript
- *               - timings
- *               - answer_key
  *               - display_mode
  *             properties:
  *               topic:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Mảng các ID chủ đề (LessonManager ObjectId)
+ *                 example: ["671ab10df8f8d0a23b6a7b14"]
+ *               title:
  *                 type: string
+ *                 description: Tiêu đề bài nghe chép chính tả
  *                 example: Daily Conversation - Ordering Coffee
  *               part_type:
  *                 type: integer
@@ -163,85 +169,36 @@ router.get("/:id", getDictationByIdController);
  *                 example: A1
  *               transcript:
  *                 type: string
+ *                 description: Văn bản nội dung bài nghe
  *                 example: "Good morning. I'd like a cup of cappuccino, please."
- *               audio_url:
- *                 type: string
- *                 example: https://cdn.example.com/audio/cappuccino.mp3
  *               duration:
  *                 type: number
- *                 example: 28.5
- *               timings:
- *                 type: array
- *                 items:
- *                   type: object
- *                   required:
- *                     - text
- *                     - startTime
- *                     - endTime
- *                   properties:
- *                     text:
- *                       type: string
- *                       example: "Good morning."
- *                     startTime:
- *                       type: number
- *                       example: 0.0
- *                     endTime:
- *                       type: number
- *                       example: 2.5
- *                     words:
- *                       type: array
- *                       items:
- *                         type: object
- *                         properties:
- *                           word:
- *                             type: string
- *                             example: Good
- *                           start:
- *                             type: number
- *                             example: 0.0
- *                           end:
- *                             type: number
- *                             example: 0.4
- *               answer_key:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     text:
- *                       type: string
- *                       example: cappuccino
- *                     hint:
- *                       type: string
- *                       example: coffee drink with milk foam
+ *                 description: Thời lượng bài nghe (milliseconds)
+ *                 example: 28500
  *               display_mode:
  *                 type: string
+ *                 description: Chế độ hiển thị (theo câu hoặc theo từ)
  *                 enum: [sentence, word]
  *                 example: sentence
+ *               status:
+ *                 type: string
+ *                 description: Trạng thái bài nghe
+ *                 enum: [DRAFT, PENDING, APPROVED, OPEN, CLOSED, REJECTED]
+ *                 example: DRAFT
+ *               weight:
+ *                 type: number
+ *                 description: Trọng số bài nghe
+ *                 example: 0
  *           example:
- *             topic: "Daily Conversation - Ordering Coffee"
+ *             topic: ["671ab10df8f8d0a23b6a7b14"]
+ *             title: "Daily Conversation - Ordering Coffee"
  *             part_type: 2
  *             level: "A1"
  *             transcript: "Good morning. I'd like a cup of cappuccino, please."
- *             audio_url: "https://cdn.example.com/audio/cappuccino.mp3"
- *             duration: 28.5
- *             timings:
- *               - text: "Good morning."
- *                 startTime: 0
- *                 endTime: 2.5
- *                 words:
- *                   - word: "Good"
- *                     start: 0
- *                     end: 0.4
- *                   - word: "morning"
- *                     start: 0.4
- *                     end: 1.2
- *               - text: "I'd like a cup of cappuccino, please."
- *                 startTime: 2.6
- *                 endTime: 6.5
- *             answer_key:
- *               - text: "cappuccino"
- *                 hint: "coffee drink with milk foam"
+ *             duration: 28500
  *             display_mode: "sentence"
+ *             status: "DRAFT"
+ *             weight: 0
  *     responses:
  *       200:
  *         description: Tạo mới bài nghe chép chính tả thành công
@@ -260,14 +217,16 @@ router.get("/:id", getDictationByIdController);
  *                   type: object
  *                   example:
  *                     _id: "670abf10a9b9a2cbd8a55a22"
- *                     topic: "Daily Conversation - Ordering Coffee"
- *                     part_type: 2
- *                     level: "A1"
- *                     transcript: "Good morning. I'd like a cup of cappuccino, please."
- *                     audio_url: "https://cdn.example.com/audio/cappuccino.mp3"
- *                     duration: 28.5
- *                     display_mode: "sentence"
- *                     created_at: "2025-10-12T08:15:30.000Z"
+ *                     topic: ["671ab10df8f8d0a23b6a7b14"]
+ *                     title: "Daily Conversation - Ordering Coffee"
+                     part_type: 2
+                     level: "A1"
+                     transcript: "Good morning. I'd like a cup of cappuccino, please."
+                     duration: 28500
+                     display_mode: "sentence"
+                     status: "DRAFT"
+                     weight: 0
+                     created_at: "2025-10-12T08:15:30.000Z"
  *                     updated_at: "2025-10-12T08:20:45.000Z"
  *       400:
  *         description: Dữ liệu không hợp lệ hoặc thiếu thông tin bắt buộc
@@ -294,33 +253,46 @@ router.post("/", createDictationController);
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/DictationCreateRequest'
+ *             type: object
+ *             properties:
+ *               topic:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Mảng các ID chủ đề
+ *               title:
+ *                 type: string
+ *                 description: Tiêu đề bài nghe
+ *               part_type:
+ *                 type: integer
+ *                 enum: [1, 2, 3, 4, 5, 6, 7]
+ *               level:
+ *                 type: string
+ *                 enum: [A1, A2, B1, B2, C1, C2]
+ *               transcript:
+ *                 type: string
+ *                 description: Văn bản nội dung
+ *               duration:
+ *                 type: number
+ *                 description: Thời lượng bài nghe (milliseconds)
+ *               display_mode:
+ *                 type: string
+ *                 enum: [sentence, word]
+ *               status:
+ *                 type: string
+ *                 enum: [DRAFT, PENDING, APPROVED, OPEN, CLOSED, REJECTED]
+ *               weight:
+ *                 type: number
  *           example:
- *             topic: "Daily Conversation - Ordering Coffee"
+ *             topic: ["671ab10df8f8d0a23b6a7b14"]
+ *             title: "Daily Conversation - Ordering Coffee"
  *             part_type: 2
  *             level: "A1"
  *             transcript: "Good morning. I'd like a cup of cappuccino, please."
- *             audio_url: "https://cdn.example.com/audio/cappuccino.mp3"
- *             duration: 28.5
- *             timings:
- *               - text: "Good morning."
- *                 startTime: 0
- *                 endTime: 2.5
- *                 words:
- *                   - word: "Good"
- *                     start: 0
- *                     end: 0.4
- *                   - word: "morning"
- *                     start: 0.4
- *                     end: 1.2
- *               - text: "I'd like a cup of cappuccino, please."
- *                 startTime: 2.6
- *                 endTime: 6.5
- *                 words: []
- *             answer_key:
- *               - text: "cappuccino"
- *                 hint: "coffee drink with milk foam"
+ *             duration: 28500
  *             display_mode: "sentence"
+ *             status: "DRAFT"
+ *             weight: 0
  *     responses:
  *       200:
  *         description: Cập nhật thành công
@@ -342,31 +314,15 @@ router.post("/", createDictationController);
  *               message: "Sửa nghe chép chính tả thành công"
  *               data:
  *                 _id: "68ec5ac7d0c569ca949a86a7"
- *                 topic: "Daily Conversation - Ordering Coffee"
+ *                 topic: ["671ab10df8f8d0a23b6a7b14"]
+ *                 title: "Daily Conversation - Ordering Coffee"
  *                 part_type: 2
  *                 level: "A1"
  *                 transcript: "Good morning. I'd like a cup of cappuccino, please."
- *                 audio_url: "https://cdn.example.com/audio/cappuccino.mp3"
- *                 duration: 28.5
- *                 timings:
- *                   - text: "Good morning."
- *                     startTime: 0
- *                     endTime: 2.5
- *                     words:
- *                       - word: "Good"
- *                         start: 0
- *                         end: 0.4
- *                       - word: "morning"
- *                         start: 0.4
- *                         end: 1.2
- *                   - text: "I'd like a cup of cappuccino, please."
- *                     startTime: 2.6
- *                     endTime: 6.5
- *                     words: []
- *                 answer_key:
- *                   - text: "cappuccino"
- *                     hint: "coffee drink with milk foam"
+ *                 duration: 28500
  *                 display_mode: "sentence"
+ *                 status: "DRAFT"
+ *                 weight: 0
  *                 created_at: "2025-10-13T01:49:59.169Z"
  *                 updated_at: "2025-10-13T09:20:11.512Z"
  *       404:
@@ -455,6 +411,5 @@ router.put("/:id", updateDictationController);
  *                   example: ID không hợp lệ hoặc thiếu trong request
  */
 router.delete("/:id", deleteDictationController);
-
 
 export default router;
