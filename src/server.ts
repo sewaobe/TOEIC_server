@@ -48,6 +48,7 @@ import dictationUserRouter from "./routes/dictation.route";
 import dictationAttemptRouter from "./routes/dictation_attempt.route";
 import shadowingUserRouter from "./routes/shadowing.route";
 import progressUserRouter from "./routes/progress.route";
+import vocabulary_definition_attempt_router from './routes/vocabulary_definition_attempt.route';
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
 import { verifyAccessToken } from "./middlewares/verifyAccessToken.middleware";
@@ -91,6 +92,7 @@ app.use("/api/dictations", verifyAccessToken, dictationUserRouter);
 app.use("/api/dictation-attempts", verifyAccessToken, dictationAttemptRouter);
 app.use("/api/shadowings", verifyAccessToken, shadowingUserRouter);
 app.use("/api/progress/statistic-result", verifyAccessToken, progressUserRouter);
+app.use("/api/vocabulary-definition-attempts", verifyAccessToken, vocabulary_definition_attempt_router);
 
 // ========= CTV ============
 app.use("/api/ctv", ctvTestRouter);
