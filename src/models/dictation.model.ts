@@ -20,6 +20,7 @@ export interface IDictation extends Document {
   topic: Types.ObjectId[];
   title: string;
   part_type?: PartType;
+  tags?: string[];
   level: CERFLevel;
   status: TestStatus;
   transcript: string;
@@ -59,6 +60,7 @@ const DictationSchema = new Schema<IDictation>(
       type: Number,
       enum: Object.values(PartType).filter(v => typeof v === "number"),
     },
+    tags: [String],
     level: { type: String, enum: Object.values(CERFLevel), required: true },
     status: { type: String, enum: Object.values(TestStatus), default: TestStatus.DRAFT },
     transcript: { type: String, required: true },
