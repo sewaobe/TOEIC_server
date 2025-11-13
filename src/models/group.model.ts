@@ -31,4 +31,10 @@ const GroupSchema = new Schema<IGroup>({
   updated_at: Date,
 });
 
+// ✅ Indexes để tăng tốc query
+GroupSchema.index({ part: 1 }); // cho filter by part
+GroupSchema.index({ questions: 1 }); // cho lookup questions
+GroupSchema.index({ created_at: -1 }); // cho sort
+GroupSchema.index({ part: 1, created_at: -1 }); // compound index cho filter + sort
+
 export const Group = mongoose.model<IGroup>("Group", GroupSchema);

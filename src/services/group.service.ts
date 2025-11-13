@@ -1,14 +1,16 @@
 import { Types, FilterQuery } from "mongoose";
 import { Group, IGroup } from "../models";
 import { createMedia, deleteMedia, updateMedia } from "./media.service";
-import { createQuestion, deleteQuestion, updateQuestion } from "./question.service";
+import {
+  createQuestion,
+  deleteQuestion,
+  updateQuestion,
+} from "./question.service";
 
 /**
  * CREATE - thêm Group mới
  */
-export const createGroup = async (
-  data: Partial<IGroup>
-): Promise<IGroup> => {
+export const createGroup = async (data: Partial<IGroup>): Promise<IGroup> => {
   const group = new Group({
     ...data,
     created_at: new Date(),
@@ -23,11 +25,25 @@ export const createGroup = async (
 export const getGroupById = async (
   id: string | Types.ObjectId
 ): Promise<IGroup | null> => {
-  return await Group.findById(id)
+  const group = await Group.findById(id)
     .populate("audioUrl")
     .populate("imagesUrl")
     .populate("questions")
+    .lean() // ✅ convert to plain JS object
     .exec();
+
+  if (!group) return null;
+
+  // ✅ Convert choices từ Map sang Object nếu cần
+  if (group.questions && Array.isArray(group.questions)) {
+    (group as any).questions = (group.questions as any[]).map((q: any) => ({
+      ...q,
+      choices:
+        q.choices instanceof Map ? Object.fromEntries(q.choices) : q.choices,
+    }));
+  }
+
+  return group as IGroup;
 };
 
 /**

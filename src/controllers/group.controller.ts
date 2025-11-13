@@ -15,7 +15,9 @@ export const createGroupController = async (
 ): Promise<void> => {
   try {
     const payload: Partial<IGroup> = req.body;
-    const newGroup = await groupService.createGroupWithNewRelations(payload as any);
+    const newGroup = await groupService.createGroupWithNewRelations(
+      payload as any
+    );
 
     if (!newGroup) {
       res
@@ -24,7 +26,9 @@ export const createGroupController = async (
       return;
     }
 
-    res.status(201).json(ApiResponse.success(newGroup, "Tạo group thành công!"));
+    res
+      .status(201)
+      .json(ApiResponse.success(newGroup, "Tạo group thành công!"));
   } catch (error) {
     next(error);
   }
@@ -51,7 +55,10 @@ export const getGroupByIdController = async (
       return;
     }
 
-    res.status(200).json(ApiResponse.success(group, "Lấy thông tin group thành công!"));
+    console.log("🔍 getGroupById response:", JSON.stringify(group, null, 2));
+    res
+      .status(200)
+      .json(ApiResponse.success(group, "Lấy thông tin group thành công!"));
   } catch (error) {
     next(error);
   }
@@ -75,13 +82,21 @@ export const updateGroupController = async (
       return;
     }
 
-    const updated = await groupService.updateGroupWithRelations(id, data, created_by);
+    const updated = await groupService.updateGroupWithRelations(
+      id,
+      data,
+      created_by
+    );
     if (!updated) {
-      res.status(404).json(ApiResponse.fail("Không tìm thấy group để cập nhật."));
+      res
+        .status(404)
+        .json(ApiResponse.fail("Không tìm thấy group để cập nhật."));
       return;
     }
 
-    res.status(200).json(ApiResponse.success(updated, "Cập nhật group thành công!"));
+    res
+      .status(200)
+      .json(ApiResponse.success(updated, "Cập nhật group thành công!"));
   } catch (error) {
     next(error);
   }
@@ -109,7 +124,9 @@ export const deleteGroupController = async (
       return;
     }
 
-    res.status(200).json(ApiResponse.success<null>(null, "Xóa group thành công!"));
+    res
+      .status(200)
+      .json(ApiResponse.success<null>(null, "Xóa group thành công!"));
   } catch (error) {
     next(error);
   }
@@ -130,7 +147,9 @@ export const getQuestionsWithGroupInfoController = async (
     const pageNum = Number(page);
     const limitNum = Number(limit);
     if (isNaN(pageNum) || isNaN(limitNum) || pageNum <= 0 || limitNum <= 0) {
-      res.status(400).json(ApiResponse.fail("Tham số phân trang không hợp lệ."));
+      res
+        .status(400)
+        .json(ApiResponse.fail("Tham số phân trang không hợp lệ."));
       return;
     }
 
@@ -144,13 +163,20 @@ export const getQuestionsWithGroupInfoController = async (
 
     // ⚠️ Nếu không có câu hỏi nào
     if (!result || result.items.length === 0) {
-      res.status(404).json(ApiResponse.fail("Không tìm thấy câu hỏi nào phù hợp."));
+      res
+        .status(404)
+        .json(ApiResponse.fail("Không tìm thấy câu hỏi nào phù hợp."));
       return;
     }
 
-    res.status(200).json(
-      ApiResponse.success(result, "Lấy danh sách câu hỏi (có group info) thành công!")
-    );
+    res
+      .status(200)
+      .json(
+        ApiResponse.success(
+          result,
+          "Lấy danh sách câu hỏi (có group info) thành công!"
+        )
+      );
   } catch (error) {
     next(error);
   }

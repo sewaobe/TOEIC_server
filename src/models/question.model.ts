@@ -31,4 +31,9 @@ const QuestionSchema = new Schema<IQuestion>({
   updated_at: Date,
 });
 
+// ✅ Indexes để tăng tốc search
+QuestionSchema.index({ textQuestion: "text" }); // text index cho search
+QuestionSchema.index({ tags: 1 }); // cho filter by tag
+QuestionSchema.index({ created_at: -1 }); // cho sort
+
 export const Question = mongoose.model<IQuestion>("Question", QuestionSchema);

@@ -65,7 +65,7 @@ interface GetQuestionParams {
 }
 
 /**
- * ✅ Lấy danh sách câu hỏi (DTO) có kèm thông tin group
+ * ✅ Lấy danh sách câu hỏi (DTO) có kèm thông tin group - OPTIMIZED
  */
 export const getQuestionsWithGroupInfo = async ({
   page = 1,
@@ -76,137 +76,116 @@ export const getQuestionsWithGroupInfo = async ({
 }: GetQuestionParams) => {
   const skip = (page - 1) * limit;
 
-  // ==== 1️⃣ Tạo điều kiện lọc cho Question (layer ngoài) ====
-  const query: any = {};
-  if (search) query.textQuestion = { $regex: search, $options: "i" };
-  if (tag) query.tags = { $in: [tag] };
+  // ==== 🚀 STRATEGY MỚI: Query từ Groups trước (ít hơn questions) ====
+  const groupMatch: any = {};
+  if (part) groupMatch.part = Number(part);
 
-  // ==== 2️⃣ Tạo pipeline ====
   const pipeline: PipelineStage[] = [
-    { $match: query },
+    // 1. Lọc groups theo part
+    { $match: groupMatch },
 
-    // ---- JOIN Group ----
+    // 2. Unwind questions array để có thể filter/search
+    { $unwind: "$questions" },
+
+    // 3. Lookup question details
     {
       $lookup: {
-        from: "groups",
-        let: { qid: "$_id" },
-        pipeline: [
+        from: "questions",
+        localField: "questions",
+        foreignField: "_id",
+        as: "question_data",
+      },
+    },
+    { $unwind: "$question_data" },
+
+    // 4. Match search/tag conditions
+    ...(search || tag
+      ? [
           {
             $match: {
-              $expr: { $in: ["$$qid", "$questions"] },
-              ...(part ? { part: Number(part) } : {}),
+              ...(search
+                ? {
+                    "question_data.textQuestion": {
+                      $regex: search,
+                      $options: "i",
+                    },
+                  }
+                : {}),
+              ...(tag ? { "question_data.tags": { $in: [tag] } } : {}),
             },
-          },
-          {
-            $project: {
-              _id: 1,
-              part: 1,
-              type: 1,
-              test_id: 1,
-              quiz_id: 1,
-              minitest_id: 1,
-              practice_id: 1,
-            },
-          },
-        ],
-        as: "group",
+          } as PipelineStage,
+        ]
+      : []),
+
+    // 5. Lookup media chỉ lấy URL (không cần full document)
+    {
+      $lookup: {
+        from: "media",
+        localField: "audioUrl",
+        foreignField: "_id",
+        pipeline: [{ $project: { url: 1, _id: 0 } }],
+        as: "audio",
+      },
+    },
+    {
+      $lookup: {
+        from: "media",
+        localField: "imagesUrl",
+        foreignField: "_id",
+        pipeline: [{ $project: { url: 1, _id: 0 } }],
+        as: "images",
       },
     },
 
-    // ---- Giữ lại các câu hỏi có ít nhất 1 group match ----
-    { $match: { group: { $ne: [] } } },
-
-    // ---- Tách group đầu tiên để project thông tin ----
-    { $unwind: "$group" },
-
-    // ---- Dựng lại cấu trúc trả về ----
+    // 6. Project final structure
     {
       $project: {
-        id: "$_id",
-        textQuestion: 1,
-        correctAnswer: 1,
-        explanation: 1,
-        tags: 1,
-        planned_time: 1,
-        created_at: 1,
-        group_id: "$group._id",
-        group_part: "$group.part",
-        group_type: "$group.type",
-
-        // ✅ Thêm logic canDelete
+        id: "$question_data._id",
+        textQuestion: "$question_data.textQuestion",
+        correctAnswer: "$question_data.correctAnswer",
+        explanation: "$question_data.explanation",
+        tags: "$question_data.tags",
+        planned_time: "$question_data.planned_time",
+        created_at: "$question_data.created_at",
+        group_id: "$_id",
+        group_part: "$part",
+        group_type: "$type",
+        group_audioUrl: { $arrayElemAt: ["$audio.url", 0] },
+        group_imagesUrl: "$images.url",
         canDelete: {
           $cond: [
             {
               $or: [
-                {
-                  $and: [
-                    { $ifNull: ["$group.test_id", false] },
-                    { $ne: ["$group.test_id", null] },
-                  ],
-                },
-                {
-                  $and: [
-                    { $ifNull: ["$group.quiz_id", false] },
-                    { $ne: ["$group.quiz_id", null] },
-                  ],
-                },
-                {
-                  $and: [
-                    { $ifNull: ["$group.minitest_id", false] },
-                    { $ne: ["$group.minitest_id", null] },
-                  ],
-                },
-                {
-                  $and: [
-                    { $ifNull: ["$group.practice_id", false] },
-                    { $ne: ["$group.practice_id", null] },
-                  ],
-                },
+                { $ne: ["$test_id", null] },
+                { $ne: ["$quiz_id", null] },
+                { $ne: ["$minitest_id", null] },
+                { $ne: ["$practice_id", null] },
               ],
             },
             false,
             true,
           ],
         },
-
         _id: 0,
       },
     },
 
-    { $sort: { id: -1 } },
+    // 7. Sort
+    { $sort: { created_at: -1 } },
 
-    // ---- Phân trang ----
-    { $skip: skip },
-    { $limit: limit },
-  ];
-
-  // ==== 3️⃣ Chạy aggregate ====
-  const items = await Question.aggregate(pipeline);
-
-  // ==== 4️⃣ Tính tổng ====
-  const countPipeline: PipelineStage[] = [
-    { $match: query },
+    // 8. Facet để count và paginate trong 1 query
     {
-      $lookup: {
-        from: "groups",
-        let: { qid: "$_id" },
-        pipeline: [
-          {
-            $match: {
-              $expr: { $in: ["$$qid", "$questions"] },
-              ...(part ? { part: Number(part) } : {}),
-            },
-          },
-        ],
-        as: "group",
+      $facet: {
+        metadata: [{ $count: "total" }],
+        data: [{ $skip: skip }, { $limit: limit }],
       },
     },
-    { $match: { group: { $ne: [] } } },
-    { $count: "total" },
   ];
 
-  const countResult = await Question.aggregate(countPipeline);
-  const total = countResult[0]?.total || 0;
+  const result = await Group.aggregate(pipeline);
+
+  const items = result[0]?.data || [];
+  const total = result[0]?.metadata[0]?.total || 0;
   const pageCount = Math.ceil(total / limit);
 
   return { items, total, pageCount };
@@ -227,8 +206,7 @@ export const getQuestionDetailById = async (
       {
         path: "questions",
         model: "Question",
-        select:
-          "name textQuestion choices correctAnswer explanation tags",
+        select: "name textQuestion choices correctAnswer explanation tags",
       },
       {
         path: "audioUrl",
