@@ -1,14 +1,12 @@
 import { WeekStudyStatus } from "./../models/enums/WeekStudyStatus";
 import { Types } from "mongoose";
 import {
-  UserLearningPath,
   LearningPath,
   DayStudy,
   Lesson,
   ILesson,
   IDayStudy,
   IWeekStudy,
-  IUserLearningPath,
   FlashCardPlan,
   DictationPlan,
   QuizPlan,
@@ -42,7 +40,10 @@ interface CreateLearningPathPayload {
 export const getUserLearningPathService = async (userId: string) => {
   const userObjectId = new Types.ObjectId(userId);
 
-  return await LearningPath.findOne({ user_id: userObjectId })
+  return await LearningPath.findOne({
+    user_id: userObjectId,
+    isActive: true,
+  })
     .populate({ path: "week_study_ids", populate: { path: "days" } })
     .populate({ path: "additional_week_studies", populate: { path: "days" } })
     .lean();
@@ -162,31 +163,6 @@ function distributeLessonsByWeek(
   }
 
   return weeks;
-}
-export async function createUserLearningPath(
-  userId: string,
-  learningPathId: string,
-  targetScore: number,
-  timePerDay: number,
-  daysPerWeek: number,
-  targetCompletionDate: Date
-): Promise<IUserLearningPath> {
-  const userObjectId = new Types.ObjectId(userId);
-  const learningPathObjectId = new Types.ObjectId(learningPathId);
-
-  const userLearningPath = new UserLearningPath({
-    user_id: userObjectId,
-    learningPath_id: learningPathObjectId,
-    target_score: targetScore,
-    time_per_day: timePerDay,
-    days_per_week: daysPerWeek,
-    target_completion_date: targetCompletionDate,
-    current_week: 1,
-  });
-
-  await userLearningPath.save();
-
-  return userLearningPath;
 }
 
 export async function createLearningPathWithWeeks(
@@ -480,7 +456,7 @@ export const getLearningProgressService = async (userId: string) => {
 
   // 1. Tìm LearningPath của user
   const learningPath = await LearningPath.findOne({
-    user_id: userObjectId,
+    created_by: userObjectId,
     isActive: true,
   })
     .populate({
@@ -654,142 +630,82 @@ export const getDayDetailService = async (
     throw new Error("Không tìm thấy ngày học");
   }
 
-  const targetDate = date ? new Date(date) : new Date();
-  const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
-  const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
+  // Trả về đầy đủ thông tin sessions được plan trong DayStudy
+  // Kiểm tra completion status của từng item
+  const sessionsWithCompletion = await Promise.all(
+    (day.sessions || []).map(async (session: any) => {
+      const itemsWithCompletion = await Promise.all(
+        (session.items || []).map(async (item: any) => {
+          let completed = false;
 
-  // Lấy tất cả attempts trong ngày
-  const [
-    quizAttempts,
-    dictationAttempts,
-    shadowingAttempts,
-    flashcardAttempts,
-  ] = await Promise.all([
-    QuizAttempt.find({
-      user_id: userObjectId,
-      started_at: { $gte: startOfDay, $lte: endOfDay },
-    }).lean(),
-    DictationAttempt.find({
-      user_id: userObjectId,
-      created_at: { $gte: startOfDay, $lte: endOfDay },
-    }).lean(),
-    ShadowingAttempt.find({
-      user_id: userObjectId,
-      created_at: { $gte: startOfDay, $lte: endOfDay },
-    }).lean(),
-    FlashCardAttempt.find({
-      user_id: userObjectId,
-      created_at: { $gte: startOfDay, $lte: endOfDay },
-    }).lean(),
-  ]);
+          // Kiểm tra completion theo từng loại activity
+          switch (item.kind) {
+            case SessionType.QUIZ:
+              completed = !!(await QuizAttempt.exists({
+                user_id: userObjectId,
+                quiz_id: item.activity_id,
+              }));
+              break;
+            case SessionType.DICTATION:
+              completed = !!(await DictationAttempt.exists({
+                user_id: userObjectId,
+                dictation_id: item.activity_id,
+              }));
+              break;
+            case SessionType.SHADOWING:
+              completed = !!(await ShadowingAttempt.exists({
+                user_id: userObjectId,
+                shadowing_id: item.activity_id,
+              }));
+              break;
+            case SessionType.FLASH_CARD:
+              completed = !!(await FlashCardAttempt.exists({
+                user_id: userObjectId,
+                flashcard_plan_id: item.activity_id,
+              }));
+              break;
+            // lesson và mini_test không cần check attempt
+            default:
+              completed = false;
+          }
 
-  // Build sessions từ attempts
-  interface SessionData {
-    start: string;
-    end: string;
-    activity: string;
-    focus: number;
-    understanding: number;
-    correct: number;
-    total: number;
-    duration: number;
-  }
+          return {
+            kind: item.kind,
+            activity_id: item.activity_id?.toString(),
+            status: item.status,
+            completed: completed,
+          };
+        })
+      );
 
-  const sessions: SessionData[] = [];
+      return {
+        session_no: session.session_no,
+        status: session.status,
+        part_type: session.part_type,
+        items: itemsWithCompletion,
+      };
+    })
+  );
 
-  quizAttempts.forEach((attempt: any) => {
-    const duration = attempt.finished_at
-      ? Math.floor(
-          (new Date(attempt.finished_at).getTime() -
-            new Date(attempt.started_at).getTime()) /
-            60000
-        )
-      : 0;
-    sessions.push({
-      start: new Date(attempt.started_at).toLocaleTimeString("vi-VN", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      end: attempt.finished_at
-        ? new Date(attempt.finished_at).toLocaleTimeString("vi-VN", {
-            hour: "2-digit",
-            minute: "2-digit",
-          })
-        : "",
-      activity: "Quiz",
-      focus: 8,
-      understanding: 4,
-      correct: attempt.answers.filter((a: any) => a.correct).length,
-      total: attempt.answers.length,
-      duration: duration,
-    });
-  });
+  // Tính metrics dựa trên số sessions đã hoàn thành
+  const completedSessions = sessionsWithCompletion.filter(
+    (s) => s.status === WeekStudyStatus.COMPLETED
+  ).length;
+  const totalSessions = sessionsWithCompletion.length;
 
-  dictationAttempts.forEach((attempt: any) => {
-    sessions.push({
-      start: new Date(attempt.created_at).toLocaleTimeString("vi-VN", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      end: "",
-      activity: "Dictation",
-      focus: 7,
-      understanding: 4,
-      correct: Math.floor(
-        (attempt.accuracy / 100) * (attempt.answers?.length || 0)
-      ),
-      total: attempt.answers?.length || 0,
-      duration: Math.floor(attempt.duration / 60) || 0,
-    });
-  });
-
-  shadowingAttempts.forEach((attempt: any) => {
-    sessions.push({
-      start: new Date(attempt.created_at).toLocaleTimeString("vi-VN", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      end: "",
-      activity: "Shadowing",
-      focus: 8,
-      understanding: 5,
-      correct: attempt.accuracy_score || 0,
-      total: 100,
-      duration: 15,
-    });
-  });
-
-  flashcardAttempts.forEach((attempt: any) => {
-    sessions.push({
-      start: new Date(attempt.created_at).toLocaleTimeString("vi-VN", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      end: "",
-      activity: "Flashcards",
-      focus: 7,
-      understanding: 4,
-      correct: attempt.correct_count || 0,
-      total: attempt.total_cards || 0,
-      duration: 20,
-    });
-  });
-
-  // Tính metrics
-  const dayMinutesActual = sessions.reduce((sum, s) => sum + s.duration, 0);
-  const dayMinutesPlanned = 90; // default
+  // Tính thời gian dự kiến (mỗi session ~30 phút, có thể customize sau)
+  const dayMinutesPlanned = totalSessions * 30;
+  const dayMinutesActual = completedSessions * 30;
   const dailyEfficiency =
-    sessions.length > 0
-      ? Math.round(
-          (sessions.reduce((sum, s) => sum + s.focus, 0) / sessions.length) * 10
-        )
+    totalSessions > 0
+      ? Math.round((completedSessions / totalSessions) * 100)
       : 0;
 
   return {
     day_of_week: day.dayOfWeek,
     status: day.status,
     accuracy: day.accuracy_overall || 0,
-    sessions: sessions,
+    sessions: sessionsWithCompletion,
     metrics: {
       dayMinutesActual,
       dayMinutesPlanned,
