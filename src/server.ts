@@ -50,8 +50,7 @@ import dictationUserRouter from "./routes/dictation.route";
 import dictationAttemptRouter from "./routes/dictation_attempt.route";
 import shadowingUserRouter from "./routes/shadowing.route";
 import progressUserRouter from "./routes/progress.route";
-import vocabulary_definition_attempt_router from "./routes/vocabulary_definition_attempt.route";
-import practice_session_router from "./routes/practice_session.route";
+
 
 // 🆕 New routes for user study
 import quizUserRouter from "./routes/quiz_user.route";
@@ -60,6 +59,9 @@ import lessonUserRouter from "./routes/lesson_user.route";
 import flashcardUserRouter from "./routes/flashcard_user.route";
 import userStudyRouter from "./routes/user_study.route";
 
+import vocabulary_definition_attempt_router from './routes/vocabulary_definition_attempt.route';
+import practice_session_router from './routes/practice_session.route';
+import userNoteRouter from "./routes/user_note.route";
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
 import { verifyAccessToken } from "./middlewares/verifyAccessToken.middleware";
@@ -116,6 +118,7 @@ app.use(
   vocabulary_definition_attempt_router
 );
 app.use("/api/practice-sessions", verifyAccessToken, practice_session_router);
+app.use("/api/user-notes", verifyAccessToken, userNoteRouter);
 
 // 🆕 New user study routes
 app.use("/api/quiz", quizUserRouter); // GET /:id, POST /:id/submit
