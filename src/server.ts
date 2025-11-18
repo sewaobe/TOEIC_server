@@ -50,8 +50,16 @@ import dictationUserRouter from "./routes/dictation.route";
 import dictationAttemptRouter from "./routes/dictation_attempt.route";
 import shadowingUserRouter from "./routes/shadowing.route";
 import progressUserRouter from "./routes/progress.route";
-import vocabulary_definition_attempt_router from './routes/vocabulary_definition_attempt.route';
-import practice_session_router from './routes/practice_session.route';
+import vocabulary_definition_attempt_router from "./routes/vocabulary_definition_attempt.route";
+import practice_session_router from "./routes/practice_session.route";
+
+// 🆕 New routes for user study
+import quizUserRouter from "./routes/quiz_user.route";
+import dictationUserRouterNew from "./routes/dictation_user.route";
+import lessonUserRouter from "./routes/lesson_user.route";
+import flashcardUserRouter from "./routes/flashcard_user.route";
+import userStudyRouter from "./routes/user_study.route";
+
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
 import { verifyAccessToken } from "./middlewares/verifyAccessToken.middleware";
@@ -102,8 +110,19 @@ app.use(
   verifyAccessToken,
   progressUserRouter
 );
-app.use("/api/vocabulary-definition-attempts", verifyAccessToken, vocabulary_definition_attempt_router);
+app.use(
+  "/api/vocabulary-definition-attempts",
+  verifyAccessToken,
+  vocabulary_definition_attempt_router
+);
 app.use("/api/practice-sessions", verifyAccessToken, practice_session_router);
+
+// 🆕 New user study routes
+app.use("/api/quiz", quizUserRouter); // GET /:id, POST /:id/submit
+app.use("/api/dictation-plan", dictationUserRouterNew); // GET /:id, POST /:id/submit
+app.use("/api/lessons", lessonUserRouter); // GET /:id, POST /:id/complete
+app.use("/api/flashcard-plan", flashcardUserRouter); // GET /:id
+app.use("/api/user", userStudyRouter); // GET /streak, /study-history, /stats
 
 // ========= CTV ============
 app.use("/api/ctv", ctvTestRouter);

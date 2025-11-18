@@ -28,6 +28,11 @@ export interface IUser extends Document {
 
   // 🕓 Thêm mới: lưu thời điểm hoạt động gần nhất
   last_active?: Date;
+
+  // 🔥 Streak tracking
+  streak_days: number; // Số ngày học liên tiếp
+  longest_streak: number; // Kỷ lục streak dài nhất
+  last_study_date?: Date; // Ngày học gần nhất (chỉ tính khi submit bài có điểm)
 }
 
 // 2. Định nghĩa Schema cho User
@@ -65,6 +70,11 @@ const UserSchema = new Schema<IUser>({
 
   // 🕓 Thêm mới: thời điểm hoạt động gần nhất
   last_active: { type: Date, default: null },
+
+  // 🔥 Streak tracking
+  streak_days: { type: Number, default: 0 },
+  longest_streak: { type: Number, default: 0 },
+  last_study_date: { type: Date, default: null },
 });
 
 // 3. Tạo Model từ Schema
