@@ -37,14 +37,15 @@ export const completeLessonController = async (
   try {
     const { id: lessonId } = req.params;
     const userId = new Types.ObjectId(req.user._id);
-    const { time_spent } = req.body;
+    const { time_spent, day_study_id } = req.body;
 
     // Auto unlock
     const unlockResult = await autoUnlockAfterComplete(
       userId,
       lessonId,
       SessionType.LESSON,
-      100 // Lesson luôn pass
+      100, // Lesson luôn pass
+      day_study_id
     );
 
     return res.status(200).json(

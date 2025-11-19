@@ -51,16 +51,16 @@ import dictationAttemptRouter from "./routes/dictation_attempt.route";
 import shadowingUserRouter from "./routes/shadowing.route";
 import progressUserRouter from "./routes/progress.route";
 
-
-// 🆕 New routes for user study
-import quizUserRouter from "./routes/quiz_user.route";
-import dictationUserRouterNew from "./routes/dictation_user.route";
-import lessonUserRouter from "./routes/lesson_user.route";
-import flashcardUserRouter from "./routes/flashcard_user.route";
+// 🆕 Learning Path routes (user study in learning path)
+import quizLearningPathRouter from "./routes/quiz_learningpath.route";
+import dictationLearningPathRouter from "./routes/dictation_learningpath.route";
+import lessonLearningPathRouter from "./routes/lesson_learningpath.route";
+import flashcardLearningPathRouter from "./routes/flashcard_learningpath.route";
+import shadowingLearningPathRouter from "./routes/shadowing_learningpath.route";
 import userStudyRouter from "./routes/user_study.route";
 
-import vocabulary_definition_attempt_router from './routes/vocabulary_definition_attempt.route';
-import practice_session_router from './routes/practice_session.route';
+import vocabulary_definition_attempt_router from "./routes/vocabulary_definition_attempt.route";
+import practice_session_router from "./routes/practice_session.route";
 import userNoteRouter from "./routes/user_note.route";
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
@@ -120,11 +120,14 @@ app.use(
 app.use("/api/practice-sessions", verifyAccessToken, practice_session_router);
 app.use("/api/user-notes", verifyAccessToken, userNoteRouter);
 
-// 🆕 New user study routes
-app.use("/api/quiz", quizUserRouter); // GET /:id, POST /:id/submit
-app.use("/api/dictation-plan", dictationUserRouterNew); // GET /:id, POST /:id/submit
-app.use("/api/lessons", lessonUserRouter); // GET /:id, POST /:id/complete
-app.use("/api/flashcard-plan", flashcardUserRouter); // GET /:id
+// 🆕 Learning Path routes (activities in learning path flow)
+app.use("/api/quiz-learningpath", quizLearningPathRouter);
+app.use("/api/dictation-learningpath", dictationLearningPathRouter);
+app.use("/api/lessons-learningpath", lessonLearningPathRouter);
+app.use("/api/flashcards-learningpath", flashcardLearningPathRouter);
+app.use("/api/shadowing-learningpath", shadowingLearningPathRouter);
+
+// User study general routes
 app.use("/api/user", userStudyRouter); // GET /streak, /study-history, /stats
 
 // ========= CTV ============

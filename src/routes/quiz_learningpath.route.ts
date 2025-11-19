@@ -1,23 +1,26 @@
-// src/routes/dictation_user.route.ts
+// src/routes/quiz_learningpath.route.ts
 import { Router } from "express";
 import { verifyAccessToken } from "../middlewares/verifyAccessToken.middleware";
 import { checkUnlock } from "../middlewares/checkUnlock.middleware";
-import { getDictationByIdController } from "../controllers/dictation.controller";
-import { submitDictationController } from "../controllers/dictation_user.controller";
+import {
+  getQuizByIdForUserController,
+  submitQuizController,
+} from "../controllers/quiz_learningpath.controller";
 
 const router = Router();
 
 /**
  * @swagger
- * /dictation-plan/{id}:
+ * /quiz-learningpath/{id}:
  *   get:
  *     tags:
- *       - Dictation User
- *     summary: Lấy chi tiết dictation plan cho user
+ *       - Learning Path
+ *     summary: Lấy quiz trong lộ trình học
  *     description: |
- *       Lấy nội dung dictation plan sau khi đã unlock.
+ *       Lấy câu hỏi quiz (không show đáp án đúng).
  *       - Kiểm tra unlock qua middleware checkUnlock
- *       - Trả về audio URL và sentences cần nghe chép
+ *       - Chỉ trả về questions, không có correct_answer
+ *       - **Lưu ý:** param `id` là quiz_plan_id (lấy từ DayStudy sessions.items.activity_id)
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -26,10 +29,16 @@ const router = Router();
  *         required: true
  *         schema:
  *           type: string
- *         description: ID của dictation plan
+ *         description: ID của quiz plan (không phải quiz_id)
+ *       - in: query
+ *         name: day_study_id
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: ID của DayStudy cụ thể (optional, giúp xác định chính xác ngày học cần check unlock)
  *     responses:
  *       200:
- *         description: Lấy dictation plan thành công
+ *         description: Lấy quiz thành công
  *         content:
  *           application/json:
  *             schema:
@@ -45,38 +54,43 @@ const router = Router();
  *                       type: string
  *                     title:
  *                       type: string
- *                     audio_url:
- *                       type: string
- *                     sentences:
+ *                     questions:
  *                       type: array
  *                       items:
  *                         type: object
  *                         properties:
- *                           order:
- *                             type: number
- *                           correct_text:
+ *                           question_text:
  *                             type: string
+ *                           options:
+ *                             type: array
+ *                             items:
+ *                               type: string
  *       403:
- *         description: Dictation chưa được unlock
+ *         description: Quiz chưa được unlock
  *       404:
- *         description: Dictation không tồn tại
+ *         description: Quiz không tồn tại
  */
-router.get("/:id", verifyAccessToken, checkUnlock, getDictationByIdController);
+router.get(
+  "/:id",
+  verifyAccessToken,
+  checkUnlock,
+  getQuizByIdForUserController
+);
 
 /**
  * @swagger
- * /dictation-plan/{id}/submit:
+ * /quiz-learningpath/{id}/submit:
  *   post:
  *     tags:
- *       - Dictation User
- *     summary: Submit bài dictation
+ *       - Learning Path
+ *     summary: Submit quiz trong lộ trình
  *     description: |
- *       Submit câu trả lời dictation.
- *       - So sánh user_text với correct_text
- *       - Tính điểm accuracy (% từ đúng)
+ *       Submit câu trả lời quiz.
+ *       - Tính điểm (% đúng)
  *       - Cập nhật streak nếu score >= 80%
- *       - Lưu DictationAttempt
- *       - Không tự unlock (phải gọi complete-activity riêng)
+ *       - Lưu QuizAttempt
+ *       - Tự động unlock bài tiếp theo nếu đạt điểu kiện
+ *       - **Lưu ý:** param `id` là quiz_plan_id (lấy từ DayStudy sessions.items.activity_id)
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -85,7 +99,7 @@ router.get("/:id", verifyAccessToken, checkUnlock, getDictationByIdController);
  *         required: true
  *         schema:
  *           type: string
- *         description: ID của dictation plan
+ *         description: ID của quiz plan (không phải quiz_id)
  *     requestBody:
  *       required: true
  *       content:
@@ -101,19 +115,23 @@ router.get("/:id", verifyAccessToken, checkUnlock, getDictationByIdController);
  *                 items:
  *                   type: object
  *                   properties:
- *                     sentence_id:
+ *                     question_id:
  *                       type: string
- *                     user_text:
+ *                     user_answer:
  *                       type: string
  *                 example:
- *                   - sentence_id: "s1"
- *                     user_text: "The quick brown fox jumps over the lazy dog"
- *                   - sentence_id: "s2"
- *                     user_text: "She sells sea shells by the sea shore"
+ *                   - question_id: "q1"
+ *                     user_answer: "A"
+ *                   - question_id: "q2"
+ *                     user_answer: "C"
  *               time_spent:
  *                 type: number
  *                 description: Thời gian làm bài (giây)
- *                 example: 480
+ *                 example: 600
+ *               day_study_id:
+ *                 type: string
+ *                 description: ID của DayStudy cụ thể (optional, để đảm bảo unlock đúng ngày học)
+ *                 example: "6741234567890abcdef12345"
  *     responses:
  *       200:
  *         description: Submit thành công
@@ -127,26 +145,29 @@ router.get("/:id", verifyAccessToken, checkUnlock, getDictationByIdController);
  *                   example: true
  *                 message:
  *                   type: string
- *                   example: "Dictation submitted successfully"
+ *                   example: "Quiz submitted successfully"
  *                 data:
  *                   type: object
  *                   properties:
  *                     attempt_id:
  *                       type: string
- *                       example: "6741234567890abcdef40001"
- *                       description: ID của DictationAttempt (dùng để gọi complete-activity)
- *                     accuracy:
+ *                       example: "6741234567890abcdef30001"
+ *                       description: ID của QuizAttempt (dùng để gọi complete-activity)
+ *                     score:
  *                       type: number
- *                       example: 92.5
- *                     total_sentences:
+ *                       example: 85
+ *                     total_questions:
  *                       type: number
- *                       example: 10
+ *                       example: 20
+ *                     correct_answers:
+ *                       type: number
+ *                       example: 17
  *                     passed:
  *                       type: boolean
  *                       example: true
  *       404:
- *         description: Dictation không tồn tại
+ *         description: Quiz không tồn tại
  */
-router.post("/:id/submit", verifyAccessToken, submitDictationController);
+router.post("/:id/submit", verifyAccessToken, submitQuizController);
 
 export default router;

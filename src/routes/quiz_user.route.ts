@@ -20,6 +20,7 @@ const router = Router();
  *       Lấy câu hỏi quiz (không show đáp án đúng).
  *       - Kiểm tra unlock qua middleware checkUnlock
  *       - Chỉ trả về questions, không có correct_answer
+ *       - **Lưu ý:** param `id` là quiz_plan_id (lấy từ DayStudy sessions.items.activity_id)
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -28,7 +29,7 @@ const router = Router();
  *         required: true
  *         schema:
  *           type: string
- *         description: ID của quiz
+ *         description: ID của quiz plan (không phải quiz_id)
  *     responses:
  *       200:
  *         description: Lấy quiz thành công
@@ -82,7 +83,8 @@ router.get(
  *       - Tính điểm (% đúng)
  *       - Cập nhật streak nếu score >= 80%
  *       - Lưu QuizAttempt
- *       - Không tự unlock (phải gọi complete-activity riêng)
+ *       - Tự động unlock bài tiếp theo nếu đạt điểu kiện
+ *       - **Lưu ý:** param `id` là quiz_plan_id (lấy từ DayStudy sessions.items.activity_id)
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -91,7 +93,7 @@ router.get(
  *         required: true
  *         schema:
  *           type: string
- *         description: ID của quiz
+ *         description: ID của quiz plan (không phải quiz_id)
  *     requestBody:
  *       required: true
  *       content:

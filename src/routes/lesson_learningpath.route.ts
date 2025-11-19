@@ -1,21 +1,21 @@
-// src/routes/lesson_user.route.ts
+// src/routes/lesson_learningpath.route.ts
 import { Router } from "express";
 import { verifyAccessToken } from "../middlewares/verifyAccessToken.middleware";
 import { checkUnlock } from "../middlewares/checkUnlock.middleware";
 import {
   getLessonForUserController,
   completeLessonController,
-} from "../controllers/lesson_user.controller";
+} from "../controllers/lesson_learningpath.controller";
 
 const router = Router();
 
 /**
  * @swagger
- * /lessons/{id}:
+ * /lessons-learningpath/{id}:
  *   get:
  *     tags:
- *       - Lesson User
- *     summary: Lấy chi tiết lesson cho user
+ *       - Learning Path
+ *     summary: Lấy lesson trong lộ trình học
  *     description: |
  *       Lấy nội dung lesson sau khi đã unlock.
  *       - Kiểm tra unlock qua middleware checkUnlock
@@ -29,6 +29,12 @@ const router = Router();
  *         schema:
  *           type: string
  *         description: ID của lesson
+ *       - in: query
+ *         name: day_study_id
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: ID của DayStudy cụ thể (optional, giúp xác định chính xác ngày học cần check unlock)
  *     responses:
  *       200:
  *         description: Lấy lesson thành công
@@ -62,11 +68,11 @@ router.get("/:id", verifyAccessToken, checkUnlock, getLessonForUserController);
 
 /**
  * @swagger
- * /lessons/{id}/complete:
+ * /lessons-learningpath/{id}/complete:
  *   post:
  *     tags:
- *       - Lesson User
- *     summary: Đánh dấu hoàn thành lesson
+ *       - Learning Path
+ *     summary: Hoàn thành lesson trong lộ trình
  *     description: |
  *       Đánh dấu user đã xem xong lesson.
  *       - Không có điểm số (lesson không có score)
@@ -93,6 +99,10 @@ router.get("/:id", verifyAccessToken, checkUnlock, getLessonForUserController);
  *                 type: number
  *                 description: Thời gian xem (giây)
  *                 example: 300
+ *               day_study_id:
+ *                 type: string
+ *                 description: ID của DayStudy cụ thể (optional, để đảm bảo unlock đúng ngày học)
+ *                 example: "6741234567890abcdef12345"
  *     responses:
  *       200:
  *         description: Complete lesson thành công
