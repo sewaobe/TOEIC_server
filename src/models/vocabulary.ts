@@ -2,17 +2,19 @@ import mongoose, { Schema, Document } from "mongoose";
 
 enum VocabularyType {
   LC = "listening",
-  RC = "reading"
+  RC = "reading",
 }
 export interface IVocabulary extends Document {
   word: string; // Từ vựng
   phonetic: string; // Phiên âm
   type: string; // Loại từ (noun, verb, adj,...)
   weight: number; //0->1: Xác định độ dễ/khó của từ vựng.
-  definition: string; // Định nghĩa
+  definition: string; // Định nghĩa (tiếng Việt)
+  definition_en?: string; // Định nghĩa tiếng Anh (từ DictionaryAPI.dev hoặc CTV nhập)
+  definition_vi?: string; // Dịch tiếng Việt của definition_en (tự động từ Gemini)
   examples?: {
-    en: string,
-    vi: string
+    en: string;
+    vi: string;
   }[]; // Ví dụ
   image: string; // Link ảnh minh họa
   audio: string;
@@ -31,10 +33,14 @@ const VocabularySchema = new Schema<IVocabulary>(
     part_type: { type: String },
     weight: { type: Number, default: 0 },
     definition: { type: String },
-    examples: [{
-      en: { type: String },
-      vi: { type: String }
-    }],
+    definition_en: { type: String, default: null }, // Định nghĩa tiếng Anh từ API hoặc CTV
+    definition_vi: { type: String, default: null }, // Dịch tiếng Việt của definition_en
+    examples: [
+      {
+        en: { type: String },
+        vi: { type: String },
+      },
+    ],
     image: { type: String, trim: true },
     audio: { type: String, trim: true },
     tags: [{ type: String, trim: true }],
