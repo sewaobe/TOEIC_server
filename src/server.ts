@@ -64,6 +64,7 @@ import practice_session_router from "./routes/practice_session.route";
 import userNoteRouter from "./routes/user_note.route";
 import vocabularyWordRouter from "./routes/vocabulary_word.route";
 import ctvPracticeTopicVocabularyRouter from "./routes/ctv/ctv_practice_topic_vocabulary.route";
+import practice_definition_router from "./routes/practice_definition.route";
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
 import { verifyAccessToken } from "./middlewares/verifyAccessToken.middleware";
@@ -121,6 +122,7 @@ app.use(
 );
 app.use("/api/practice-sessions", verifyAccessToken, practice_session_router);
 app.use("/api/user-notes", verifyAccessToken, userNoteRouter);
+app.use("/api/practice-definition", verifyAccessToken, practice_definition_router);
 
 // 🆕 Learning Path routes (activities in learning path flow)
 app.use("/api/quiz-learningpath", quizLearningPathRouter);
