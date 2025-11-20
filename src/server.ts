@@ -62,6 +62,8 @@ import userStudyRouter from "./routes/user_study.route";
 import vocabulary_definition_attempt_router from "./routes/vocabulary_definition_attempt.route";
 import practice_session_router from "./routes/practice_session.route";
 import userNoteRouter from "./routes/user_note.route";
+import vocabularyWordRouter from "./routes/vocabulary_word.route";
+import ctvPracticeTopicVocabularyRouter from "./routes/ctv/ctv_practice_topic_vocabulary.route";
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
 import { verifyAccessToken } from "./middlewares/verifyAccessToken.middleware";
@@ -145,6 +147,12 @@ app.use("/api/ctv/lesson", verifyAccessToken, ctvLessonRouter);
 app.use("/api/ctv/quiz", verifyAccessToken, ctvQuizRouteRouter);
 app.use("/api/ctv/dashboard", verifyAccessToken, ctvDashboardRouter); // Use dashboard route
 app.use("/api/ctv/reports", verifyAccessToken, ctvReportRouter);
+app.use("/api/ctv/vocabulary-words", verifyAccessToken, vocabularyWordRouter);
+app.use(
+  "/api/ctv/practice-topics",
+  verifyAccessToken,
+  ctvPracticeTopicVocabularyRouter
+);
 // Admin user management routes (list/detail/ban/unban)
 app.use("/api/admin/users", verifyAccessToken, adminUsersRouter);
 // Admin test approval routes
