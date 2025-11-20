@@ -3,12 +3,9 @@ import { CERFLevel } from "./topic_vocabulary.model";
 
 export interface IPracticeTopicVocabulary extends Document {
   title: string;
-  description: string;
-  tags: string[];
-  level: CERFLevel;
-  iconName: string;
-  bgColor: string;
-  gradient: string;
+  description?: string;
+  tags?: string[];
+  level?: CERFLevel;
   vocabulary_words: Types.ObjectId[]; // Tham chiếu tới VocabularyWord
   isPublic: boolean;
   created_at: Date;
@@ -21,9 +18,6 @@ const PracticeTopicVocabularySchema = new Schema<IPracticeTopicVocabulary>(
     title: { type: String, required: true },
     description: { type: String },
     tags: [{ type: String }],
-    iconName: { type: String, default: "Book" },
-    bgColor: { type: String, default: "ffffff" },
-    gradient: { type: String },
     level: {
       type: String,
       enum: Object.values(CERFLevel),
