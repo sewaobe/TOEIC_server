@@ -1,10 +1,10 @@
-import Router from 'express';
+import Router from "express";
 import {
-    getAllPracticeDefinitionTopicsController,
-    getPracticeDefinitionTopicByIdController,
-    getVocabularyWordsByTopicController,
-    getRandomVocabularyWordsController
-} from '../controllers/practice_definition.controller';
+  getAllPracticeDefinitionTopicsController,
+  getPracticeDefinitionTopicByIdController,
+  getVocabularyWordsByTopicController,
+  getRandomVocabularyWordsController,
+} from "../controllers/practice_definition.controller";
 
 /**
  * @openapi
@@ -36,10 +36,6 @@ import {
  *         name: search
  *         schema:
  *           type: string
- *       - in: query
- *         name: isPublic
- *         schema:
- *           type: boolean
  *       - in: query
  *         name: created_by
  *         schema:

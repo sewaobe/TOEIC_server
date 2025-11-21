@@ -7,7 +7,6 @@ export interface IPracticeTopicVocabulary extends Document {
   tags?: string[];
   level?: CERFLevel;
   vocabulary_words: Types.ObjectId[]; // Tham chiếu tới VocabularyWord
-  isPublic: boolean;
   created_at: Date;
   created_by: Types.ObjectId;
   updated_at: Date;
@@ -24,7 +23,6 @@ const PracticeTopicVocabularySchema = new Schema<IPracticeTopicVocabulary>(
       default: CERFLevel.A1,
     },
     vocabulary_words: [{ type: Schema.Types.ObjectId, ref: "VocabularyWord" }],
-    isPublic: { type: Boolean, default: false },
     created_at: { type: Date, default: Date.now },
     created_by: { type: Schema.Types.ObjectId, ref: "User", required: true },
     updated_at: { type: Date, default: Date.now },
