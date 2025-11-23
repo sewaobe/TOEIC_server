@@ -5,12 +5,8 @@ import {
   LessonSection,
   TopicVocabulary,
   Vocabulary,
-  FlashCardPlan,
   Quiz,
   Question,
-  QuizPlan,
-  ShadowingPlan,
-  DictationPlan,
   LearningPath,
   WeekStudy,
   DayStudy,
@@ -225,7 +221,6 @@ export async function buildLearningPathFromGemini(
       let topicVocab: any = undefined;
       let shadowing: any = undefined;
       let dictation: any = undefined;
-      const plans: any = {};
 
       // helper: create lesson (used by video/lesson fallback)
       const ensureLesson = async () => {
@@ -610,13 +605,7 @@ export async function buildLearningPathFromGemini(
           // non-fatal: if vocab creation fails, keep topicVocab without linked vocabularies
           console.warn("Failed to create vocabularies from mock:", err);
         }
-        const flashPlan = await FlashCardPlan.create({
-          user_id: userObjectId,
-          topic_vocabulary_id: topicVocab._id,
-          total_attempts: 0,
-          accuracy_overall: 0,
-        } as any);
-        plans.flash = { _id: flashPlan._id, part_type: part };
+        // Not creating per-user FlashCardPlan here. LearningPath will reference `topicVocab` metadata directly.
       } else if (/quiz/i.test(activity)) {
         // try to seed quiz with a mock matching topic
         const mockQuiz =
@@ -667,13 +656,7 @@ export async function buildLearningPathFromGemini(
         } catch (err) {
           console.warn("Failed to create questions from mock quiz:", err);
         }
-        const quizPlan = await QuizPlan.create({
-          user_id: userObjectId,
-          quiz_id: quiz._id,
-          total_attempts: 0,
-          accuracy_overall: 0,
-        } as any);
-        plans.quiz = { _id: quizPlan._id, part_type: part };
+        // Not creating per-user QuizPlan here. LearningPath will reference `quiz` metadata directly.
       } else if (/dictation|nghe chép|nghe chép chính tả/i.test(activity)) {
         // use mock dictation if available to create more realistic audio/transcript
         const mockDict =
@@ -693,13 +676,7 @@ export async function buildLearningPathFromGemini(
           created_by: DEFAULT_CREATOR_ID,
         } as any;
         dictation = await Dictation.create(dictationPayload);
-        const dictPlan = await DictationPlan.create({
-          user_id: userObjectId,
-          dictation_id: dictation._id,
-          total_attempts: 0,
-          accuracy_overall: 0,
-        } as any);
-        plans.dict = { _id: dictPlan._id, part_type: part };
+        // Not creating per-user DictationPlan here. LearningPath will reference `dictation` metadata directly.
       } else if (/shadowing|repeat|speak/i.test(activity)) {
         // seed shadowing with a realistic template if available
         const mockShadow =
@@ -719,13 +696,7 @@ export async function buildLearningPathFromGemini(
           created_by: DEFAULT_CREATOR_ID,
         } as any;
         shadowing = await Shadowing.create(shadowingPayload);
-        const shadowPlan = await ShadowingPlan.create({
-          user_id: userObjectId,
-          shadowing_id: shadowing._id,
-          total_attempts: 0,
-          accuracy_overall: 0,
-        } as any);
-        plans.shadow = { _id: shadowPlan._id, part_type: part };
+        // Not creating per-user ShadowingPlan here. LearningPath will reference `shadowing` metadata directly.
       } else if (
         /(video|lesson)/i.test(activity) ||
         /video|youtube|watch|watch\?/i.test(rawTitle)
@@ -761,28 +732,11 @@ export async function buildLearningPathFromGemini(
             ? topicVocab.toObject()
             : topicVocab
           : undefined,
-        plans,
       });
     }
   }
 
-  // Prepare arrays expected by generateWeeklyDayStudies (objects with _id and part_type)
-  const flashcardsArr: any[] = [];
-  const quizesArr: any[] = [];
-  const shadowingsArr: any[] = [];
-  const dictationsArr: any[] = [];
-  for (const v of artifacts.values()) {
-    const p = v.part;
-    // Only push plans that actually exist to avoid reading undefined._id
-    if (v.plans && v.plans.flash && v.plans.flash._id)
-      flashcardsArr.push({ _id: v.plans.flash._id, part_type: p });
-    if (v.plans && v.plans.quiz && v.plans.quiz._id)
-      quizesArr.push({ _id: v.plans.quiz._id, part_type: p });
-    if (v.plans && v.plans.shadow && v.plans.shadow._id)
-      shadowingsArr.push({ _id: v.plans.shadow._id, part_type: p });
-    if (v.plans && v.plans.dict && v.plans.dict._id)
-      dictationsArr.push({ _id: v.plans.dict._id, part_type: p });
-  }
+  // Note: per-user plans are not created here; learning path will reference metadata ids directly.
 
   // Create LearningPath + WeekStudy + DayStudy
   const title =
@@ -904,7 +858,7 @@ export async function buildLearningPathFromGemini(
             };
           }
         } else if (/quiz/i.test(activity)) {
-          if (art && art.plans && art.plans.quiz) {
+          if (art && art.quiz) {
             built = {
               session_no: sessionNo++,
               status: dayStatus,
@@ -912,14 +866,14 @@ export async function buildLearningPathFromGemini(
               items: [
                 {
                   kind: SessionType.QUIZ,
-                  activity_id: art.plans.quiz._id,
+                  activity_id: art.quiz._id,
                   status: dayStatus,
                 },
               ],
             };
           }
         } else if (/flashcard|vocab|vocabulary|từ vựng/i.test(activity)) {
-          if (art && art.plans && art.plans.flash) {
+          if (art && art.topicVocab) {
             built = {
               session_no: sessionNo++,
               status: dayStatus,
@@ -927,14 +881,14 @@ export async function buildLearningPathFromGemini(
               items: [
                 {
                   kind: SessionType.FLASH_CARD,
-                  activity_id: art.plans.flash._id,
+                  activity_id: art.topicVocab._id,
                   status: dayStatus,
                 },
               ],
             };
           }
         } else if (/dictation|nghe chép|nghe chép chính tả/i.test(activity)) {
-          if (art && art.plans && art.plans.dict) {
+          if (art && art.dictation) {
             built = {
               session_no: sessionNo++,
               status: dayStatus,
@@ -942,14 +896,14 @@ export async function buildLearningPathFromGemini(
               items: [
                 {
                   kind: SessionType.DICTATION,
-                  activity_id: art.plans.dict._id,
+                  activity_id: art.dictation._id,
                   status: dayStatus,
                 },
               ],
             };
           }
         } else if (/shadowing|repeat|speak/i.test(activity)) {
-          if (art && art.plans && art.plans.shadow) {
+          if (art && art.shadowing) {
             built = {
               session_no: sessionNo++,
               status: dayStatus,
@@ -957,7 +911,7 @@ export async function buildLearningPathFromGemini(
               items: [
                 {
                   kind: SessionType.SHADOWING,
-                  activity_id: art.plans.shadow._id,
+                  activity_id: art.shadowing._id,
                   status: dayStatus,
                 },
               ],
@@ -977,7 +931,7 @@ export async function buildLearningPathFromGemini(
                 },
               ],
             };
-          } else if (art && art.plans && art.plans.flash) {
+          } else if (art && art.topicVocab) {
             built = {
               session_no: sessionNo++,
               status: dayStatus,
@@ -985,7 +939,7 @@ export async function buildLearningPathFromGemini(
               items: [
                 {
                   kind: SessionType.FLASH_CARD,
-                  activity_id: art.plans.flash._id,
+                  activity_id: art.topicVocab._id,
                   status: dayStatus,
                 },
               ],

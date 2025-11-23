@@ -13,37 +13,15 @@ import {
 } from "../models";
 
 /**
- * Kiểm tra điều kiện unlock dựa vào loại bài và điểm
+ * Check unlock condition
+ * Current rule: auto pass on submit (no score threshold).
  */
 export function checkUnlockCondition(
   activityType: SessionType,
   score?: number
 ): boolean {
-  // Lesson không cần điểm, luôn unlock
-  if (activityType === SessionType.LESSON) {
-    return true;
-  }
-
-  // Nếu không có score → không unlock
-  if (score === undefined || score === null) {
-    return false;
-  }
-
-  switch (activityType) {
-    case SessionType.FLASH_CARD:
-    case SessionType.DICTATION:
-    case SessionType.QUIZ:
-      return score >= 80; // Cần >= 80%
-
-    case SessionType.SHADOWING:
-      return score >= 70; // Phát âm dễ hơn
-
-    case SessionType.MINI_TEST:
-      return score >= 70; // Test khó hơn, 70% là đủ
-
-    default:
-      return false;
-  }
+  // New rule: once the learner submits, mark as pass and allow unlock.
+  return true;
 }
 
 /**

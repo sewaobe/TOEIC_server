@@ -1,4 +1,4 @@
-// src/routes/flashcard_learningpath.route.ts
+﻿// src/routes/flashcard_learningpath.route.ts
 import { Router } from "express";
 import { verifyAccessToken } from "../middlewares/verifyAccessToken.middleware";
 import { checkUnlock } from "../middlewares/checkUnlock.middleware";
@@ -15,10 +15,9 @@ const router = Router();
  *   get:
  *     tags:
  *       - Learning Path
- *     summary: Lấy flashcard trong lộ trình học
+ *     summary: Get flashcard topic in learning path
  *     description: |
- *       Lấy topic vocabulary để học flashcard trong learning path.
- *       - **Lưu ý:** param `id` là flashcard_plan_id (lấy từ DayStudy)
+ *       Fetch topic vocabulary for learning path (metadata id from DayStudy item).
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -27,20 +26,20 @@ const router = Router();
  *         required: true
  *         schema:
  *           type: string
- *         description: ID của flashcard plan
+ *         description: TopicVocabulary metadata id (`topicVocabulary._id`)
  *       - in: query
  *         name: day_study_id
  *         required: false
  *         schema:
  *           type: string
- *         description: ID của DayStudy cụ thể (optional, giúp xác định chính xác ngày học cần check unlock)
+ *         description: Optional DayStudy id for unlock context
  *     responses:
  *       200:
- *         description: Lấy flashcard thành công
+ *         description: Get flashcard topic successfully
  *       403:
- *         description: Flashcard chưa unlock
+ *         description: Not unlocked
  *       404:
- *         description: Không tìm thấy flashcard plan
+ *         description: Flashcard topic not found
  */
 router.get("/:id", verifyAccessToken, checkUnlock, getFlashCardPlanController);
 
@@ -50,13 +49,18 @@ router.get("/:id", verifyAccessToken, checkUnlock, getFlashCardPlanController);
  *   post:
  *     tags:
  *       - Learning Path
- *     summary: Hoàn thành flashcard trong lộ trình
+ *     summary: Submit flashcard (learning path)
  *     description: |
- *       Submit kết quả học flashcard.
- *       - Lưu FlashCardAttempt
- *       - Cập nhật streak
- *       - Tự động unlock bài tiếp theo
- *       - **Lưu ý:** param `id` là flashcard_plan_id
+ *       Submit flashcard result from learning path.
+ *       - Submit = Done (không check điểm threshold)
+ *       - Auto unlock bài tiếp theo
+ *       - Tạo attempt với submit_type = LEARNING_PATH
+ *       - Upsert plan theo submit_type
+ *       - Update streak & user_progress
+ *       - Store FlashCardAttempt with `submit_type=learning_path`
+ *       - Upsert FlashCardPlan (latest_attempt, total_attempts, accuracy_overall)
+ *       - Update streak (user_progress)
+ *       - Auto unlock next item/session/day/week
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -65,32 +69,61 @@ router.get("/:id", verifyAccessToken, checkUnlock, getFlashCardPlanController);
  *         required: true
  *         schema:
  *           type: string
- *         description: ID của flashcard plan
+ *         description: TopicVocabulary metadata id (`topicVocabulary._id`)
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
+ *             required:
+ *               - day_study_id
  *             properties:
+ *               accuracy:
+ *                 type: number
+ *                 description: Accuracy percent (optional, default 100)
+ *                 example: 100
  *               learned_words:
  *                 type: array
- *                 description: Danh sách ID từ vựng đã học
  *                 items:
  *                   type: string
  *               time_spent:
  *                 type: number
- *                 description: Thời gian học (giây)
- *                 example: 300
+ *                 description: Time spent (seconds)
  *               day_study_id:
  *                 type: string
- *                 description: ID của DayStudy cụ thể (optional, để đảm bảo unlock đúng ngày học)
- *                 example: "6741234567890abcdef12345"
+ *                 description: DayStudy id (required)
  *     responses:
  *       201:
- *         description: Hoàn thành flashcard thành công
+ *         description: Submit success
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     attempt_id:
+ *                       type: string
+ *                     learned_count:
+ *                       type: number
+ *                     duration:
+ *                       type: number
+ *                     plan_summary:
+ *                       type: object
+ *                       properties:
+ *                         total_attempts:
+ *                           type: number
+ *                         accuracy_overall:
+ *                           type: number
+ *                     next_unlocked:
+ *                       type: object
+ *                       nullable: true
  *       404:
- *         description: Không tìm thấy flashcard plan
+ *         description: Flashcard plan not found
  */
 router.post("/:id/submit", verifyAccessToken, submitFlashCardController);
 

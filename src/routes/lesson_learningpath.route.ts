@@ -28,13 +28,13 @@ const router = Router();
  *         required: true
  *         schema:
  *           type: string
- *         description: ID của lesson
+ *         description: ID của lesson metadata (`lesson._id`)
  *       - in: query
  *         name: day_study_id
  *         required: false
  *         schema:
  *           type: string
- *         description: ID của DayStudy cụ thể (optional, giúp xác định chính xác ngày học cần check unlock)
+ *         description: ID của DayStudy cụ thể (khuyến nghị gửi để xác định chính xác ngày học cần check unlock)
  *     responses:
  *       200:
  *         description: Lấy lesson thành công
@@ -79,6 +79,7 @@ router.get("/:id", verifyAccessToken, checkUnlock, getLessonForUserController);
  *       - Tự động unlock luôn (không cần >= 80%)
  *       - Cập nhật streak khi học
  *       - Track thời gian xem
+ *       - **Khuyến nghị:** Gửi `day_study_id` trong body để đảm bảo unlock đúng ngày học
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -87,13 +88,15 @@ router.get("/:id", verifyAccessToken, checkUnlock, getLessonForUserController);
  *         required: true
  *         schema:
  *           type: string
- *         description: ID của lesson
+ *         description: ID của lesson metadata (`lesson._id`)
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
+ *             required:
+ *               - day_study_id
  *             properties:
  *               time_spent:
  *                 type: number
@@ -101,7 +104,7 @@ router.get("/:id", verifyAccessToken, checkUnlock, getLessonForUserController);
  *                 example: 300
  *               day_study_id:
  *                 type: string
- *                 description: ID của DayStudy cụ thể (optional, để đảm bảo unlock đúng ngày học)
+ *                 description: ID của DayStudy cụ thể (BẮT BUỘC để xác định ngày học cần unlock)
  *                 example: "6741234567890abcdef12345"
  *     responses:
  *       200:

@@ -1,7 +1,6 @@
-// src/services/user_progress.service.ts
+﻿// src/services/user_progress.service.ts
 import { Types } from "mongoose";
 import { UserProgress } from "../models/user_progress.model";
-import { User } from "../models/user.model";
 import { LearningPath } from "../models/learning_path.model";
 import { DayStudy } from "../models/day_study.model";
 import { WeekStudy } from "../models/week_study.model";
@@ -13,21 +12,18 @@ import { WeekStudyStatus } from "../models/enums/WeekStudyStatus";
 
 /**
  * Cập nhật UserProgress sau khi complete activity trong learning path
- * Gọi hàm này trong completeActivityController
  */
 export async function updateUserProgress(
   userId: Types.ObjectId,
   learningPathId?: Types.ObjectId
 ) {
   try {
-    // 1. Tìm hoặc tạo UserProgress
     let userProgress = await UserProgress.findOne({
       user_id: userId,
       learningPath_id: learningPathId,
     });
 
     if (!userProgress) {
-      // Tạo mới nếu chưa có
       const learningPath = await LearningPath.findById(learningPathId);
       if (!learningPath) {
         throw new Error("LearningPath not found");
@@ -41,42 +37,40 @@ export async function updateUserProgress(
         completion_rate: 0,
         total_study_time: 0,
         streak_days: 0,
+        longest_streak: 0,
+        last_study_date: null,
         current_score: 0,
         target_score: learningPath.target_score || 0,
       });
     }
 
-    // 2. Tính số bài đã hoàn thành
+    const streakDays = userProgress.streak_days || 0;
+    const longestStreak = userProgress.longest_streak || 0;
+    const lastStudyDate = userProgress.last_study_date;
+
     const completedActivities = await countCompletedActivities(
       userId,
       learningPathId
     );
 
-    // 3. Tính tổng số bài trong lộ trình
     const totalActivities = await countTotalActivities(learningPathId);
 
-    // 4. Tính completion rate
     const completionRate =
       totalActivities > 0
         ? Math.round((completedActivities / totalActivities) * 100)
         : 0;
 
-    // 5. Tính tổng thời gian học (từ attempts)
     const totalStudyTime = await calculateTotalStudyTime(userId);
 
-    // 6. Lấy streak từ User model
-    const user = await User.findById(userId).select("streak_days");
-    const streakDays = user?.streak_days || 0;
-
-    // 7. Tính điểm hiện tại (average score từ các attempts gần đây)
     const currentScore = await calculateCurrentScore(userId);
 
-    // 8. Cập nhật UserProgress
     userProgress.completed_lessons = completedActivities;
     userProgress.total_lessons = totalActivities;
     userProgress.completion_rate = completionRate;
-    userProgress.total_study_time = Math.round(totalStudyTime / 60); // Convert to minutes
+    userProgress.total_study_time = Math.round(totalStudyTime / 60);
     userProgress.streak_days = streakDays;
+    userProgress.longest_streak = longestStreak;
+    userProgress.last_study_date = lastStudyDate;
     userProgress.current_score = currentScore;
     userProgress.updated_at = new Date();
 
@@ -89,16 +83,12 @@ export async function updateUserProgress(
   }
 }
 
-/**
- * Đếm số activity đã hoàn thành trong learning path
- */
 async function countCompletedActivities(
   userId: Types.ObjectId,
   learningPathId?: Types.ObjectId
 ): Promise<number> {
   if (!learningPathId) return 0;
 
-  // Lấy tất cả weeks trong learning path
   const learningPath = await LearningPath.findById(learningPathId).populate(
     "week_study_ids"
   );
@@ -107,18 +97,14 @@ async function countCompletedActivities(
 
   let totalCompleted = 0;
 
-  // Duyệt qua từng week
   for (const week of learningPath.week_study_ids as any[]) {
-    // Lấy tất cả days trong week
     const weekStudy = await WeekStudy.findById(week._id).populate("days");
     if (!weekStudy) continue;
 
-    // Duyệt qua từng day
     for (const dayId of weekStudy.days) {
       const dayStudy = await DayStudy.findById(dayId);
       if (!dayStudy) continue;
 
-      // Đếm items completed trong day
       for (const session of dayStudy.sessions) {
         for (const item of session.items) {
           if (item.status === WeekStudyStatus.COMPLETED) {
@@ -132,9 +118,6 @@ async function countCompletedActivities(
   return totalCompleted;
 }
 
-/**
- * Đếm tổng số activity trong learning path
- */
 async function countTotalActivities(
   learningPathId?: Types.ObjectId
 ): Promise<number> {
@@ -165,9 +148,6 @@ async function countTotalActivities(
   return totalActivities;
 }
 
-/**
- * Tính tổng thời gian học (seconds) từ tất cả attempts
- */
 async function calculateTotalStudyTime(
   userId: Types.ObjectId
 ): Promise<number> {
@@ -180,7 +160,6 @@ async function calculateTotalStudyTime(
 
   let totalSeconds = 0;
 
-  // Quiz
   quizzes.forEach((q: any) => {
     if (q.finished_at && q.started_at) {
       totalSeconds += Math.floor(
@@ -189,12 +168,10 @@ async function calculateTotalStudyTime(
     }
   });
 
-  // Dictation
   dictations.forEach((d: any) => {
     totalSeconds += d.duration || 0;
   });
 
-  // Flashcard
   flashcards.forEach((f: any) => {
     if (f.finished_at && f.started_at) {
       totalSeconds += Math.floor(
@@ -203,7 +180,6 @@ async function calculateTotalStudyTime(
     }
   });
 
-  // Test (giả sử mỗi test ~ 120 phút)
   tests.forEach(() => {
     totalSeconds += 120 * 60;
   });
@@ -211,9 +187,6 @@ async function calculateTotalStudyTime(
   return totalSeconds;
 }
 
-/**
- * Tính điểm hiện tại (average từ 10 attempts gần nhất)
- */
 async function calculateCurrentScore(userId: Types.ObjectId): Promise<number> {
   const recentLimit = 10;
 
@@ -246,9 +219,6 @@ async function calculateCurrentScore(userId: Types.ObjectId): Promise<number> {
   return Math.round(avgScore);
 }
 
-/**
- * Lấy UserProgress của user
- */
 export async function getUserProgress(
   userId: Types.ObjectId,
   learningPathId?: Types.ObjectId
@@ -259,7 +229,6 @@ export async function getUserProgress(
   });
 
   if (!userProgress) {
-    // Nếu chưa có, tạo mới
     return await updateUserProgress(userId, learningPathId);
   }
 

@@ -122,7 +122,11 @@ app.use(
 );
 app.use("/api/practice-sessions", verifyAccessToken, practice_session_router);
 app.use("/api/user-notes", verifyAccessToken, userNoteRouter);
-app.use("/api/practice-definition", verifyAccessToken, practice_definition_router);
+app.use(
+  "/api/practice-definition",
+  verifyAccessToken,
+  practice_definition_router
+);
 
 // 🆕 Learning Path routes (activities in learning path flow)
 app.use("/api/quiz-learningpath", quizLearningPathRouter);

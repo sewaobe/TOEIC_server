@@ -1,48 +1,83 @@
-import { Types } from "mongoose";
+﻿import { Types } from "mongoose";
 import { DictationAttempt, DictationPlan } from "../models";
+import { SubmissionType } from "../models/enums/SubmissionType";
 
 /**
  * Cập nhật DictationPlan dựa vào toàn bộ DictationAttempt
  */
-export const updateDictationPlanService = async (dictationId: string, userId: string) => {
-    const dictationObjectId = new Types.ObjectId(dictationId);
-    const userObjectId = new Types.ObjectId(userId);
+export const updateDictationPlanService = async (
+  dictationId: string,
+  userId: string,
+  submitType: SubmissionType = SubmissionType.PRACTICE
+) => {
+  const dictationObjectId = new Types.ObjectId(dictationId);
+  const userObjectId = new Types.ObjectId(userId);
 
-    // Lấy toàn bộ attempts của user với dictation đó
-    const attempts = await DictationAttempt.find({
+  const attemptFilter =
+    submitType === SubmissionType.PRACTICE
+      ? {
+          user_id: userObjectId,
+          dictation_id: dictationObjectId,
+          $or: [
+            { submit_type: submitType },
+            { submit_type: { $exists: false } },
+          ],
+        }
+      : {
+          user_id: userObjectId,
+          dictation_id: dictationObjectId,
+          submit_type: submitType,
+        };
+
+  const attempts = await DictationAttempt.find(attemptFilter)
+    .sort({ createdAt: -1 })
+    .lean();
+
+  if (!attempts.length) {
+    console.log("No dictation attempts to update plan");
+    return null;
+  }
+
+  const totalAttempts = attempts.length;
+  const latestAttempt = attempts[0];
+  const avgAccuracy =
+    attempts.reduce((sum, a) => sum + (a.accuracy || 0), 0) / totalAttempts;
+
+  const planFilter =
+    submitType === SubmissionType.PRACTICE
+      ? {
+          dictation_id: dictationObjectId,
+          user_id: userObjectId,
+          $or: [
+            { submit_type: submitType },
+            { submit_type: { $exists: false } },
+          ],
+        }
+      : {
+          dictation_id: dictationObjectId,
+          user_id: userObjectId,
+          submit_type: submitType,
+        };
+
+  const plan = await DictationPlan.findOneAndUpdate(
+    planFilter,
+    {
+      $set: {
+        latest_attempt: latestAttempt._id,
+        total_attempts: totalAttempts,
+        accuracy_overall: Math.round(avgAccuracy),
+        submit_type: submitType,
+        updated_at: new Date(),
+      },
+      $setOnInsert: {
         user_id: userObjectId,
         dictation_id: dictationObjectId,
-    })
-        .sort({ createdAt: -1 }) // để lấy latest
-        .lean();
+        submit_type: submitType,
+        start_date: new Date(),
+      },
+    },
+    { new: true, upsert: true }
+  );
 
-    if (!attempts.length) {
-        console.log("❌ Không có attempt nào để cập nhật plan.");
-        return null;
-    }
-
-    // Tính toán
-    const totalAttempts = attempts.length;
-    const latestAttempt = attempts[0]; // do sort theo createdAt DESC
-    const avgAccuracy =
-        attempts.reduce((sum, a) => sum + (a.accuracy || 0), 0) / totalAttempts;
-
-    // Cập nhật hoặc tạo mới DictationPlan
-    const plan = await DictationPlan.findOneAndUpdate(
-        { dictation_id: dictationObjectId, user_id: userObjectId },
-        {
-            $set: {
-                latest_attempt: latestAttempt._id,
-                total_attempts: totalAttempts,
-                accuracy_overall: Math.round(avgAccuracy),
-                updated_at: new Date(),
-            },
-            $setOnInsert: {
-                start_date: new Date(),
-            },
-        },
-        { new: true, upsert: true }
-    );
-
-    return plan;
+  return plan;
 };

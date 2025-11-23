@@ -39,6 +39,11 @@ export const completeLessonController = async (
     const userId = new Types.ObjectId(req.user._id);
     const { time_spent, day_study_id } = req.body;
 
+    // Validate day_study_id (bắt buộc để xác định ngày học)
+    if (!day_study_id) {
+      return res.status(400).json(ApiResponse.fail("day_study_id là bắt buộc"));
+    }
+
     // Auto unlock
     const unlockResult = await autoUnlockAfterComplete(
       userId,

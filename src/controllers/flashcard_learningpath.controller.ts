@@ -1,17 +1,19 @@
-// src/controllers/flashcard_learningpath.controller.ts
+﻿// src/controllers/flashcard_learningpath.controller.ts
 import { Request, Response, NextFunction } from "express";
 import { Types } from "mongoose";
-import { FlashCardPlan } from "../models/flashcard_plan.model";
 import { TopicVocabulary } from "../models/topic_vocabulary.model";
 import { FlashCardAttempt } from "../models/flashcard_attempt.model";
+import { FlashCardPlan } from "../models/flashcard_plan.model";
 import { ApiResponse } from "../utils/ApiResponse";
 import { SessionType } from "../models/enums/SessionType";
+import { SubmissionType } from "../models/enums/SubmissionType";
 import { updateUserStreak } from "../services/streak.service";
 import { autoUnlockAfterComplete } from "../services/auto_unlock.service";
+import { upsertPlanAfterAttempts } from "../services/plan_submission.service";
 
 /**
- * Lấy chi tiết flashcard plan cho learning path
- * @param id - flashcard_plan_id (từ DayStudy)
+ * L?y chi ti?t flashcard plan cho learning path
+ * @param id - flashcard_plan_id (t? DayStudy)
  */
 export const getFlashCardPlanController = async (
   req: Request,
@@ -19,38 +21,28 @@ export const getFlashCardPlanController = async (
   next: NextFunction
 ) => {
   try {
-    const { id: flashCardPlanId } = req.params;
+    const { id: rawId } = req.params;
 
-    // 1. Query FlashCardPlan để lấy flashcard_id
-    const flashCardPlan = await FlashCardPlan.findById(flashCardPlanId);
-    if (!flashCardPlan) {
-      return res
-        .status(404)
-        .json(ApiResponse.fail("Không tìm thấy flashcard plan"));
-    }
-
-    // 2. Lấy topic vocabulary thực tế
-    const topicVocab = await TopicVocabulary.findById(
-      flashCardPlan.topic_vocabulary_id
-    ).lean();
-
+    // Here `rawId` is the TopicVocabulary metadata id
+    const topicVocabId = rawId;
+    const topicVocab = await TopicVocabulary.findById(topicVocabId).lean();
     if (!topicVocab) {
       return res
         .status(404)
-        .json(ApiResponse.fail("Không tìm thấy flashcard topic"));
+        .json(ApiResponse.fail("Không tìm th?y flashcard topic"));
     }
 
     return res
       .status(200)
-      .json(ApiResponse.success(topicVocab, "Lấy flashcard thành công"));
+      .json(ApiResponse.success(topicVocab, "L?y flashcard thành công"));
   } catch (error) {
     next(error);
   }
 };
 
 /**
- * Submit flashcard (học xong flashcard)
- * @param id - flashcard_plan_id (từ DayStudy)
+ * Submit flashcard (h?c xong flashcard)
+ * @param id - flashcard_plan_id (t? DayStudy)
  */
 export const submitFlashCardController = async (
   req: Request,
@@ -58,39 +50,57 @@ export const submitFlashCardController = async (
   next: NextFunction
 ) => {
   try {
-    const { id: flashCardPlanId } = req.params;
+    const { id: rawId } = req.params;
     const userId = new Types.ObjectId(req.user._id);
     const { learned_words, time_spent, day_study_id } = req.body;
+    const submitType = SubmissionType.LEARNING_PATH;
+    const topicVocabId = new Types.ObjectId(rawId);
+    const accuracy =
+      typeof req.body.accuracy === "number"
+        ? Number(req.body.accuracy)
+        : 100;
 
-    // 1. Query FlashCardPlan để lấy flashcard_id
-    const flashCardPlan = await FlashCardPlan.findById(flashCardPlanId);
-    if (!flashCardPlan) {
-      return res
-        .status(404)
-        .json(ApiResponse.fail("Không tìm thấy flashcard plan"));
+    // Validate day_study_id (b?t bu?c d? xác d?nh ngày h?c)
+    if (!day_study_id) {
+      return res.status(400).json(ApiResponse.fail("day_study_id là b?t bu?c"));
     }
 
-    const topicVocabId = flashCardPlan.topic_vocabulary_id.toString();
-
-    // 2. Tạo FlashCardAttempt
+    // 1. T?o FlashCardAttempt (luu metadata id)
     const now = new Date();
     const attempt = await FlashCardAttempt.create({
       user_id: userId,
       topic_vocabulary_id: topicVocabId,
+      submit_type: submitType,
+      accuracy,
+      results: [],
       learned_words: learned_words || [],
       time_spent: time_spent || 0,
-      completed_at: now,
+      started_at: now,
+      finished_at: now,
+      day_study_id: day_study_id ? new Types.ObjectId(day_study_id) : undefined,
     });
 
-    // 3. Cập nhật streak
+    // 2. C?p nh?t/kh?i t?o FlashCardPlan cho lo?i n?p này
+    const plan = await upsertPlanAfterAttempts({
+      planModel: FlashCardPlan,
+      attemptModel: FlashCardAttempt,
+      matchFields: {
+        user_id: userId,
+        topic_vocabulary_id: topicVocabId,
+      },
+      accuracyField: "accuracy",
+      submitType,
+    });
+
+    // 3. C?p nh?t streak (luu t?i user_progress)
     await updateUserStreak(userId);
 
-    // 4. Auto unlock (dùng flashCardPlanId)
+    // 4. Auto unlock
     const unlockResult = await autoUnlockAfterComplete(
       userId,
-      flashCardPlanId,
+      topicVocabId.toString(),
       SessionType.FLASH_CARD,
-      100, // Flashcard luôn pass
+      accuracy,
       day_study_id
     );
 
@@ -101,6 +111,10 @@ export const submitFlashCardController = async (
           attempt_id: attempt._id,
           learned_count: learned_words?.length || 0,
           duration: time_spent || 0,
+          plan_summary: {
+            total_attempts: plan?.total_attempts ?? 1,
+            accuracy_overall: plan?.accuracy_overall ?? accuracy,
+          },
           ...unlockResult.unlock_result,
         },
         unlockResult.unlocked
@@ -112,3 +126,4 @@ export const submitFlashCardController = async (
     next(error);
   }
 };
+

@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
-import { FlashCardAttempt, FlashCardPlan, IFlashCardAttempt } from "../models"
+import { FlashCardAttempt, FlashCardPlan, IFlashCardAttempt } from "../models";
+import { SubmissionType } from "../models/enums/SubmissionType";
 
 export const getFlashCardByIdService = async (id: string): Promise<any> => {
   const result = await FlashCardPlan.aggregate([
@@ -34,18 +35,22 @@ export const getFlashCardByIdService = async (id: string): Promise<any> => {
         "topic.vocabularies.phonetic": 1,
         "topic.vocabularies.weight": 1,
         "topic._id": 1,
-        _id: 0
+        _id: 0,
       },
     },
   ]);
   return result;
-}
+};
 
 export const submitFlashCardService = async (
   flashCardAttempt: IFlashCardAttempt
 ): Promise<IFlashCardAttempt | null> => {
   try {
-    const newAttempt = await FlashCardAttempt.create(flashCardAttempt);
+    // Đảm bảo submit_type = PRACTICE cho practice mode
+    const newAttempt = await FlashCardAttempt.create({
+      ...flashCardAttempt,
+      submit_type: flashCardAttempt.submit_type || SubmissionType.PRACTICE,
+    });
     return newAttempt;
   } catch (err) {
     console.error("Submit FlashCard error:", err);
@@ -53,7 +58,10 @@ export const submitFlashCardService = async (
   }
 };
 
-export const getHistoryFlashCardByTopicService = async (topicId: string, userId: string) => {
+export const getHistoryFlashCardByTopicService = async (
+  topicId: string,
+  userId: string
+) => {
   const result = await FlashCardAttempt.aggregate([
     // 1️⃣ Lọc theo topic và user
     {
@@ -107,10 +115,16 @@ export const getHistoryFlashCardByTopicService = async (topicId: string, userId:
       $project: {
         _id: { $toString: "$_id" },
         started_at: {
-          $dateToString: { format: "%Y-%m-%dT%H:%M:%S.%LZ", date: "$started_at" },
+          $dateToString: {
+            format: "%Y-%m-%dT%H:%M:%S.%LZ",
+            date: "$started_at",
+          },
         },
         finished_at: {
-          $dateToString: { format: "%Y-%m-%dT%H:%M:%S.%LZ", date: "$finished_at" },
+          $dateToString: {
+            format: "%Y-%m-%dT%H:%M:%S.%LZ",
+            date: "$finished_at",
+          },
         },
         accuracy: 1,
         avg_time: { $round: [{ $divide: ["$avg_time", 1000] }, 2] }, // đổi ms -> giây

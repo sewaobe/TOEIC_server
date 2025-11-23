@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { FlashCardProgress } from "../models/flashcard_progress.model";
 import { FlashCardAttempt } from "../models";
+import { SubmissionType } from "../models/enums/SubmissionType";
 
 export const createFlashcardSessionService = async (userId: string, topicVocabularyId: string, order_queue: string[]) => {
     const sessionId = crypto.randomUUID();
@@ -120,6 +121,7 @@ export const finalizeFlashcardSessionService = async (
     const attempt = await FlashCardAttempt.create({
         user_id: userId,
         topic_vocabulary_id: progress.topic_vocabulary_id,
+        submit_type: SubmissionType.PRACTICE,
         results: logs.map((l) => ({
             vocabulary_id: l.vocab_id,
             eval_type: l.eval_type,

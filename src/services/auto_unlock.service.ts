@@ -29,23 +29,11 @@ export async function autoUnlockAfterComplete(
   reason?: string;
 }> {
   try {
-    // 1. Kiểm tra điều kiện unlock
-    const canUnlock = checkUnlockCondition(activityType, score);
-
-    if (!canUnlock) {
-      return {
-        unlocked: false,
-        message: `Điểm chưa đủ để mở khóa (cần >= ${
-          activityType === SessionType.LESSON
-            ? 0
-            : activityType === SessionType.MINI_TEST ||
-              activityType === SessionType.SHADOWING
-            ? 70
-            : 80
-        }%)`,
-        reason: "score_too_low",
-      };
-    }
+    // 1. Learning path: submit = done (không check score threshold)
+    // Score chỉ để tracking, không ảnh hưởng unlock
+    console.log(
+      `🎯 Auto unlock: activity=${activityId}, type=${activityType}, score=${score}`
+    );
 
     // 2. Tìm LearningPath active của user
     const { LearningPath } = await import("../models/learning_path.model");

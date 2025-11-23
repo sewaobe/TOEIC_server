@@ -6,8 +6,6 @@ export interface ILessonPlan extends Document {
   latest_attempt?: Types.ObjectId;
   total_attempts: number;
   accuracy_overall: number;
-  start_date?: Date;
-  end_date?: Date;
   created_at: Date;
   updated_at?: Date;
 }
@@ -19,8 +17,6 @@ const LessonPlanSchema = new Schema<ILessonPlan>(
     latest_attempt: { type: Schema.Types.ObjectId, ref: "LessonAttempt" },
     total_attempts: { type: Number, default: 0 },
     accuracy_overall: { type: Number, default: 0 }, // % đúng tổng thể
-    start_date: { type: Date, default: Date.now },
-    end_date: { type: Date },
   },
   { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
 );

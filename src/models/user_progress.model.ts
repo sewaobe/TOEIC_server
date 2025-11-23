@@ -11,6 +11,8 @@ export interface IUserProgress extends Document {
   completion_rate: number; // Tỷ lệ hoàn thành (%)
   total_study_time: number; // Tổng thời gian học (phút)
   streak_days: number; // Số ngày học liên tiếp
+  longest_streak: number; // Kỷ lục streak
+  last_study_date?: Date; // Ngày học gần nhất
   current_score: number; // Điểm hiện tại
   target_score: number; // Điểm mục tiêu
   updated_at: Date; // Thời gian cập nhật gần nhất
@@ -28,6 +30,8 @@ const UserProgressSchema = new Schema<IUserProgress>({
   completion_rate: { type: Number, default: 0 },
   total_study_time: { type: Number, default: 0 },
   streak_days: { type: Number, default: 0 },
+  longest_streak: { type: Number, default: 0 },
+  last_study_date: { type: Date, default: null },
   current_score: { type: Number, default: 0 },
   target_score: { type: Number, default: 0 },
   updated_at: { type: Date, default: Date.now },

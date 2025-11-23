@@ -1,4 +1,4 @@
-// src/routes/dictation_learningpath.route.ts
+﻿// src/routes/dictation_learningpath.route.ts
 import { Router } from "express";
 import { verifyAccessToken } from "../middlewares/verifyAccessToken.middleware";
 import { checkUnlock } from "../middlewares/checkUnlock.middleware";
@@ -15,11 +15,11 @@ const router = Router();
  *   get:
  *     tags:
  *       - Learning Path
- *     summary: Lấy dictation trong lộ trình học
+ *     summary: Get dictation in learning path
  *     description: |
- *       Lấy nội dung dictation trong lộ trình học (trả về full document giống chế độ tự luyện).
- *       - Kiểm tra unlock qua middleware checkUnlock
- *       - Trả về toàn bộ thông tin dictation (audio, transcript, timings, metadata)
+ *       Fetch dictation content (metadata id from DayStudy item).
+ *       - Unlock checked by middleware
+ *       - Returns full dictation document (audio, transcript, timings, metadata)
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -28,56 +28,20 @@ const router = Router();
  *         required: true
  *         schema:
  *           type: string
- *         description: ID của dictation plan
+ *         description: Dictation metadata id (`dictation._id`)
  *       - in: query
  *         name: day_study_id
  *         required: false
  *         schema:
  *           type: string
- *         description: ID của DayStudy cụ thể (optional, giúp xác định chính xác ngày học cần check unlock)
+ *         description: Optional DayStudy id for unlock context
  *     responses:
  *       200:
- *         description: Lấy dictation thành công (full document)
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   type: object
- *                   description: Full Dictation document
- *                   properties:
- *                     _id:
- *                       type: string
- *                     title:
- *                       type: string
- *                     audio_url:
- *                       type: string
- *                     transcript:
- *                       type: string
- *                     duration:
- *                       type: number
- *                     timings:
- *                       type: array
- *                       items:
- *                         type: object
- *                     display_mode:
- *                       type: string
- *                     part_type:
- *                       type: number
- *                     tags:
- *                       type: array
- *                       items:
- *                         type: string
- *                     level:
- *                       type: string
+ *         description: Get dictation successfully
  *       403:
- *         description: Dictation chưa được unlock
+ *         description: Not unlocked
  *       404:
- *         description: Dictation không tồn tại
+ *         description: Dictation not found
  */
 router.get(
   "/:id",
@@ -92,13 +56,18 @@ router.get(
  *   post:
  *     tags:
  *       - Learning Path
- *     summary: Submit dictation trong lộ trình
+ *     summary: Submit dictation (learning path)
  *     description: |
- *       Submit dictation trong lộ trình học (giống chế độ tự luyện + auto unlock).
- *       - Client gửi dữ liệu đã tính toán accuracy
- *       - Server lưu DictationAttempt
- *       - Cập nhật streak
- *       - Tự động unlock bài tiếp theo nếu đạt yêu cầu
+ *       Submit dictation result from learning path.
+ *       - Submit = Done (không check điểm threshold)
+ *       - Auto unlock bài tiếp theo
+ *       - Tạo attempt với submit_type = LEARNING_PATH
+ *       - Upsert plan theo submit_type
+ *       - Update streak & user_progress
+ *       - Store DictationAttempt with `submit_type=learning_path`
+ *       - Upsert DictationPlan (latest_attempt, total_attempts, accuracy_overall)
+ *       - Update streak (stored in user_progress)
+ *       - Auto unlock next item/session/day/week
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -107,7 +76,7 @@ router.get(
  *         required: true
  *         schema:
  *           type: string
- *         description: ID của dictation plan
+ *         description: Dictation metadata id (`dictation._id`)
  *     requestBody:
  *       required: true
  *       content:
@@ -116,10 +85,11 @@ router.get(
  *             type: object
  *             required:
  *               - data
+ *               - day_study_id
  *             properties:
  *               data:
  *                 type: array
- *                 description: Mảng attempts đã được client tính toán
+ *                 description: Array of attempts computed on client
  *                 items:
  *                   type: object
  *                   required:
@@ -129,48 +99,32 @@ router.get(
  *                   properties:
  *                     index:
  *                       type: number
- *                       example: 1
  *                     accuracy:
  *                       type: number
- *                       example: 85
- *                       description: "% chính xác (client đã tính)"
+ *                       description: accuracy percent
  *                     duration:
  *                       type: number
- *                       example: 120
- *                       description: "Thời gian làm bài (giây)"
+ *                       description: duration in seconds
  *                     answers:
  *                       type: array
- *                       description: "Mảng câu trả lời chi tiết"
  *                       items:
  *                         type: object
  *                     mistakes:
  *                       type: array
- *                       description: "Mảng lỗi sai (optional)"
  *                       items:
- *                         type: object
+ *                         type: string
  *                     started_at:
  *                       type: string
  *                       format: date-time
- *                       example: "2025-11-19T08:00:00.000Z"
  *                     finished_at:
  *                       type: string
  *                       format: date-time
- *                       example: "2025-11-19T08:02:00.000Z"
- *                 example:
- *                   - index: 1
- *                     accuracy: 85
- *                     duration: 120
- *                     answers: []
- *                     mistakes: []
- *                     started_at: "2025-11-19T08:00:00.000Z"
- *                     finished_at: "2025-11-19T08:02:00.000Z"
  *               day_study_id:
  *                 type: string
- *                 description: ID của DayStudy cụ thể (optional, để đảm bảo unlock đúng ngày học)
- *                 example: "6741234567890abcdef12345"
+ *                 description: DayStudy id (required)
  *     responses:
  *       200:
- *         description: Submit thành công và unlock bài tiếp theo
+ *         description: Submit success + unlock
  *         content:
  *           application/json:
  *             schema:
@@ -178,30 +132,27 @@ router.get(
  *               properties:
  *                 success:
  *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: "Unlock session tiếp theo thành công"
  *                 data:
  *                   type: object
  *                   properties:
  *                     attempts:
  *                       type: array
- *                       description: Mảng DictationAttempt đã lưu
- *                       items:
- *                         type: object
  *                     accuracy:
  *                       type: number
- *                       example: 85
  *                     passed:
  *                       type: boolean
- *                       example: true
+ *                     plan_summary:
+ *                       type: object
+ *                       properties:
+ *                         total_attempts:
+ *                           type: number
+ *                         accuracy_overall:
+ *                           type: number
  *                     next_unlocked:
- *                       type: string
- *                       example: "item"
- *                       description: "item / session / day / week"
+ *                       type: object
+ *                       nullable: true
  *       404:
- *         description: Dictation plan không tồn tại
+ *         description: Dictation not found
  */
 router.post("/:id/submit", verifyAccessToken, submitDictationController);
 
