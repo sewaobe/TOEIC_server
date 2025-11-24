@@ -170,6 +170,18 @@ export const updateLessonWithSections = async (lessonId: string, data: any) => {
     sections,
   } = data;
 
+  // Debug: log incoming sections to verify markers arrive at server
+  try {
+    console.log(
+      "updateLessonWithSections called for",
+      lessonId,
+      "sections=",
+      JSON.stringify(sections?.slice?.(0, 5) ?? sections)
+    );
+  } catch (err) {
+    console.warn("Failed to stringify sections for log", err);
+  }
+
   const lesson = await Lesson.findById(lessonId);
   if (!lesson) throw new Error("Không tìm thấy bài học!");
 
@@ -226,6 +238,16 @@ export const updateLessonWithSections = async (lessonId: string, data: any) => {
         error: s.error ?? undefined,
         tableData: s.tableData ?? [],
         medias_id: mediaIds,
+        // Copy interactive markers from FE if provided
+        markers: Array.isArray(s.markers)
+          ? s.markers.map((m: any) => ({
+              time: Number(m.time) || 0,
+              question: String(m.question || ""),
+              options: Array.isArray(m.options) ? m.options.map(String) : [],
+              correctAnswer: Number(m.correctAnswer) || 0,
+              explanation: m.explanation ? String(m.explanation) : undefined,
+            }))
+          : [],
       });
     }
 

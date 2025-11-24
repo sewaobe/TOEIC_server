@@ -4,6 +4,7 @@ import {
   getPracticeDefinitionTopicByIdController,
   getVocabularyWordsByTopicController,
   getRandomVocabularyWordsController,
+  evaluateDefinitionController,
 } from "../controllers/practice_definition.controller";
 
 /**
@@ -128,5 +129,6 @@ router.get("/topics", getAllPracticeDefinitionTopicsController);
 router.get("/topics/:topicId", getPracticeDefinitionTopicByIdController);
 router.get("/topics/:topicId/words", getVocabularyWordsByTopicController);
 router.get("/topics/:topicId/words/random", getRandomVocabularyWordsController);
+router.post("/evaluate-definition", evaluateDefinitionController);
 
 export default router;

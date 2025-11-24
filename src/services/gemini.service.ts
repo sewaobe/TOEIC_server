@@ -742,3 +742,94 @@ export async function analyzeShadowingByURL(userAudioUrl: string, meta: any) {
 
   throw new Error("Tất cả model Gemini đều quá tải hoặc lỗi.");
 }
+
+export const DefinitionEvaluationSchema = {
+  type: Type.OBJECT,
+  properties: {
+    similarity: { type: Type.NUMBER },
+    feedback: { type: Type.STRING },
+    is_correct: { type: Type.BOOLEAN },
+    standard_definition: { type: Type.STRING },
+  },
+  propertyOrdering: [
+    "similarity",
+    "feedback",
+    "is_correct",
+    "standard_definition",
+  ],
+};
+
+/**
+ * 🧠 Đánh giá định nghĩa từ vựng do học viên viết bằng Gemini
+ * @param word Từ vựng cần định nghĩa
+ * @param correctDefinition Định nghĩa chuẩn
+ * @param studentDefinition Định nghĩa do học viên viết
+ */
+export async function evaluateDefinitionWithAI(
+  word: string,
+  correctDefinition: string,
+  studentDefinition: string
+) {
+  if (!word?.trim() || !correctDefinition?.trim() || !studentDefinition?.trim())
+    throw new Error("Missing required fields for definition evaluation.");
+
+  // Đọc prompt template từ file
+  const promptPath = path.resolve(
+    __dirname,
+    "../configs/definition_evaluation.txt"
+  );
+  if (!fs.existsSync(promptPath))
+    throw new Error(`Missing prompt file: ${promptPath}`);
+
+  const promptTemplate = fs.readFileSync(promptPath, "utf8");
+
+  // Thay placeholder
+  const prompt = promptTemplate
+    .replace("{{WORD}}", word)
+    .replace("{{CORRECT_DEFINITION}}", correctDefinition)
+    .replace("{{STUDENT_DEFINITION}}", studentDefinition);
+
+  // Gọi Gemini với fallback
+  for (const model of MODELS) {
+    try {
+      console.log(`🧠 Đánh giá định nghĩa với model: ${model}`);
+      const result = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          temperature: 0.3,
+          maxOutputTokens: 1024,
+          responseMimeType: "application/json",
+          responseSchema: DefinitionEvaluationSchema,
+        },
+      });
+
+      const text = result.text?.trim();
+      if (!text) throw new Error("Empty structured response from Gemini.");
+
+      const parsed = JSON.parse(text);
+
+      // Đảm bảo có is_correct field
+      if (parsed.similarity !== undefined && parsed.is_correct === undefined) {
+        parsed.is_correct = parsed.similarity >= 0.65;
+      }
+
+      console.log("📊 Gemini Definition Evaluation:", parsed);
+      return { model, json: parsed };
+    } catch (err: any) {
+      const msg = err?.message || err?.error?.message || "";
+      if (
+        msg.includes("503") ||
+        msg.includes("UNAVAILABLE") ||
+        msg.includes("overloaded")
+      ) {
+        console.warn(`🚧 ${model} quá tải, thử model kế tiếp...`);
+        continue;
+      }
+      console.error(`❌ Lỗi khi gọi ${model}:`, msg);
+      throw err;
+    }
+  }
+
+  throw new Error("Tất cả model Gemini đều quá tải hoặc lỗi xử lý.");
+}

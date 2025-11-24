@@ -5,6 +5,7 @@ import {
   getVocabularyWordsByTopicService,
   getRandomVocabularyWordsService,
 } from "../services/practice_definition.service";
+import { evaluateDefinitionWithAI } from "../services/gemini.service";
 import { ApiResponse } from "../utils/ApiResponse";
 
 /**
@@ -102,6 +103,43 @@ export const getRandomVocabularyWordsController = async (
       .status(200)
       .json(
         ApiResponse.success(result, "Lấy danh sách từ vựng random thành công.")
+      );
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Đánh giá định nghĩa từ vựng bằng Gemini AI
+ */
+export const evaluateDefinitionController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { word, correct_definition, student_definition } = req.body;
+
+    if (!word || !correct_definition || !student_definition) {
+      return res
+        .status(400)
+        .json(
+          ApiResponse.fail(
+            "Missing required fields: word, correct_definition, student_definition"
+          )
+        );
+    }
+
+    const result = await evaluateDefinitionWithAI(
+      word,
+      correct_definition,
+      student_definition
+    );
+
+    res
+      .status(200)
+      .json(
+        ApiResponse.success(result.json, "Đánh giá định nghĩa thành công.")
       );
   } catch (err) {
     next(err);
