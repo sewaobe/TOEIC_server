@@ -32,3 +32,9 @@ export const deleteNoteService = async (user_id: string, note_id: string) => {
 
     return deletedNote;
 }
+
+export const getNoteByRelatedIdService = async (user_id: string, related_id: string) => {
+    const note = await UserNote.findOne({ user_id, "related_object.related_id": related_id });
+
+    return note;
+}

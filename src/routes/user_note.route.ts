@@ -4,6 +4,7 @@ import {
   createNoteController,
   updateNoteController,
   deleteNoteController,
+  getNoteByRelatedIdController,
 } from "../controllers/user_note.controller";
 
 /**
@@ -304,6 +305,81 @@ import {
 const router = Router();
 
 router.get("/", getNotesByUserIdController);
+
+/**
+ * @openapi
+ * /user-notes/related/{related_id}:
+ *   get:
+ *     summary: Lấy ghi chú liên quan tới một đối tượng cụ thể (theo related_id)
+ *     tags: [User Notes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: related_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID của đối tượng liên quan (ví dụ lesson_id, highlight id...)
+ *     responses:
+ *       200:
+ *         description: Lấy ghi chú liên quan thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Lấy ghi chú liên quan thành công"
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/UserNote'
+ *       401:
+ *         description: Không được phép - token không hợp lệ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Token không hợp lệ"
+ *       404:
+ *         description: Không tìm thấy ghi chú liên quan
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Không tìm thấy ghi chú liên quan"
+ *       500:
+ *         description: Lỗi server
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Đã xảy ra lỗi máy chủ"
+ */
+router.get("/related/:related_id", getNoteByRelatedIdController);
 router.post("/", createNoteController);
 router.put("/:note_id", updateNoteController);
 router.delete("/:note_id", deleteNoteController);

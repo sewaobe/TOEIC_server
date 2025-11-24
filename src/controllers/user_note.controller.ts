@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from "express";
-import { createNoteService, deleteNoteService, getNotesByUserIdService, updateNoteService } from "../services/user_note.service";
+import { createNoteService, deleteNoteService, getNoteByRelatedIdService, getNotesByUserIdService, updateNoteService } from "../services/user_note.service";
 import { ApiResponse } from "../utils/ApiResponse";
 
 export const getNotesByUserIdController = async (req: Request, res: Response, next: NextFunction) => {
@@ -61,3 +61,17 @@ export const deleteNoteController = async (req: Request, res: Response, next: Ne
         next(err);
     }
 }
+
+export const getNoteByRelatedIdController = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const user_id = req.user._id;
+        const related_id = req.params.related_id;
+        const note = await getNoteByRelatedIdService(user_id, related_id);
+
+        res.status(200).json(
+            ApiResponse.success(note, "Lấy ghi chú theo related_id thành công")
+        )
+    } catch (err) {
+        next(err);
+    }
+}   
