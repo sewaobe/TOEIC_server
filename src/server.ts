@@ -58,6 +58,7 @@ import lessonLearningPathRouter from "./routes/lesson_learningpath.route";
 import flashcardLearningPathRouter from "./routes/flashcard_learningpath.route";
 import shadowingLearningPathRouter from "./routes/shadowing_learningpath.route";
 import userStudyRouter from "./routes/user_study.route";
+import historyRouter from "./routes/history.route";
 
 import vocabulary_definition_attempt_router from "./routes/vocabulary_definition_attempt.route";
 import practice_session_router from "./routes/practice_session.route";
@@ -136,6 +137,7 @@ app.use("/api/flashcards-learningpath", flashcardLearningPathRouter);
 app.use("/api/shadowing-learningpath", shadowingLearningPathRouter);
 
 // User study general routes
+app.use("/api/history", historyRouter);
 app.use("/api/user", userStudyRouter); // GET /streak, /study-history, /stats
 
 // ========= CTV ============

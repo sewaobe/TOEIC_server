@@ -1,5 +1,9 @@
 import { Types } from "mongoose";
-import { generateToeicPlan } from "./gemini.service";
+import { generateToeicPlan, generateWeeklyPlanWithRAG } from "./gemini.service";
+import {
+  retrieveContentByMentor,
+  formatContentForPrompt,
+} from "./learningPath.retriever";
 import {
   Lesson,
   LessonSection,
@@ -14,6 +18,7 @@ import {
   User,
   Role,
   GroupUser,
+  UserProgress,
 } from "../models";
 import { LESSON_SEEDS } from "../mocks/seedLessons";
 import { Shadowing } from "../models/shadowing.model";
@@ -30,6 +35,7 @@ import { TestStatus } from "../models/enums/TestStatus";
 import { CERFLevel } from "../models/topic_vocabulary.model";
 import { WeekStudyStatus } from "../models/enums/WeekStudyStatus";
 import { SessionType } from "../models/enums/SessionType";
+import { Test } from "../models/test.model";
 
 const TEMP_AUDIO_URL =
   "https://res.cloudinary.com/dmwfnictk/video/upload/v1761728754/mdpcvzwye3kwgjkfqjwx.mp3";
@@ -983,105 +989,476 @@ export async function buildLearningPathFromGemini(
   await learningPath.save();
   // --- Auto-assign new student to a collaborator (CTV) group ---
   // Rule: choose collaborator with fewest students; if tie, choose one with highest contribution
-  (async () => {
-    try {
-      const collRole = await Role.findOne({ name: "collaborator" }).lean();
-      if (!collRole) return;
-
+  try {
+    const collRole = await Role.findOne({ name: "collaborator" }).lean();
+    if (collRole) {
       const collaborators = await User.find({ role_id: collRole._id }).lean();
-      if (!collaborators || collaborators.length === 0) return;
+      if (collaborators && collaborators.length > 0) {
+        const mentorIds = collaborators.map((c: any) => c._id);
 
-      const mentorIds = collaborators.map((c: any) => c._id);
+        // Load existing groups for these mentors
+        const groups = await GroupUser.find({
+          mentor_id: { $in: mentorIds },
+        }).lean();
+        const groupMap = new Map<string, any>();
+        for (const g of groups) groupMap.set((g.mentor_id || "").toString(), g);
 
-      // Load existing groups for these mentors
-      const groups = await GroupUser.find({
-        mentor_id: { $in: mentorIds },
-      }).lean();
-      const groupMap = new Map<string, any>();
-      for (const g of groups) groupMap.set((g.mentor_id || "").toString(), g);
+        // student counts (0 when no group exists)
+        const studentCount = new Map<string, number>();
+        for (const m of collaborators) {
+          const key = (m._id || "").toString();
+          const g = groupMap.get(key);
+          studentCount.set(
+            key,
+            g && Array.isArray(g.students) ? g.students.length : 0
+          );
+        }
 
-      // student counts (0 when no group exists)
-      const studentCount = new Map<string, number>();
-      for (const m of collaborators) {
-        const key = (m._id || "").toString();
-        const g = groupMap.get(key);
-        studentCount.set(
-          key,
-          g && Array.isArray(g.students) ? g.students.length : 0
+        // contribution counts: sum of created Lessons + Quizzes + TopicVocabularies
+        const contribMap = new Map<string, number>();
+        await Promise.all(
+          collaborators.map(async (m: any) => {
+            try {
+              const [l, q, t] = await Promise.all([
+                Lesson.countDocuments({ created_by: m._id }),
+                Quiz.countDocuments({ created_by: m._id }),
+                TopicVocabulary.countDocuments({ created_by: m._id }),
+              ]);
+              contribMap.set(
+                (m._id || "").toString(),
+                (l || 0) + (q || 0) + (t || 0)
+              );
+            } catch (err) {
+              contribMap.set((m._id || "").toString(), 0);
+            }
+          })
         );
-      }
 
-      // contribution counts: sum of created Lessons + Quizzes + TopicVocabularies
-      const contribMap = new Map<string, number>();
-      await Promise.all(
-        collaborators.map(async (m: any) => {
-          try {
-            const [l, q, t] = await Promise.all([
-              Lesson.countDocuments({ created_by: m._id }),
-              Quiz.countDocuments({ created_by: m._id }),
-              TopicVocabulary.countDocuments({ created_by: m._id }),
-            ]);
-            contribMap.set(
-              (m._id || "").toString(),
-              (l || 0) + (q || 0) + (t || 0)
-            );
-          } catch (err) {
-            contribMap.set((m._id || "").toString(), 0);
+        // find mentors with minimal students
+        let minStudents = Infinity;
+        for (const v of studentCount.values())
+          if (typeof v === "number") minStudents = Math.min(minStudents, v);
+        const candidates = collaborators.filter(
+          (m: any) => studentCount.get((m._id || "").toString()) === minStudents
+        );
+        if (candidates && candidates.length > 0) {
+          // tie-breaker: highest contribution
+          candidates.sort((a: any, b: any) => {
+            const ca = contribMap.get((a._id || "").toString()) || 0;
+            const cb = contribMap.get((b._id || "").toString()) || 0;
+            if (ca !== cb) return cb - ca; // descending
+            return (a._id || "")
+              .toString()
+              .localeCompare((b._id || "").toString());
+          });
+
+          const chosen = candidates[0];
+          if (chosen) {
+            const chosenKey = (chosen._id || "").toString();
+            const existingGroup = groupMap.get(chosenKey);
+
+            if (existingGroup) {
+              // add student id atomically (avoid duplicates) and set learningPath_id
+              await GroupUser.updateOne(
+                { _id: existingGroup._id },
+                {
+                  $addToSet: { students: userObjectId },
+                  $set: { learningPath_id: learningPath._id },
+                }
+              );
+            } else {
+              // create new group for this mentor and link learningPath
+              const groupName = chosen.profile?.fullname
+                ? `Nhóm ${chosen.profile.fullname}`
+                : "Nhóm học viên";
+              await GroupUser.create({
+                name: groupName,
+                mentor_id: chosen._id,
+                students: [userObjectId],
+                learningPath_id: learningPath._id,
+                created_at: new Date(),
+              } as any);
+            }
+
+            // Upsert UserProgress for this user+learningPath and set mentor_id
+            try {
+              const up = await UserProgress.findOne({
+                user_id: userObjectId,
+                learningPath_id: learningPath._id,
+              });
+              if (up) {
+                up.mentor_id = chosen._id;
+                up.updated_at = new Date();
+                await up.save();
+              } else {
+                await UserProgress.create({
+                  user_id: userObjectId,
+                  learningPath_id: learningPath._id,
+                  mentor_id: chosen._id,
+                  updated_at: new Date(),
+                } as any);
+              }
+            } catch (e) {
+              console.warn(
+                "Failed to update UserProgress with mentor info:",
+                e
+              );
+            }
           }
-        })
-      );
-
-      // find mentors with minimal students
-      let minStudents = Infinity;
-      for (const v of studentCount.values())
-        if (typeof v === "number") minStudents = Math.min(minStudents, v);
-      const candidates = collaborators.filter(
-        (m: any) => studentCount.get((m._id || "").toString()) === minStudents
-      );
-      if (!candidates || candidates.length === 0) return;
-
-      // tie-breaker: highest contribution
-      candidates.sort((a: any, b: any) => {
-        const ca = contribMap.get((a._id || "").toString()) || 0;
-        const cb = contribMap.get((b._id || "").toString()) || 0;
-        if (ca !== cb) return cb - ca; // descending
-        // deterministic fallback: compare ids
-        return (a._id || "").toString().localeCompare((b._id || "").toString());
-      });
-
-      const chosen = candidates[0];
-      if (!chosen) return;
-
-      const chosenKey = (chosen._id || "").toString();
-      const existingGroup = groupMap.get(chosenKey);
-
-      if (existingGroup) {
-        // add student id atomically (avoid duplicates)
-        await GroupUser.updateOne(
-          { _id: existingGroup._id },
-          { $addToSet: { students: userObjectId } }
-        );
-      } else {
-        // create new group for this mentor
-        const groupName = chosen.profile?.fullname
-          ? `Nhóm ${chosen.profile.fullname}`
-          : "Nhóm học viên";
-        await GroupUser.create({
-          name: groupName,
-          mentor_id: chosen._id,
-          students: [userObjectId],
-          created_at: new Date(),
-        } as any);
+        }
       }
-    } catch (e) {
-      // Non-fatal: if mentor assignment fails, proceed but log warning
-      console.warn("Auto-assign mentor failed:", e);
     }
-  })();
+  } catch (e) {
+    console.warn("Auto-assign mentor failed:", e);
+  }
 
   return {
     model: gen?.model ?? parsed?.model ?? null,
     geminiPlan: parsed,
+    learningPath,
+  };
+}
+
+// ========== BUILD WEEKLY LEARNING PATH (RAG-based) ==========
+/**
+ * Tạo lộ trình học 1 tuần dựa trên weekly plan từ Gemini (RAG)
+ * Chỉ mở bài đầu tiên của ngày đầu tiên, còn lại lock hết
+ */
+export async function buildWeeklyLearningPath(
+  userId: string | Types.ObjectId,
+  userInput: any,
+  mentorId: string
+) {
+  console.log("\n🎬 ==========================================");
+  console.log("🎬 buildWeeklyLearningPath STARTED");
+  console.log("🎬 userId:", userId);
+  console.log("🎬 mentorId:", mentorId);
+  console.log("🎬 userInput:", JSON.stringify(userInput, null, 2));
+  console.log("🎬 ==========================================\n");
+
+  const userObjectId =
+    typeof userId === "string" ? new Types.ObjectId(userId) : userId;
+
+  // 1. Retrieve content from DB để log
+  console.log("📚 =".repeat(40));
+  console.log("📚 RETRIEVING CONTENT FROM DB FOR MENTOR:", mentorId);
+  const retrievedContent = await retrieveContentByMentor(mentorId);
+
+  console.log("\n📊 RAG CONTENT SUMMARY:");
+  console.log("  - Lessons:", retrievedContent.lessons.length);
+  console.log("  - Quizzes:", retrievedContent.quizzes.length);
+  console.log("  - Vocabularies:", retrievedContent.vocabularies.length);
+  console.log("  - Dictations:", retrievedContent.dictations.length);
+  console.log("  - Shadowings:", retrievedContent.shadowings.length);
+  console.log("  - Tests:", retrievedContent.tests.length);
+
+  console.log("\n📝 DETAILED RAG CONTENT:");
+  console.log(JSON.stringify(retrievedContent, null, 2));
+
+  const formattedContent = formatContentForPrompt(retrievedContent);
+  console.log("\n📄 FORMATTED CONTENT FOR PROMPT:");
+  console.log(formattedContent);
+  console.log("📚 =".repeat(40));
+
+  // Xuất RAG content ra file debug
+  try {
+    const path = require("path");
+    const fs = require("fs");
+    const outputsRoot = path.resolve(__dirname, "../../../", "toeic_outputs");
+    fs.mkdirSync(outputsRoot, { recursive: true });
+    const now = new Date();
+    const ts = now.toISOString().replace(/[:.]/g, "-");
+    const ragDebugPath = path.join(outputsRoot, `${ts}-rag-content.txt`);
+    fs.writeFileSync(ragDebugPath, formattedContent, "utf8");
+    console.log(`📁 Đã xuất RAG content: ${ragDebugPath}`);
+  } catch (e) {
+    console.warn("⚠️ Không thể ghi RAG debug file:", e);
+  }
+
+  // 2) Gọi Gemini sinh weekly plan dựa trên RAG
+  console.log("\n🧠 Đang gọi Gemini generateWeeklyPlanWithRAG...");
+  const { model, json: weeklyPlan } = await generateWeeklyPlanWithRAG(
+    userInput,
+    mentorId
+  );
+  if (!weeklyPlan || !weeklyPlan.week_plan) {
+    throw new Error("Gemini không trả về weekly plan hợp lệ");
+  }
+  console.log(
+    "✅ Weekly plan nhận được từ Gemini (tóm tắt):",
+    JSON.stringify({
+      week: weeklyPlan.week_plan?.week,
+      goal: weeklyPlan.week_plan?.goal,
+      daysCount: (weeklyPlan.week_plan?.days || []).length,
+    })
+  );
+
+  // 3) Tạo LearningPath (chỉ 1 tuần) - TẠM THỜI CHƯA GẮN week_study_ids
+  const lpTitle = `Lộ trình TOEIC - Tuần ${weeklyPlan.week_plan.week || 1}`;
+  const lpDesc = weeklyPlan.week_plan.goal || "Lộ trình học TOEIC 1 tuần (RAG)";
+  const lpLevel = CERFLevel.B1; // mặc định
+  const learningPath = await LearningPath.create({
+    user_id: userObjectId,
+    title: lpTitle,
+    description: lpDesc,
+    level: lpLevel,
+    target_score: userInput?.target_score || 0,
+    isActive: true,
+    created_at: new Date(),
+    created_by: userObjectId,
+    week_study_ids: [], // sẽ update sau
+  } as any);
+  console.log(`📝 Created LearningPath: ${learningPath._id}`);
+
+  // 4) Tạo WeekStudy (tuần 1) - TẠM THỜI CHƯA GẮN days
+  const weekDoc = await WeekStudy.create({
+    no: weeklyPlan.week_plan.week || 1,
+    status: WeekStudyStatus.IN_PROGRESS,
+    started_at: weeklyPlan.summary?.start_date
+      ? new Date(weeklyPlan.summary.start_date)
+      : undefined,
+    ended_at: weeklyPlan.summary?.end_date
+      ? new Date(weeklyPlan.summary.end_date)
+      : undefined,
+    description: weeklyPlan.week_plan.goal || "Học tập chăm chỉ",
+    accuracy_overall: 0,
+    days: [], // sẽ update sau
+  } as any);
+  console.log(`📝 Created WeekStudy: ${weekDoc._id}`);
+
+  // 5) Duyệt từng ngày và tạo DayStudy + sessions
+  const days = weeklyPlan.week_plan.days || [];
+  const dayStudyIds: Types.ObjectId[] = [];
+  for (let dayIndex = 0; dayIndex < days.length; dayIndex++) {
+    const day = days[dayIndex];
+    const activities = Array.isArray(day.activities) ? day.activities : [];
+    if (!activities.length) continue;
+
+    // Xác định trạng thái ngày: chỉ ngày đầu tiên là IN_PROGRESS
+    const dayStatus =
+      dayIndex === 0 ? WeekStudyStatus.IN_PROGRESS : WeekStudyStatus.LOCK;
+
+    // Tạo DayStudy trước, sessions sẽ fill sau
+    const dayStudyDoc = await DayStudy.create({
+      week_id: weekDoc._id,
+      dayOfWeek: (() => {
+        try {
+          const dt = day?.date ? new Date(day.date) : null;
+          if (dt && !isNaN(dt.getTime())) return dt.getDay();
+        } catch (e) {}
+        return (dayIndex + 1) % 7; // fallback
+      })(),
+      status: dayStatus,
+      accuracy_overall: 0,
+      sessions: [],
+      created_at: new Date(),
+    } as any);
+
+    // Build sessions: chỉ mở khoá session đầu tiên của ngày đầu tiên
+    const sessions: any[] = [];
+    let isFirstSession = dayIndex === 0; // true chỉ ở ngày đầu tiên
+    let sessionNo = 1;
+
+    for (const activity of activities) {
+      const t = (activity?.type || "").toString().toLowerCase();
+      const ridString = activity?.resource_id
+        ? activity.resource_id.toString()
+        : null;
+      if (!ridString) {
+        console.warn(
+          `⚠️ Day ${
+            dayIndex + 1
+          }: activity type "${t}" thiếu resource_id, bỏ qua`
+        );
+        continue;
+      }
+
+      let rid: Types.ObjectId | null = null;
+      try {
+        rid = new Types.ObjectId(ridString);
+      } catch (e) {
+        console.warn(
+          `⚠️ Day ${
+            dayIndex + 1
+          }: resource_id "${ridString}" không phải ObjectId hợp lệ, bỏ qua`
+        );
+        continue;
+      }
+
+      let kind: SessionType | null = null;
+      let collectionName = "";
+      if (t === "lesson" || t === "video") {
+        kind = SessionType.LESSON;
+        collectionName = "lessons";
+      } else if (t === "quiz") {
+        kind = SessionType.QUIZ;
+        collectionName = "quizzes";
+      } else if (t === "vocabulary" || t === "flashcard") {
+        kind = SessionType.FLASH_CARD;
+        collectionName = "topicvocabularies";
+      } else if (t === "dictation") {
+        kind = SessionType.DICTATION;
+        collectionName = "dictations";
+      } else if (t === "shadowing") {
+        kind = SessionType.SHADOWING;
+        collectionName = "shadowings";
+      } else if (t === "mini_test" || t === "test") {
+        kind = SessionType.MINI_TEST;
+        collectionName = "tests";
+      }
+      if (!kind) {
+        console.warn(
+          `⚠️ Day ${dayIndex + 1}: unknown activity type "${t}", bỏ qua`
+        );
+        continue;
+      }
+
+      // Validate resource_id có tồn tại trong RAG content không
+      let found = false;
+      const ridStr = rid.toString();
+      if (collectionName === "lessons")
+        found = retrievedContent.lessons.some(
+          (l: any) => l._id?.toString() === ridStr
+        );
+      else if (collectionName === "quizzes")
+        found = retrievedContent.quizzes.some(
+          (q: any) => q._id?.toString() === ridStr
+        );
+      else if (collectionName === "topicvocabularies")
+        found = retrievedContent.vocabularies.some(
+          (v: any) => v._id?.toString() === ridStr
+        );
+      else if (collectionName === "dictations")
+        found = retrievedContent.dictations.some(
+          (d: any) => d._id?.toString() === ridStr
+        );
+      else if (collectionName === "shadowings")
+        found = retrievedContent.shadowings.some(
+          (s: any) => s._id?.toString() === ridStr
+        );
+      else if (collectionName === "tests")
+        found = retrievedContent.tests.some(
+          (t: any) => t._id?.toString() === ridStr
+        );
+
+      if (!found) {
+        console.warn(
+          `⚠️ Day ${
+            dayIndex + 1
+          }: resource_id "${ridStr}" (type="${t}") KHÔNG TÌM THẤY trong collection "${collectionName}", bỏ qua`
+        );
+        continue;
+      }
+
+      console.log(
+        `✅ Day ${
+          dayIndex + 1
+        } session ${sessionNo}: ${t} → ${collectionName} [${ridStr}]`
+      );
+
+      const sessionStatus = isFirstSession
+        ? WeekStudyStatus.IN_PROGRESS
+        : WeekStudyStatus.LOCK;
+      // Sau khi tạo session đầu tiên của ngày đầu tiên -> các session còn lại lock
+      if (isFirstSession) isFirstSession = false;
+
+      // Validate part_type: phải từ 1-7, nếu không hợp lệ thì không set
+      let validPartType: number | undefined = undefined;
+      if (
+        typeof activity?.part_type === "number" &&
+        activity.part_type >= 1 &&
+        activity.part_type <= 7
+      ) {
+        validPartType = activity.part_type;
+      }
+
+      const sessionData: any = {
+        session_no: sessionNo++,
+        status: sessionStatus,
+        items: [
+          {
+            kind,
+            activity_id: rid,
+            status: sessionStatus,
+          },
+        ],
+      };
+
+      // Chỉ thêm part_type nếu hợp lệ
+      if (validPartType !== undefined) {
+        sessionData.part_type = validPartType;
+      }
+
+      sessions.push(sessionData);
+    }
+
+    if (sessions.length === 0) {
+      // không có session hợp lệ -> xoá day vừa tạo để tránh rác
+      await DayStudy.deleteOne({ _id: dayStudyDoc._id });
+      console.log(`⚠️ Day ${dayIndex + 1} không có session hợp lệ, đã xoá`);
+      continue;
+    }
+
+    // GẮN sessions vào DayStudy VÀ LƯU LẠI
+    dayStudyDoc.sessions = sessions as any;
+    await dayStudyDoc.save();
+    dayStudyIds.push(dayStudyDoc._id as Types.ObjectId);
+    console.log(
+      `✅ Created DayStudy ${dayIndex + 1} (${dayStudyDoc._id}) with ${
+        sessions.length
+      } sessions`
+    );
+  }
+
+  console.log(`📊 Total days created: ${dayStudyIds.length}`);
+
+  // 6) GẮN days vào WeekStudy VÀ LƯU LẠI
+  weekDoc.days = dayStudyIds;
+  await weekDoc.save();
+  console.log(
+    `✅ Updated WeekStudy ${weekDoc._id} with ${dayStudyIds.length} days`
+  );
+
+  // 7) GẮN week_study_ids vào LearningPath VÀ LƯU LẠI
+  learningPath.week_study_ids = [weekDoc._id as Types.ObjectId];
+  await learningPath.save();
+  console.log(
+    `✅ Updated LearningPath ${learningPath._id} with week ${weekDoc._id}`
+  );
+
+  console.log("✅ ĐÃ TẠO LỘ TRÌNH 1 TUẦN (RAG) THÀNH CÔNG:", {
+    learningPathId: learningPath._id?.toString(),
+    weekId: weekDoc._id?.toString(),
+    days: dayStudyIds.length,
+  });
+
+  // 8) Lưu UserProgress để track tiến độ học
+  try {
+    const up = await UserProgress.findOne({
+      user_id: userObjectId,
+      learningPath_id: learningPath._id,
+    });
+    if (up) {
+      up.mentor_id = new Types.ObjectId(mentorId);
+      up.updated_at = new Date();
+      await up.save();
+      console.log(`✅ Updated UserProgress for user ${userId}`);
+    } else {
+      await UserProgress.create({
+        user_id: userObjectId,
+        learningPath_id: learningPath._id,
+        mentor_id: new Types.ObjectId(mentorId),
+        updated_at: new Date(),
+      } as any);
+      console.log(`✅ Created UserProgress for user ${userId}`);
+    }
+  } catch (e) {
+    console.warn("⚠️ Failed to save UserProgress:", e);
+  }
+
+  return {
+    model,
+    weeklyPlan,
     learningPath,
   };
 }

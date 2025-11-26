@@ -1,5 +1,12 @@
 import Router from "express";
-import { analyzeDictationController, analyzeShadowingController, dictionaryController, generateToeicPlanController, translateController } from "../controllers/gemini.controller";
+import {
+  analyzeDictationController,
+  analyzeShadowingController,
+  dictionaryController,
+  generateToeicPlanController,
+  generateWeeklyPlanController,
+  translateController,
+} from "../controllers/gemini.controller";
 
 const router = Router();
 
@@ -59,12 +66,82 @@ router.post("/generate-toeic-plan", generateToeicPlanController);
 
 /**
  * @openapi
+ * /gemini/generate-weekly-plan:
+ *   post:
+ *     summary: Tạo lộ trình học TOEIC 1 tuần dựa trên RAG
+ *     description: |
+ *       Sinh lộ trình học TOEIC **1 tuần (7 ngày)** dựa trên nội dung bài học có sẵn trong database của mentor.
+ *       - Sử dụng RAG (Retrieval-Augmented Generation) để lấy lesson/quiz/vocabulary/dictation/shadowing/test từ DB.
+ *       - Cuối tuần có mini test.
+ *       - Chỉ mở bài đầu tiên của ngày đầu tiên, còn lại lock.
+ *       - Yêu cầu Bearer Token hợp lệ và user đã được gán mentor.
+ *     tags:
+ *       - Gemini
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - current_score
+ *               - target_score
+ *               - current_accuracy
+ *               - start_date
+ *               - deadline
+ *               - weekly_study_hours
+ *               - study_days_per_week
+ *             properties:
+ *               current_score:
+ *                 type: number
+ *                 example: 450
+ *               target_score:
+ *                 type: number
+ *                 example: 650
+ *               current_accuracy:
+ *                 type: object
+ *                 properties:
+ *                   part1: { type: number, example: 70 }
+ *                   part2: { type: number, example: 60 }
+ *                   part3: { type: number, example: 50 }
+ *                   part4: { type: number, example: 45 }
+ *                   part5: { type: number, example: 55 }
+ *                   part6: { type: number, example: 50 }
+ *                   part7: { type: number, example: 48 }
+ *               start_date:
+ *                 type: string
+ *                 example: "2025-11-27"
+ *               deadline:
+ *                 type: string
+ *                 example: "2025-12-03"
+ *               weekly_study_hours:
+ *                 type: number
+ *                 example: 24.5
+ *               study_days_per_week:
+ *                 type: number
+ *                 example: 7
+ *     responses:
+ *       200:
+ *         description: Tạo lộ trình học 1 tuần thành công
+ *       400:
+ *         description: User chưa được gán mentor hoặc dữ liệu không hợp lệ
+ *       401:
+ *         description: Chưa đăng nhập
+ *       500:
+ *         description: Lỗi hệ thống
+ */
+router.post("/generate-weekly-plan", generateWeeklyPlanController);
+
+/**
+ * @openapi
  * /gemini/dictionary:
  *   post:
  *     summary: Tra cứu từ vựng song ngữ Anh - Việt thông minh
  *     description: |
- *       Dịch và tra cứu chi tiết từ vựng Anh - Việt bằng AI.  
- *       - Nếu người dùng nhập **từ tiếng Việt**, hệ thống sẽ dịch sang tiếng Anh rồi lấy toàn bộ thông tin từ điển (định nghĩa, ví dụ, phiên âm, audio...).  
+ *       Dịch và tra cứu chi tiết từ vựng Anh - Việt bằng AI.
+ *       - Nếu người dùng nhập **từ tiếng Việt**, hệ thống sẽ dịch sang tiếng Anh rồi lấy toàn bộ thông tin từ điển (định nghĩa, ví dụ, phiên âm, audio...).
  *       - Nếu người dùng nhập **từ tiếng Anh**, hệ thống sẽ lấy trực tiếp dữ liệu từ API Dictionary và dịch nghĩa sang tiếng Việt.
  *     tags:
  *       - Gemini
@@ -139,7 +216,7 @@ router.post("/dictionary", dictionaryController);
  *   post:
  *     summary: Dịch văn bản giữa hai ngôn ngữ bằng Gemini AI
  *     description: |
- *       API dịch đoạn văn hoặc câu giữa hai ngôn ngữ bằng **Gemini 2.5 Flash**.  
+ *       API dịch đoạn văn hoặc câu giữa hai ngôn ngữ bằng **Gemini 2.5 Flash**.
  *       Kết quả trả về bao gồm bản dịch chính xác, tự nhiên và phần ghi chú (translationNotes) giúp người dùng hiểu rõ các sắc thái hoặc cụm từ cần chú ý.
  *     tags:
  *       - Gemini
@@ -311,7 +388,7 @@ router.post("/translate", translateController);
  *       500:
  *         description: Lỗi hệ thống hoặc model không phản hồi hợp lệ
  */
-router.post("/dictation-analysis", analyzeDictationController)
+router.post("/dictation-analysis", analyzeDictationController);
 
 /**
  * @openapi
@@ -319,12 +396,12 @@ router.post("/dictation-analysis", analyzeDictationController)
  *   post:
  *     summary: Phân tích và chấm điểm bài luyện Shadowing từng câu bằng Gemini AI
  *     description: |
- *       API chấm **mỗi đoạn (timing)** của bài Shadowing ngay sau khi người học nói xong.  
- *       - Nhận vào 2 URL Cloudinary (bản **user nói** và bản **native gốc**)  
- *       - Gọi Flask WhisperX để nhận transcript cho cả hai audio  
- *       - Gửi transcript và thời lượng vào Gemini để chấm điểm chi tiết theo các tiêu chí:  
- *         **similarity, pronunciation, accuracy, fluency, intonation, feedback**  
- *       
+ *       API chấm **mỗi đoạn (timing)** của bài Shadowing ngay sau khi người học nói xong.
+ *       - Nhận vào 2 URL Cloudinary (bản **user nói** và bản **native gốc**)
+ *       - Gọi Flask WhisperX để nhận transcript cho cả hai audio
+ *       - Gửi transcript và thời lượng vào Gemini để chấm điểm chi tiết theo các tiêu chí:
+ *         **similarity, pronunciation, accuracy, fluency, intonation, feedback**
+ *
  *       > ⚡ Phân tích ngay sau mỗi đoạn, giúp phản hồi tức thời cho người học.
  *     tags:
  *       - Gemini

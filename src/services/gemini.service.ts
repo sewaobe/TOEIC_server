@@ -3,6 +3,10 @@ import path from "path";
 import { GoogleGenAI } from "@google/genai";
 import { Type } from "@google/genai";
 import { writeTotalsReport } from "../utils/planTotals";
+import {
+  retrieveContentByMentor,
+  formatContentForPrompt,
+} from "./learningPath.retriever";
 
 const ai = new GoogleGenAI({});
 
@@ -113,6 +117,80 @@ export const ToeicPlanSchema = {
   propertyOrdering: ["summary", "phase_overview", "schedule_by_week"],
 };
 
+// ========== WEEKLY PLAN SCHEMA (RAG-based) ==========
+export const WeeklyPlanSchema = {
+  type: Type.OBJECT,
+  properties: {
+    summary: {
+      type: Type.OBJECT,
+      properties: {
+        current_score: { type: Type.NUMBER },
+        target_score: { type: Type.NUMBER },
+        hours_per_day: { type: Type.NUMBER },
+        study_days_per_week: { type: Type.NUMBER },
+        start_date: { type: Type.STRING },
+        end_date: { type: Type.STRING },
+      },
+      propertyOrdering: [
+        "current_score",
+        "target_score",
+        "hours_per_day",
+        "study_days_per_week",
+        "start_date",
+        "end_date",
+      ],
+    },
+    week_plan: {
+      type: Type.OBJECT,
+      properties: {
+        week: { type: Type.NUMBER },
+        goal: { type: Type.STRING },
+        days: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              date: { type: Type.STRING },
+              activities: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    type: { type: Type.STRING },
+                    resource_id: { type: Type.STRING },
+                    title: { type: Type.STRING },
+                    duration: { type: Type.NUMBER },
+                    part_type: { type: Type.NUMBER },
+                  },
+                  propertyOrdering: [
+                    "type",
+                    "resource_id",
+                    "title",
+                    "duration",
+                    "part_type",
+                  ],
+                },
+              },
+            },
+            propertyOrdering: ["date", "activities"],
+          },
+        },
+      },
+      propertyOrdering: ["week", "goal", "days"],
+    },
+    final_summary: {
+      type: Type.OBJECT,
+      properties: {
+        total_hours: { type: Type.NUMBER },
+        key_focus: { type: Type.ARRAY, items: { type: Type.STRING } },
+        recommendation: { type: Type.STRING },
+      },
+      propertyOrdering: ["total_hours", "key_focus", "recommendation"],
+    },
+  },
+  propertyOrdering: ["summary", "week_plan", "final_summary"],
+};
+
 export async function generateToeicPlan(userInput: any) {
   const templatePath = path.resolve(__dirname, "../configs/toeic-plan.txt");
   const promptTemplate = fs.readFileSync(templatePath, "utf8");
@@ -184,6 +262,114 @@ export async function generateToeicPlan(userInput: any) {
         }
       } catch (e) {
         console.warn("⚠️ Không thể xuất báo cáo tổng thời gian từ service:", e);
+      }
+
+      return { model, json: parsed };
+    } catch (err: any) {
+      const msg = err?.message || err?.error?.message || "";
+      if (
+        msg.includes("503") ||
+        msg.includes("overloaded") ||
+        msg.includes("UNAVAILABLE") ||
+        err?.error?.code === 503
+      ) {
+        console.warn(`🚧 ${model} bị quá tải, thử model kế tiếp...`);
+        continue;
+      }
+      console.error(`❌ Lỗi khi gọi ${model}:`, msg);
+      throw err;
+    }
+  }
+
+  throw new Error("Tất cả model đều quá tải, vui lòng thử lại sau vài phút.");
+}
+
+// ========== GENERATE WEEKLY PLAN WITH RAG ==========
+/**
+ * Tạo lộ trình học 1 tuần dựa trên nội dung DB (RAG)
+ * @param userInput - Thông tin user (current_score, target_score, etc.)
+ * @param mentorId - ID của mentor (để lấy nội dung từ DB)
+ * @returns { model: string, json: any }
+ */
+export async function generateWeeklyPlanWithRAG(
+  userInput: any,
+  mentorId: string
+) {
+  // 1. Retrieve content from DB
+  console.log(`📚 Retrieving content for mentor: ${mentorId}`);
+  const content = await retrieveContentByMentor(mentorId);
+  const formattedContent = formatContentForPrompt(content);
+
+  // 2. Load prompt template
+  const templatePath = path.resolve(
+    __dirname,
+    "../configs/toeic-plan-weekly.txt"
+  );
+  const promptTemplate = fs.readFileSync(templatePath, "utf8");
+
+  // 3. Inject user input + RAG content
+  const prompt = promptTemplate
+    .replace("{{USER_INPUT}}", JSON.stringify(userInput, null, 2))
+    .replace("{{AVAILABLE_CONTENT}}", formattedContent);
+
+  console.log("🧩 Gemini Weekly Plan - User Input:", userInput);
+  console.log(
+    "📚 RAG Content (first 500 chars):",
+    formattedContent.slice(0, 500)
+  );
+
+  // 4. Call Gemini with WeeklyPlanSchema
+  for (const model of MODELS) {
+    try {
+      console.log(`🧠 Trying model (weekly plan): ${model}`);
+
+      const result = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          temperature: 0.1,
+          maxOutputTokens: 32000,
+          responseMimeType: "application/json",
+          responseSchema: WeeklyPlanSchema,
+        },
+      });
+
+      if (!result.text) throw new Error("Empty structured response");
+
+      console.log(
+        "🧩 Raw Gemini weekly output (first 300 chars):",
+        result.text.slice(0, 300)
+      );
+
+      let parsed: any = null;
+      try {
+        parsed = JSON.parse(result.text);
+      } catch (e) {
+        console.warn("⚠️ Không parse được JSON, trả về text thô.");
+      }
+
+      // Export artifacts for debugging
+      try {
+        const outputsRoot = path.resolve(
+          __dirname,
+          "../../../",
+          "toeic_outputs"
+        );
+        fs.mkdirSync(outputsRoot, { recursive: true });
+        const now = new Date();
+        const ts = now.toISOString().replace(/[:.]/g, "-");
+        const rawName = `${ts}-${model}-weekly-raw.txt`;
+        const rawPath = path.join(outputsRoot, rawName);
+        fs.writeFileSync(rawPath, String(result.text || ""), "utf8");
+
+        if (parsed && typeof parsed === "object") {
+          const jsonName = `${ts}-${model}-weekly-plan.json`;
+          const jsonPath = path.join(outputsRoot, jsonName);
+          fs.writeFileSync(jsonPath, JSON.stringify(parsed, null, 2), "utf8");
+          console.log(`📝 Đã xuất weekly plan JSON: ${jsonPath}`);
+        }
+      } catch (e) {
+        console.warn("⚠️ Không thể ghi file outputs:", e);
       }
 
       return { model, json: parsed };
