@@ -14,9 +14,11 @@ export const createDictationAttempt = async (data: Partial<IDictationAttempt>[],
         throw new Error("Failed to create dictation attempts");
     }
 
-    updateDictationPlanService(created[0].dictation_id.toString(), userId).catch(err => {
-        throw err;
-    });
+    try {
+        await updateDictationPlanService(created[0].dictation_id.toString(), userId);
+    } catch (err) {
+        console.error("Failed to update dictation plan after attempt", err);
+    }
 
     return created;
 }

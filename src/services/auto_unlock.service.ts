@@ -31,9 +31,6 @@ export async function autoUnlockAfterComplete(
   try {
     // 1. Learning path: submit = done (không check score threshold)
     // Score chỉ để tracking, không ảnh hưởng unlock
-    console.log(
-      `🎯 Auto unlock: activity=${activityId}, type=${activityType}, score=${score}`
-    );
 
     // 2. Tìm LearningPath active của user
     const { LearningPath } = await import("../models/learning_path.model");
@@ -61,7 +58,6 @@ export async function autoUnlockAfterComplete(
         "sessions.items.activity_id": new Types.ObjectId(activityId),
         "sessions.items.kind": activityType,
       });
-      console.log(`🎯 Using specified day_study_id: ${dayStudyId}`);
     }
 
     if (!dayStudy) {
@@ -71,7 +67,6 @@ export async function autoUnlockAfterComplete(
         "sessions.items.activity_id": new Types.ObjectId(activityId),
         "sessions.items.kind": activityType,
       }).sort({ created_at: -1 });
-      console.log(`🔍 Auto-detected DayStudy: ${dayStudy?._id}`);
     }
 
     if (!dayStudy) {
@@ -105,13 +100,7 @@ export async function autoUnlockAfterComplete(
       if (sessionIndex !== -1) break;
     }
 
-    console.log(
-      `🔍 autoUnlock - Found activity at session ${sessionIndex}, item ${itemIndex}`
-    );
-    console.log(`📍 DayStudy ID: ${finalDayStudyId}`);
-
     if (sessionIndex === -1 || itemIndex === -1) {
-      console.error(`❌ Activity not found in learning path`);
       return {
         unlocked: false,
         message: "Không tìm thấy activity trong lộ trình",
@@ -233,7 +222,6 @@ async function updateUserProgressSafe(
   try {
     const dayStudy = await DayStudy.findById(dayStudyId).select("week_id");
     if (!dayStudy?.week_id) {
-      console.log("⚠️ No week_id found in DayStudy");
       return;
     }
 
@@ -247,9 +235,6 @@ async function updateUserProgressSafe(
 
     if (learningPath) {
       await updateUserProgress(userId, learningPath._id as Types.ObjectId);
-      console.log("✅ UserProgress updated");
-    } else {
-      console.log("⚠️ No active LearningPath found for this week");
     }
   } catch (error) {
     console.error("Error updating UserProgress:", error);

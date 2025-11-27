@@ -74,20 +74,18 @@ export async function unlockNextItem(
   const session = dayStudy.sessions[sessionIndex];
   if (!session) throw new Error("Session not found");
 
-  console.log(`🔓 unlockNextItem - Session ${sessionIndex}, Item ${itemIndex}`);
-
   // 1. Đánh dấu item hiện tại = COMPLETED
   session.items[itemIndex].status = WeekStudyStatus.COMPLETED;
-  console.log(`✅ Marked item ${itemIndex} as COMPLETED`);
 
   // 2. Check còn item nào không
   if (itemIndex + 1 < session.items.length) {
-    // Còn → mở item tiếp
-    session.items[itemIndex + 1].status = WeekStudyStatus.IN_PROGRESS;
-    console.log(`🔓 Unlocked next item ${itemIndex + 1}`);
+    const nextItem = session.items[itemIndex + 1];
+    // Chỉ unlock nếu đang LOCK, không động vào COMPLETED hoặc IN_PROGRESS
+    if (nextItem.status === WeekStudyStatus.LOCK) {
+      nextItem.status = WeekStudyStatus.IN_PROGRESS;
+    }
 
     await dayStudy.save();
-    console.log(`💾 Saved DayStudy`);
 
     // Refetch để lấy dữ liệu chính xác từ DB
     const updatedDayStudy = await DayStudy.findById(dayStudyId);
@@ -102,10 +100,8 @@ export async function unlockNextItem(
 
   // 3. Hết items → đánh dấu session completed
   session.status = WeekStudyStatus.COMPLETED;
-  console.log(`✅ Session ${sessionIndex} marked as COMPLETED`);
 
   await dayStudy.save();
-  console.log(`💾 Saved DayStudy`);
 
   return { session_completed: true };
 }
@@ -120,26 +116,24 @@ export async function unlockNextSession(
   const dayStudy = await DayStudy.findById(dayStudyId);
   if (!dayStudy) throw new Error("DayStudy not found");
 
-  console.log(`🔓 unlockNextSession - Current session index: ${sessionIndex}`);
-
   // Check còn session tiếp không
   if (sessionIndex + 1 < dayStudy.sessions.length) {
     const nextSession = dayStudy.sessions[sessionIndex + 1];
-    nextSession.status = WeekStudyStatus.IN_PROGRESS;
-    console.log(
-      `🔓 Unlocked session ${sessionIndex + 1} (session_no: ${
-        nextSession.session_no
-      })`
-    );
 
-    // Unlock item đầu tiên của session mới
-    if (nextSession.items.length > 0) {
-      nextSession.items[0].status = WeekStudyStatus.IN_PROGRESS;
-      console.log(`🔓 Unlocked first item in session ${sessionIndex + 1}`);
+    // Chỉ unlock session nếu đang LOCK
+    if (nextSession.status === WeekStudyStatus.LOCK) {
+      nextSession.status = WeekStudyStatus.IN_PROGRESS;
+
+      // Unlock item đầu tiên của session mới nếu đang LOCK
+      if (
+        nextSession.items.length > 0 &&
+        nextSession.items[0].status === WeekStudyStatus.LOCK
+      ) {
+        nextSession.items[0].status = WeekStudyStatus.IN_PROGRESS;
+      }
     }
 
     await dayStudy.save();
-    console.log(`💾 Saved DayStudy`);
 
     // Refetch để lấy dữ liệu chính xác từ DB
     const updatedDayStudy = await DayStudy.findById(dayStudyId);
@@ -152,7 +146,6 @@ export async function unlockNextSession(
   }
 
   // Hết sessions → ngày hoàn thành
-  console.log(`✅ All sessions completed - Day completed`);
   return { day_completed: true };
 }
 
@@ -200,21 +193,14 @@ export async function unlockNextDay(
   );
   if (!weekStudy) throw new Error("WeekStudy not found");
 
-  console.log(
-    `📅 Current week ${weekStudy.no}, days count: ${weekStudy.days.length}`
-  );
-
   // 5. Tìm index của ngày hiện tại trong days array
   const currentDayIndex = (weekStudy.days as any[]).findIndex(
     (d) => d._id.toString() === dayStudyId.toString()
   );
 
-  console.log(`📍 Current day index in week.days: ${currentDayIndex}`);
-
   // 6. Check còn ngày nào sau đó không
   if (currentDayIndex === -1 || currentDayIndex + 1 >= weekStudy.days.length) {
     // Hết ngày → tuần hoàn thành
-    console.log(`✅ Week ${weekStudy.no} completed - no more days`);
     weekStudy.status = WeekStudyStatus.COMPLETED;
     await weekStudy.save();
     return { week_completed: true };
@@ -222,18 +208,23 @@ export async function unlockNextDay(
 
   // 7. Lấy ngày tiếp theo
   const nextDay = (weekStudy.days as any[])[currentDayIndex + 1];
-  console.log(
-    `🔓 Unlocking next day: ${nextDay._id} (dayOfWeek: ${nextDay.dayOfWeek})`
-  );
 
-  // 8. Unlock ngày tiếp + session đầu + item đầu
-  nextDay.status = WeekStudyStatus.IN_PROGRESS;
+  // 8. Unlock ngày tiếp + session đầu + item đầu (chỉ nếu đang LOCK)
+  if (nextDay.status === WeekStudyStatus.LOCK) {
+    nextDay.status = WeekStudyStatus.IN_PROGRESS;
+  }
 
   if (nextDay.sessions.length > 0) {
-    nextDay.sessions[0].status = WeekStudyStatus.IN_PROGRESS;
+    const firstSession = nextDay.sessions[0];
+    if (firstSession.status === WeekStudyStatus.LOCK) {
+      firstSession.status = WeekStudyStatus.IN_PROGRESS;
+    }
 
-    if (nextDay.sessions[0].items.length > 0) {
-      nextDay.sessions[0].items[0].status = WeekStudyStatus.IN_PROGRESS;
+    if (firstSession.items.length > 0) {
+      const firstItem = firstSession.items[0];
+      if (firstItem.status === WeekStudyStatus.LOCK) {
+        firstItem.status = WeekStudyStatus.IN_PROGRESS;
+      }
     }
   }
 
@@ -296,16 +287,11 @@ export async function unlockNextWeek(
     (w: Types.ObjectId) => w.toString() === weekStudyId.toString()
   );
 
-  console.log(
-    `📅 Current week index: ${currentWeekIndex}, total weeks: ${learningPath.week_study_ids.length}`
-  );
-
   // 5. Check còn tuần nào tiếp theo không
   if (
     currentWeekIndex === -1 ||
     currentWeekIndex + 1 >= learningPath.week_study_ids.length
   ) {
-    console.log("✅ All weeks completed - Learning path finished!");
     return {
       week_completed: true,
       all_weeks_completed: true,
@@ -318,34 +304,40 @@ export async function unlockNextWeek(
   const nextWeek = await WeekStudy.findById(nextWeekId).populate("days");
 
   if (!nextWeek) {
-    console.error("❌ Next week not found:", nextWeekId);
     return {
       week_completed: true,
       message: "🎉 Chúc mừng! Bạn đã hoàn thành tuần học!",
     };
   }
 
-  console.log(`🔓 Unlocking week ${nextWeek.no}`);
-
-  // 7. Unlock tuần tiếp + ngày đầu + session đầu + item đầu
-  nextWeek.status = WeekStudyStatus.IN_PROGRESS;
+  // 7. Unlock tuần tiếp + ngày đầu + session đầu + item đầu (chỉ nếu đang LOCK)
+  if (nextWeek.status === WeekStudyStatus.LOCK) {
+    nextWeek.status = WeekStudyStatus.IN_PROGRESS;
+  }
   await nextWeek.save();
 
   if (nextWeek.days.length > 0) {
     const firstDay = await DayStudy.findById(nextWeek.days[0]);
     if (firstDay) {
-      firstDay.status = WeekStudyStatus.IN_PROGRESS;
+      if (firstDay.status === WeekStudyStatus.LOCK) {
+        firstDay.status = WeekStudyStatus.IN_PROGRESS;
+      }
 
       if (firstDay.sessions.length > 0) {
-        firstDay.sessions[0].status = WeekStudyStatus.IN_PROGRESS;
+        const firstSession = firstDay.sessions[0];
+        if (firstSession.status === WeekStudyStatus.LOCK) {
+          firstSession.status = WeekStudyStatus.IN_PROGRESS;
+        }
 
-        if (firstDay.sessions[0].items.length > 0) {
-          firstDay.sessions[0].items[0].status = WeekStudyStatus.IN_PROGRESS;
+        if (firstSession.items.length > 0) {
+          const firstItem = firstSession.items[0];
+          if (firstItem.status === WeekStudyStatus.LOCK) {
+            firstItem.status = WeekStudyStatus.IN_PROGRESS;
+          }
         }
       }
 
       await firstDay.save();
-      console.log(`✅ Unlocked first day of week ${nextWeek.no}`);
     }
   }
 

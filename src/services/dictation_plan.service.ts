@@ -66,7 +66,6 @@ export const updateDictationPlanService = async (
         latest_attempt: latestAttempt._id,
         total_attempts: totalAttempts,
         accuracy_overall: Math.round(avgAccuracy),
-        submit_type: submitType,
         updated_at: new Date(),
       },
       $setOnInsert: {
