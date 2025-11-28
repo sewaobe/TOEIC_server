@@ -9,8 +9,22 @@ export const createPracticeTopicVocabularyService = async (
   data: Partial<IPracticeTopicVocabulary>,
   userId: string
 ) => {
+  const partValue = ((): any => {
+    const v: any = (data as any).part_type;
+    if (v == null) return undefined;
+    if (typeof v === "number") return v;
+    if (typeof v === "string") {
+      const m = v.match(/(\d+)/);
+      if (m) return Number(m[1]);
+      const n = Number(v);
+      if (!isNaN(n)) return n;
+    }
+    return undefined;
+  })();
+
   const topic = new PracticeTopicVocabulary({
     ...data,
+    part_type: partValue,
     created_by: userId,
   });
   return await topic.save();
@@ -72,11 +86,25 @@ export const updatePracticeTopicVocabularyService = async (
   id: string,
   data: Partial<IPracticeTopicVocabulary>
 ) => {
-  return await PracticeTopicVocabulary.findByIdAndUpdate(
-    id,
-    { ...data, updated_at: new Date() },
-    { new: true }
-  ).populate("vocabulary_words");
+  const partValue = ((): any => {
+    const v: any = (data as any).part_type;
+    if (v == null) return undefined;
+    if (typeof v === "number") return v;
+    if (typeof v === "string") {
+      const m = v.match(/(\d+)/);
+      if (m) return Number(m[1]);
+      const n = Number(v);
+      if (!isNaN(n)) return n;
+    }
+    return undefined;
+  })();
+
+  const updateData = { ...data, updated_at: new Date() } as any;
+  if (partValue !== undefined) updateData.part_type = partValue;
+
+  return await PracticeTopicVocabulary.findByIdAndUpdate(id, updateData, {
+    new: true,
+  }).populate("vocabulary_words");
 };
 
 // Delete practice topic vocabulary
