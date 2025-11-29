@@ -8,7 +8,10 @@ import {
   formatContentForPrompt,
 } from "./learningPath.retriever";
 
-const ai = new GoogleGenAI({});
+
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+});
 
 const MODELS = [
   "gemini-2.5-flash-lite",
@@ -476,9 +479,8 @@ export async function fetchUnsplashImages(keywords: string[], limit = 2) {
 
   // 🎯 Lọc ảnh có từ khóa xuất hiện trong mô tả / alt_description
   const filtered = (data.results || []).filter((img: any) => {
-    const desc = `${img.description || ""} ${
-      img.alt_description || ""
-    }`.toLowerCase();
+    const desc = `${img.description || ""} ${img.alt_description || ""
+      }`.toLowerCase();
     return keywords.some((kw) => desc.includes(kw.toLowerCase()));
   });
 
@@ -1018,4 +1020,122 @@ export async function evaluateDefinitionWithAI(
   }
 
   throw new Error("Tất cả model Gemini đều quá tải hoặc lỗi xử lý.");
+}
+
+export const IrtWeeklyPlannerSchema = {
+  type: Type.OBJECT,
+  properties: {
+    week_number: { type: Type.NUMBER },
+    focus_parts: { type: Type.ARRAY, items: { type: Type.NUMBER } },
+    days: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          day_index: { type: Type.NUMBER },  // 1..days_per_week
+          sessions: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                session_no: { type: Type.NUMBER },
+                part: { type: Type.NUMBER },
+                items: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    required: ["kind", "resource_id", "estimated_time"],
+                    properties: {
+                      kind: { type: Type.STRING },
+                      resource_id: { type: Type.STRING },
+                      estimated_time: { type: Type.NUMBER }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    mini_test: {
+      type: Type.OBJECT,
+      properties: {
+        test_id: { type: Type.STRING },
+        day_index: { type: Type.NUMBER },
+        session_no: { type: Type.NUMBER },
+        estimated_time: { type: Type.NUMBER }
+      }
+    },
+    debug_log: { type: Type.STRING }
+  },
+  propertyOrdering: ["week_number", "focus_parts", "days", "mini_test", "debug_log"],
+};
+
+export function buildIRTWeeklyPlannerPrompt(data: {
+  userProfile: any;
+  thetaOverall: number;
+  thetaByPart: Record<number, number>;
+  candidateItems: any;
+  miniTest: any;
+}) {
+  const templatePath = path.resolve(__dirname, "../configs/irt_weekly_planner.txt");
+  const promptTemplate = fs.readFileSync(templatePath, "utf8");
+
+  const hoursPerDay = data.userProfile.hours_per_day;     // vd: 2
+  const minutesPerDay = hoursPerDay * 60;                 // vd: 120
+  const minMinutesPerDay = minutesPerDay - 10;            // vd: 110
+
+  const prompt = promptTemplate
+    .replace("{{HOURS_PER_DAY}}", String(hoursPerDay))
+    .replace("{{STUDY_DAYS_PER_WEEK}}", String(data.userProfile.study_days_per_week))
+    .replace("{{TARGET_SCORE}}", String(data.userProfile.target_score))
+    .replace("{{TARGET_DATE}}", String(data.userProfile.target_date))
+    .replace("{{USER_PROFILE_JSON}}", JSON.stringify(data.userProfile, null, 2))
+    .replace("{{ABILITIES_JSON}}", JSON.stringify({
+      overall: data.thetaOverall,
+      parts: data.thetaByPart
+    }, null, 2))
+    .replace("{{MINITEST_JSON}}", JSON.stringify(data.miniTest, null, 2))
+    .replace("{{RAG_ITEMS_JSON}}", JSON.stringify(data.candidateItems, null, 2))
+    .replace("{{MINUTES_PER_DAY}}", String(minutesPerDay))
+    .replace("{{MINUTES_PER_DAY_MIN}}", String(minMinutesPerDay))
+    .replace("{{MINUTES_PER_DAY_MAX}}", String(minutesPerDay));
+
+  return prompt;
+}
+
+export async function generateIRTWeeklyPlan(input: any) {
+  const prompt = buildIRTWeeklyPlannerPrompt(input);
+
+  for (const model of MODELS) {
+    try {
+      console.log(`🧠 WeeklyPlanner: thử model ${model}`);
+
+      const result = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          temperature: 0.1,
+          maxOutputTokens: 62000,
+          responseMimeType: "application/json",
+          responseSchema: IrtWeeklyPlannerSchema
+        }
+      });
+
+      const jsonText = result.text?.trim();
+      if (!jsonText) throw new Error("Empty structured response");
+
+      const parsed = JSON.parse(jsonText);
+      console.log(`📘 Weekly plan from ${model}:`, parsed);
+
+      return { model, json: parsed };
+
+    } catch (err: any) {
+      console.warn(`⚠️ Model ${model} error:`, err.message);
+      continue;
+    }
+  }
+
+  throw new Error("Tất cả model đều quá tải hoặc lỗi.");
 }

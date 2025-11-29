@@ -1,5 +1,8 @@
 import dotenv from 'dotenv';
 import { connectDB } from "../configs/db";
+dotenv.config();
+connectDB();
+
 import { Group, User, UserTest } from "../models"
 import { Lesson } from "../models/lesson.model";
 import { Dictation } from "../models/dictation.model";
@@ -8,9 +11,9 @@ import { Quiz } from "../models/quiz.model";
 import { TopicVocabulary } from "../models/topic_vocabulary.model";
 import fs from "fs";
 import path from "path";
-import { ingestLearning } from '../ingest/ingest_learning';
 import { retrieveLearning } from '../retriever/retriever_learning';
 import { generateNextWeekMiniTest } from '../utils/mini_test.util';
+import { generateIRTWeeklyPlan } from './gemini.service';
 
 export function saveDebugFile(filename: string, data: any) {
     const folder = path.join(process.cwd(), "debug_output");
@@ -32,9 +35,6 @@ export function saveDebugFile(filename: string, data: any) {
 }
 
 // ======================================================
-
-dotenv.config();
-connectDB();
 
 export const submitMiniTestService = async (
     userId: string,
@@ -364,6 +364,51 @@ export async function getCandidateLearningItems(
     return result;
 }
 
+export function normalizeRetrieved(raw: any) {
+    const result: any = {};
+
+    for (const part of Object.keys(raw)) {
+        const partNumber = Number(part);
+        const block = raw[part];
+
+        const ids = block.ids[0];
+        const docs = block.documents[0];
+        const metas = block.metadatas[0];
+
+        result[partNumber] = ids.map((id: any, idx: any) => {
+            const meta = metas[idx];
+            const doc = docs[idx];
+
+            return {
+                part: meta.part_type,
+                kind: meta.item_type,       // quiz | lesson | dictation | vocab
+                resource_id: meta.item_id,  // real Mongo ObjectId
+                level: meta.level,
+                weight: meta.weight ?? 0,
+                title: extractTitle(doc),
+                estimated_time: estimateStudyTime(meta.item_type)
+            };
+        });
+    }
+
+    return result;
+}
+
+function extractTitle(doc: string) {
+    const m = doc.match(/TITLE:\s*(.+)/);
+    return m ? m[1].trim() : "";
+}
+
+function estimateStudyTime(kind: string) {
+    switch (kind) {
+        case "quiz": return 10;
+        case "lesson": return 20;
+        case "vocab": return 5;
+        case "dictation": return 10;
+        case "shadowing": return 15;
+        default: return 10;
+    }
+}
 
 async function main() {
     // const result = await submitMiniTestService(
@@ -393,18 +438,50 @@ async function main() {
         "68addc718f9d649a167e8041",
         thetaByPart
     );
-    
+
     // const candidates = await getCandidateLearningItems(thetaByPart);
+
+    // saveDebugFile(
+    //     `candidates_${Date.now()}.json`,
+    //     candidates
+    // );
 
     // await ingestLearning(candidates);
 
-    // const retrieve = await retrieveLearning(
-    //     "Find suitable lessons for TOEIC Part 3 based on ability"
+    const retrieved: any = {};
+
+    for (let part = 1; part <= 7; part++) {
+        retrieved[part] = await retrieveLearning(
+            `Retrieve learning items for TOEIC Part ${part} based on difficulty & level`,
+            50
+        );
+    }
+
+    const normalized = normalizeRetrieved(retrieved);
+
+    // saveDebugFile(
+    //     `normalized_${Date.now()}.json`,
+    //     normalized
     // );
 
+    const weeklyPlan = await generateIRTWeeklyPlan({
+        userProfile: {
+            user_id: "68addc718f9d649a167e8041",
+            current_week: 2,
+            hours_per_day: 1,
+            study_days_per_week: 5,
+            target_score: 700,
+            target_date: "2026-02-10"
+        },
+        thetaOverall: 0.1,              // nếu có
+        thetaByPart,
+        candidateItems: normalized,
+        miniTest: mini_test_new
+    });
+
     saveDebugFile(
-        `mini_test_${Date.now()}.json`,
-        mini_test_new
+        `weekly_plan_${Date.now()}.json`,
+        weeklyPlan
     );
 }
 
