@@ -18,6 +18,8 @@ export interface IUserTest extends Document {
   completedPart: string; // Phần đã hoàn thành, ví dụ: "Part 1,2"
   duration: number; // Thời gian làm bài (tính bằng giây hoặc ms)
   submit_at: Date;
+  theta_overall: number; // estimated ability level for this question
+  theta_parts: Record<number, number>;  // estimated ability level for each part
 }
 
 const UserTestSchema = new Schema<IUserTest>({
@@ -40,6 +42,8 @@ const UserTestSchema = new Schema<IUserTest>({
   completedPart: { type: String, default: '' }, // mặc định rỗng
   duration: { type: Number, default: 0 }, // mặc định 0 giây
   submit_at: { type: Date, default: Date.now },
+  theta_overall: { type: Number, default: 0 }, // estimated ability level for this question
+  theta_parts: { type: Schema.Types.Mixed, default: {} },  // estimated ability level for each part
 });
 
 export const UserTest = mongoose.model<IUserTest>('UserTest', UserTestSchema);

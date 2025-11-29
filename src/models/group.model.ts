@@ -19,7 +19,7 @@ export interface IGroup extends Document {
 const GroupSchema = new Schema<IGroup>({
   test_id: { type: Schema.Types.ObjectId, ref: "Test", default: null },
   quiz_id: { type: Schema.Types.ObjectId, ref: "Quiz", default: null },
-  minitest_id: { type: Schema.Types.ObjectId, ref: "MiniTest", default: null },
+  minitest_id: { type: Schema.Types.ObjectId, ref: "Test", default: null },
   practice_id: { type: Schema.Types.ObjectId, ref: "Practice", default: null },
   part: { type: Number, default: null },
   audioUrl: { type: Schema.Types.ObjectId, ref: "Media" },

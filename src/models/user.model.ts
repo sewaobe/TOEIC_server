@@ -33,6 +33,8 @@ export interface IUser extends Document {
   streak_days: number; // Số ngày học liên tiếp
   longest_streak: number; // Kỷ lục streak dài nhất
   last_study_date?: Date; // Ngày học gần nhất (chỉ tính khi submit bài có điểm)
+  latest_theta_overall: number;
+  latest_theta_parts: Record<number, number>; // key: part number (1..7), value: theta
 }
 
 // 2. Định nghĩa Schema cho User
@@ -75,6 +77,8 @@ const UserSchema = new Schema<IUser>({
   streak_days: { type: Number, default: 0 },
   longest_streak: { type: Number, default: 0 },
   last_study_date: { type: Date, default: null },
+  latest_theta_overall: { type: Number, default: 0 },
+  latest_theta_parts: { type: Schema.Types.Mixed, default: {} },
 });
 
 // 3. Tạo Model từ Schema
