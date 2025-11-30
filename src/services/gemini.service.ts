@@ -1127,7 +1127,6 @@ export async function generateIRTWeeklyPlan(input: any) {
       if (!jsonText) throw new Error("Empty structured response");
 
       const parsed = JSON.parse(jsonText);
-      console.log(`📘 Weekly plan from ${model}:`, parsed);
 
       return { model, json: parsed };
 

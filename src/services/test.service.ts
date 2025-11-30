@@ -526,3 +526,126 @@ export const updateStatusTest = async (
 
   return test;
 };
+
+export const submitMiniTestService = async (
+  userId: string,
+  testId: string,
+  answers: {
+    question_id: string,
+    selectedOption: string
+  }[],
+  duration: number
+) => {
+  // 1) Lấy danh sách câu hỏi của mini test
+  const groups = await Group
+    .find({ test_id: testId })
+    .select("_id questions")
+    .populate({
+      path: "questions",
+      select: "_id correctAnswer tags irt_discrimination irt_difficulty irt_guessing"
+    })
+    .lean();
+
+  if (!groups || groups.length === 0) {
+    throw new Error("MiniTest not found");
+  }
+
+  // Flatten danh sách câu hỏi
+  const questionList: any[] = groups.flatMap(g => g.questions);
+
+  // 2) Tính điểm (số câu đúng) + build responses
+  let totalCorrect = 0;
+
+  const responses = questionList.map((q: any) => {
+    const userAns = answers.find(a => a.question_id === q._id.toString());
+    const isCorrect = !!userAns && userAns.selectedOption === q.correctAnswer;
+
+    if (isCorrect) totalCorrect++;
+
+    // Detect part number từ tags, ví dụ: "[Part 3]"
+    let partNum: number | null = null;
+    for (const t of q.tags || []) {
+      const match = t.match(/\[Part (\d+)\]/);
+      if (match) {
+        partNum = parseInt(match[1]);
+        break;
+      }
+    }
+
+    return {
+      questionId: q._id.toString(),
+      correct: isCorrect ? 1 : 0,
+      a: q.irt_discrimination,
+      b: q.irt_difficulty,
+      c: q.irt_guessing ?? 0.25,
+      part: partNum // 1..7 hoặc null
+    };
+  });
+
+  // 3) Map sang format answers để lưu theo IUserTest
+  const detailedAnswers = questionList.map((q: any) => {
+    const userAns = answers.find(a => a.question_id === q._id.toString());
+    const selected = userAns?.selectedOption ?? "";
+    const isCorrect = selected !== "" && selected === q.correctAnswer;
+
+    return {
+      question_id: new Types.ObjectId(q._id),
+      selectedOption: selected,
+      isCorrect,
+    };
+  });
+
+  // 4) Tính score mini test (có thể giữ logic giống full-test, mỗi câu đúng = 5 điểm)
+  const score = Math.min(totalCorrect * 5, 990);
+
+  // 5) Tính accuracy theo part (dựa trên responses.part)
+  const partStats: Record<string, { correct: number; total: number }> = {};
+  for (const r of responses) {
+    if (!r.part) continue;
+    const key = `Part ${r.part}`;
+    if (!partStats[key]) partStats[key] = { correct: 0, total: 0 };
+    partStats[key].total += 1;
+    if (r.correct === 1) partStats[key].correct += 1;
+  }
+
+  const parts = Object.entries(partStats).map(([part_name, stat]) => ({
+    part_name,
+    accuracy: stat.total > 0 ? (stat.correct / stat.total) * 100 : 0,
+  }));
+
+  // 6) Lưu vào UserTest
+  const userTest = new UserTest({
+    user_id: new Types.ObjectId(userId),
+    test_id: new Types.ObjectId(testId),
+    score,
+    answers: detailedAnswers,
+    parts,
+    completedPart: "mini-test", // hoặc test type tuỳ bạn
+    duration,
+    submit_at: new Date(),
+    // có thể để mặc định theta_overall, theta_parts cho lần sau tính IRT
+  });
+
+  const saved = await userTest.save();
+
+  // 7) Cập nhật thống kê cho Test
+  await Test.findByIdAndUpdate(testId, {
+    $inc: { countSubmit: 1 },
+  });
+
+  console.log("=== MINI TEST SUBMISSION ===");
+  console.log(`User: ${userId}`);
+  console.log(`Test: ${testId}`);
+  console.log(`Total Questions: ${responses.length}`);
+  console.log(`Total Correct: ${totalCorrect}`);
+  console.log("Responses:", responses);
+
+  return {
+    userTestId: saved._id,
+    userId,
+    testId,
+    totalCorrect,
+    totalQuestions: responses.length,
+    responses
+  };
+};
