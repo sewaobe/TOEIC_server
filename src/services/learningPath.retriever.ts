@@ -1,10 +1,8 @@
 /**
  * learningPath.retriever.ts
  *
- * Service lấy nội dung bài học từ DB (Mongoose) theo mentor_id
+ * Service lấy nội dung bài học từ DB (Mongoose) hoặc ChromaDB (RAG) theo mentor_id
  * để cung cấp context cho Gemini khi tạo lộ trình học 1 tuần.
- *
- * KHÔNG sử dụng ChromaDB - chỉ query trực tiếp MongoDB.
  */
 
 import { Types } from "mongoose";
@@ -12,6 +10,8 @@ import { Lesson, Quiz, TopicVocabulary, Test } from "../models";
 import { Dictation } from "../models/dictation.model";
 import { Shadowing } from "../models/shadowing.model";
 import { TestStatus } from "../models/enums/TestStatus";
+import { getLearningItemCollection } from "../core/collections/learning";
+import { ingestLearning } from "../ingest/ingest_learning";
 
 export interface RetrievedContent {
   lessons: any[];
@@ -157,4 +157,274 @@ export function formatContentForPrompt(content: RetrievedContent): string {
   }
 
   return formatted;
+}
+
+/**
+ * Xây dựng search query cho ChromaDB từ user input
+ * @param userInput Thông tin người dùng (điểm hiện tại, mục tiêu, kỹ năng yếu, sở thích)
+ * @returns Câu query mô tả ngữ nghĩa để search trong ChromaDB
+ */
+export function constructSearchQuery(userInput: {
+  current_score?: number;
+  target_score?: number;
+  weak_skill?: string;
+  interested_topics?: string[];
+  part?: number; // optional part filter (1..7)
+  difficulty?: string; // optional difficulty token (easy/medium/hard)
+  level?: string; // optional textual level
+  title?: string; // optional title/topic token to include in query
+}): string {
+  // Special handling for each TOEIC part (1..7) so queries better match DB content
+  if (
+    typeof userInput.part === "number" &&
+    userInput.part >= 1 &&
+    userInput.part <= 7
+  ) {
+    const difficulty =
+      userInput.difficulty ||
+      userInput.level ||
+      "appropriate difficulty for the user";
+    const part = userInput.part;
+    let partDesc = "";
+    switch (part) {
+      case 1:
+        partDesc =
+          "picture description / single-image speaking prompts (short listening)";
+        break;
+      case 2:
+        partDesc =
+          "short question-response / short conversation listening items";
+        break;
+      case 3:
+        partDesc =
+          "longer dialogues / multi-speaker listening passages with multiple questions";
+        break;
+      case 4:
+        partDesc =
+          "short talks / monologues with multiple questions (listening)";
+        break;
+      case 5:
+        partDesc =
+          "single-sentence grammar/vocabulary multiple-choice (error recognition)";
+        break;
+      case 6:
+        partDesc =
+          "text/paragraph completion, sentence insertion and context understanding tasks";
+        break;
+      case 7:
+        partDesc =
+          "reading comprehension passages and multiple-question sets (longer reading)";
+        break;
+      default:
+        partDesc = "general TOEIC practice items";
+    }
+
+    let q = `TOEIC Part ${part} learning items, ${partDesc}, difficulty: ${difficulty}`;
+    // add common DB tokens to help matching
+    if (userInput.title) q += `, title: ${userInput.title}`;
+    if (userInput.interested_topics && userInput.interested_topics.length > 0)
+      q += `, topics: ${userInput.interested_topics.join(", ")}`;
+    if (userInput.weak_skill) q += `, focus on ${userInput.weak_skill}`;
+    if (userInput.target_score && userInput.target_score > 800)
+      q += `, advanced level`;
+    else q += `, suitable for basic/intermediate learners`;
+    if (userInput.interested_topics && userInput.interested_topics.length > 0)
+      q += `, topics: ${userInput.interested_topics.join(", ")}`;
+    return q;
+  }
+
+  // Generic TOEIC query
+  let query = "TOEIC learning materials";
+
+  if (userInput.target_score && userInput.target_score > 800) {
+    query += ", advanced level, difficult questions";
+  } else {
+    query += ", basic elementary";
+  }
+
+  if (userInput.weak_skill) {
+    query += `, focus on ${userInput.weak_skill}`;
+  }
+
+  if (userInput.interested_topics && userInput.interested_topics.length > 0) {
+    query += `, topics: ${userInput.interested_topics.join(", ")}`;
+  }
+
+  return query;
+}
+
+/**
+ * Lấy nội dung liên quan từ ChromaDB bằng RAG (Retrieval-Augmented Generation)
+ * Có fallback về MongoDB nếu ChromaDB fails hoặc trả về rỗng
+ * @param mentorId ID của mentor
+ * @param searchQuery Câu query tìm kiếm ngữ nghĩa
+ * @returns Mảng các document đã được map về dạng giống MongoDB
+ */
+export async function retrieveRelevantContentFromChroma(
+  mentorId: string | null,
+  searchQuery: string,
+  metadataFilter?: Record<string, any>
+): Promise<{ results: any[]; source: "chroma" | "mongo" }> {
+  try {
+    const collection = await getLearningItemCollection();
+
+    // Build query params. If mentorId is null, do not apply mentor filter (global search)
+    const queryParams: any = {
+      queryTexts: [searchQuery],
+      nResults: 40,
+    };
+    // Prefer explicit metadata filter when provided (part_type, level, item_type, topic, etc.)
+    if (metadataFilter && Object.keys(metadataFilter).length > 0) {
+      queryParams.where = metadataFilter;
+    } else if (mentorId) {
+      queryParams.where = { mentorId: mentorId };
+    }
+
+    // Query ChromaDB with semantic search
+    const result = await collection.query(queryParams);
+
+    const ids = result.ids?.[0] || [];
+    const metadatas = result.metadatas?.[0] || [];
+    const documents = result.documents?.[0] || [];
+
+    if (ids.length === 0) {
+      console.warn(
+        "ChromaDB returned 0 results for semantic query. Falling back to MongoDB retrieval. Query=",
+        searchQuery
+      );
+      const fallback = await fallbackToMongoRetrieval(mentorId);
+      return { results: fallback, source: "mongo" };
+    }
+
+    // Map Chroma results back to MongoDB-like document structure
+    const mappedResults: any[] = [];
+    for (let i = 0; i < ids.length; i++) {
+      const metadata = metadatas[i] as any;
+      const document = documents[i];
+
+      mappedResults.push({
+        _id: metadata.original_id,
+        title: metadata.title,
+        type: metadata.type,
+        part_type: metadata.part_type,
+        level: metadata.level,
+        planned_completion_time: metadata.duration, // For Lesson/Quiz
+        duration: metadata.duration, // For Dictation/Shadowing
+        question_ids: new Array(metadata.question_count || 0), // Mock array for length check
+        vocabularies_id: new Array(metadata.question_count || 0), // For vocabularies
+        groups: new Array(metadata.question_count || 0), // For tests
+        description: document,
+        summary: document,
+      });
+    }
+
+    return { results: mappedResults, source: "chroma" };
+  } catch (error) {
+    const errMsg = (error as any)?.message || error;
+    console.warn(
+      "ChromaDB query failed — falling back to MongoDB. Error:",
+      errMsg
+    );
+    const fallback = await fallbackToMongoRetrieval(mentorId);
+    return { results: fallback, source: "mongo" };
+  }
+}
+
+/**
+ * Fallback: Lấy dữ liệu từ MongoDB và convert sang flat array
+ */
+async function fallbackToMongoRetrieval(
+  mentorId?: string | null
+): Promise<any[]> {
+  // If mentorId provided => reuse existing mentor-scoped retrieval
+  if (mentorId) {
+    const content = await retrieveContentByMentor(mentorId as any);
+    const flatResults: any[] = [];
+
+    content.lessons.forEach((item: any) => {
+      flatResults.push({ ...item, type: "lesson" });
+    });
+    content.quizzes.forEach((item: any) => {
+      flatResults.push({ ...item, type: "quiz" });
+    });
+    content.vocabularies.forEach((item: any) => {
+      flatResults.push({ ...item, type: "vocabulary" });
+    });
+    content.dictations.forEach((item: any) => {
+      flatResults.push({ ...item, type: "dictation" });
+    });
+    content.shadowings.forEach((item: any) => {
+      flatResults.push({ ...item, type: "shadowing" });
+    });
+    content.tests.forEach((item: any) => {
+      flatResults.push({ ...item, type: "test" });
+    });
+
+    return flatResults;
+  }
+
+  // No mentorId: return global content (all mentors)
+  const [lessons, quizzes, vocabularies, dictations, shadowings, tests] =
+    await Promise.all([
+      Lesson.find({}).populate("sections_id").lean(),
+      Quiz.find({}).populate("question_ids").lean(),
+      TopicVocabulary.find({}).populate("vocabularies_id").lean(),
+      Dictation.find({}).lean(),
+      Shadowing.find({}).lean(),
+      Test.find({}).populate("groups").lean(),
+    ]);
+
+  const flatResults: any[] = [];
+  lessons.forEach((item: any) => flatResults.push({ ...item, type: "lesson" }));
+  quizzes.forEach((item: any) => flatResults.push({ ...item, type: "quiz" }));
+  vocabularies.forEach((item: any) =>
+    flatResults.push({ ...item, type: "vocabulary" })
+  );
+  dictations.forEach((item: any) =>
+    flatResults.push({ ...item, type: "dictation" })
+  );
+  shadowings.forEach((item: any) =>
+    flatResults.push({ ...item, type: "shadowing" })
+  );
+  tests.forEach((item: any) => flatResults.push({ ...item, type: "test" }));
+
+  return flatResults;
+}
+
+/**
+ * Chuẩn bị dữ liệu mentor theo format cho ingestLearning (grouped by part 1-7)
+ */
+export async function prepareMentorDataForIngest(mentorId: string) {
+  const content = await retrieveContentByMentor(mentorId);
+  const grouped: Record<number, any> = {};
+
+  // Nhóm theo part_type (1-7)
+  for (let part = 1; part <= 7; part++) {
+    grouped[part] = {
+      lessons: content.lessons.filter((l: any) => l.part_type === part),
+      quizzes: content.quizzes.filter((q: any) => q.part_type === part),
+      vocab: content.vocabularies.filter((v: any) => v.part_type === part),
+      dictations: content.dictations.filter((d: any) => d.part_type === part),
+      shadowings: content.shadowings.filter((s: any) => s.part_type === part),
+    };
+  }
+
+  return grouped;
+}
+
+/**
+ * Ingest dữ liệu mentor vào ChromaDB (gọi trước khi query)
+ */
+export async function ingestMentorToChroma(mentorId: string) {
+  try {
+    console.log(`📥 Ingesting mentor ${mentorId} content to Chroma...`);
+    const data = await prepareMentorDataForIngest(mentorId);
+    await ingestLearning(data);
+    console.log(`✅ Mentor ${mentorId} content ingested successfully`);
+  } catch (err) {
+    console.error(
+      `⚠️ Failed to ingest mentor ${mentorId}:`,
+      (err as Error).message
+    );
+  }
 }

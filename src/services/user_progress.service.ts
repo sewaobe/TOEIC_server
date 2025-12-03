@@ -9,6 +9,7 @@ import { DictationAttempt } from "../models/dictation_attempt.model";
 import { FlashCardAttempt } from "../models/flashcard_attempt.model";
 import { UserTest } from "../models/user_test.model";
 import { WeekStudyStatus } from "../models/enums/WeekStudyStatus";
+import { TestType } from "../models/enums/TestType";
 
 /**
  * Cập nhật UserProgress sau khi complete activity trong learning path
@@ -189,7 +190,51 @@ async function calculateTotalStudyTime(
 
 async function calculateCurrentScore(userId: Types.ObjectId): Promise<number> {
   const recentLimit = 10;
+  // Priority 1: most recent FULL_TEST score (if any)
+  try {
+    const agg = await UserTest.aggregate([
+      { $match: { user_id: userId } },
+      {
+        $lookup: {
+          from: "tests",
+          localField: "test_id",
+          foreignField: "_id",
+          as: "test",
+        },
+      },
+      { $unwind: { path: "$test", preserveNullAndEmptyArrays: false } },
+      { $match: { "test.type": TestType.FULL_TEST } },
+      { $sort: { submit_at: -1 } },
+      { $limit: 1 },
+      { $project: { score: 1 } },
+    ]).exec();
 
+    if (
+      Array.isArray(agg) &&
+      agg.length > 0 &&
+      typeof agg[0].score === "number"
+    ) {
+      return Math.round(agg[0].score);
+    }
+  } catch (err) {
+    // ignore and fallback to demo / aggregated score
+  }
+
+  // Priority 2: most recent demo test (identified by completedPart === 'demo_test')
+  try {
+    const demo = await UserTest.findOne({
+      user_id: userId,
+      completedPart: "demo_test",
+    })
+      .sort({ submit_at: -1 })
+      .select("score")
+      .lean();
+    if (demo && typeof demo.score === "number") return Math.round(demo.score);
+  } catch (err) {
+    // ignore and fallback to aggregated recent activities
+  }
+
+  // Fallback: average recent activity scores (quizzes, dictations, tests)
   const [quizzes, dictations, tests] = await Promise.all([
     QuizAttempt.find({ user_id: userId })
       .select("score")
@@ -203,12 +248,11 @@ async function calculateCurrentScore(userId: Types.ObjectId): Promise<number> {
 
     UserTest.find({ user_id: userId })
       .select("score")
-      .sort({ date_taken: -1 })
+      .sort({ submit_at: -1 })
       .limit(recentLimit),
   ]);
 
   const scores: number[] = [];
-
   quizzes.forEach((q: any) => scores.push(q.score || 0));
   dictations.forEach((d: any) => scores.push(d.accuracy || 0));
   tests.forEach((t: any) => scores.push(t.score || 0));

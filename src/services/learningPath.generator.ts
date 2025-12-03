@@ -3,7 +3,12 @@ import { generateToeicPlan, generateWeeklyPlanWithRAG } from "./gemini.service";
 import {
   retrieveContentByMentor,
   formatContentForPrompt,
+  constructSearchQuery,
+  retrieveRelevantContentFromChroma,
+  RetrievedContent,
+  ingestMentorToChroma,
 } from "./learningPath.retriever";
+import { updateUserProgress } from "./user_progress.service";
 import {
   Lesson,
   LessonSection,
@@ -132,6 +137,40 @@ const DICTATION_TEMPLATE = {
 
 function escapeRegExp(str: string) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Chuyển đổi flat array từ RAG về dạng RetrievedContent
+ * để tương thích với formatContentForPrompt
+ */
+function groupRagResultsToRetrievedContent(results: any[]): RetrievedContent {
+  const grouped: RetrievedContent = {
+    lessons: [],
+    quizzes: [],
+    vocabularies: [],
+    dictations: [],
+    shadowings: [],
+    tests: [],
+  };
+
+  for (const item of results) {
+    const type = item.type?.toLowerCase();
+    if (type === "lesson") {
+      grouped.lessons.push(item);
+    } else if (type === "quiz") {
+      grouped.quizzes.push(item);
+    } else if (type === "vocabulary") {
+      grouped.vocabularies.push(item);
+    } else if (type === "dictation") {
+      grouped.dictations.push(item);
+    } else if (type === "shadowing") {
+      grouped.shadowings.push(item);
+    } else if (type === "test") {
+      grouped.tests.push(item);
+    }
+  }
+
+  return grouped;
 }
 
 function inferPartTypeFromText(text: string): PartType {
@@ -1112,6 +1151,16 @@ export async function buildLearningPathFromGemini(
     console.warn("Auto-assign mentor failed:", e);
   }
 
+  // Recompute full UserProgress after creating the learning path (ensures counts, times, completion_rate are accurate)
+  try {
+    await updateUserProgress(userObjectId, learningPath._id as Types.ObjectId);
+  } catch (e) {
+    console.warn(
+      "⚠️ Failed to recompute UserProgress after learning path creation:",
+      e
+    );
+  }
+
   return {
     model: gen?.model ?? parsed?.model ?? null,
     geminiPlan: parsed,
@@ -1129,36 +1178,53 @@ export async function buildWeeklyLearningPath(
   userInput: any,
   mentorId: string
 ) {
-  console.log("\n🎬 ==========================================");
-  console.log("🎬 buildWeeklyLearningPath STARTED");
-  console.log("🎬 userId:", userId);
-  console.log("🎬 mentorId:", mentorId);
-  console.log("🎬 userInput:", JSON.stringify(userInput, null, 2));
-  console.log("🎬 ==========================================\n");
-
   const userObjectId =
     typeof userId === "string" ? new Types.ObjectId(userId) : userId;
 
-  // 1. Retrieve content from DB để log
-  console.log("📚 =".repeat(40));
-  console.log("📚 RETRIEVING CONTENT FROM DB FOR MENTOR:", mentorId);
-  const retrievedContent = await retrieveContentByMentor(mentorId);
+  // 1. Prefetch relevant content per TOEIC part (1..7) to improve RAG matching.
+  //    For each part, construct a part-aware query and retrieve from Chroma (global).
+  const perPartResults: any[] = [];
+  const seenIds = new Set<string>();
+  for (let p = 1; p <= 7; p++) {
+    try {
+      const sq = constructSearchQuery({ ...userInput, part: p });
+      // build a lightweight metadata filter to increase precision
+      const metadataFilter: Record<string, any> = { part_type: p };
+      if (userInput.level) metadataFilter.level = userInput.level;
+      if (userInput.difficulty)
+        metadataFilter.difficulty = userInput.difficulty;
+      if (userInput.interested_topics && userInput.interested_topics.length > 0)
+        metadataFilter.topic = userInput.interested_topics[0];
 
-  console.log("\n📊 RAG CONTENT SUMMARY:");
-  console.log("  - Lessons:", retrievedContent.lessons.length);
-  console.log("  - Quizzes:", retrievedContent.quizzes.length);
-  console.log("  - Vocabularies:", retrievedContent.vocabularies.length);
-  console.log("  - Dictations:", retrievedContent.dictations.length);
-  console.log("  - Shadowings:", retrievedContent.shadowings.length);
-  console.log("  - Tests:", retrievedContent.tests.length);
+      const { results: partResults, source: partSource } =
+        await retrieveRelevantContentFromChroma(null, sq, metadataFilter);
+      // Merge while deduplicating by _id
+      for (const r of partResults || []) {
+        const id = r && (r._id || r.id) ? (r._id || r.id).toString() : null;
+        if (!id) continue;
+        if (seenIds.has(id)) continue;
+        seenIds.add(id);
+        perPartResults.push(r);
+      }
+    } catch (e) {
+      console.warn(
+        `Failed to retrieve part ${p} from Chroma:`,
+        (e as Error).message
+      );
+    }
+  }
 
-  console.log("\n📝 DETAILED RAG CONTENT:");
-  console.log(JSON.stringify(retrievedContent, null, 2));
+  const ragResults = perPartResults;
+  const source = "chroma"; // if all parts fallbacked to mongo retriever it returns mongo per-call, but we treat merged as chroma-origin when available
 
+  // Only log the source of retrieved data (chroma or mongo)
+  console.log(`RAG source: ${source}`);
+
+  // 3. Group flat RAG results into RetrievedContent structure
+  const retrievedContent = groupRagResultsToRetrievedContent(ragResults);
+
+  // 4. Format content for LLM prompt
   const formattedContent = formatContentForPrompt(retrievedContent);
-  console.log("\n📄 FORMATTED CONTENT FOR PROMPT:");
-  console.log(formattedContent);
-  console.log("📚 =".repeat(40));
 
   // Xuất RAG content ra file debug
   try {
@@ -1170,13 +1236,11 @@ export async function buildWeeklyLearningPath(
     const ts = now.toISOString().replace(/[:.]/g, "-");
     const ragDebugPath = path.join(outputsRoot, `${ts}-rag-content.txt`);
     fs.writeFileSync(ragDebugPath, formattedContent, "utf8");
-    console.log(`📁 Đã xuất RAG content: ${ragDebugPath}`);
   } catch (e) {
     console.warn("⚠️ Không thể ghi RAG debug file:", e);
   }
 
   // 2) Gọi Gemini sinh weekly plan dựa trên RAG
-  console.log("\n🧠 Đang gọi Gemini generateWeeklyPlanWithRAG...");
   const { model, json: weeklyPlan } = await generateWeeklyPlanWithRAG(
     userInput,
     mentorId
@@ -1184,31 +1248,31 @@ export async function buildWeeklyLearningPath(
   if (!weeklyPlan || !weeklyPlan.week_plan) {
     throw new Error("Gemini không trả về weekly plan hợp lệ");
   }
-  console.log(
-    "✅ Weekly plan nhận được từ Gemini (tóm tắt):",
-    JSON.stringify({
-      week: weeklyPlan.week_plan?.week,
-      goal: weeklyPlan.week_plan?.goal,
-      daysCount: (weeklyPlan.week_plan?.days || []).length,
-    })
-  );
+  // Weekly plan received from Gemini
 
   // 3) Tạo LearningPath (chỉ 1 tuần) - TẠM THỜI CHƯA GẮN week_study_ids
   const lpTitle = `Lộ trình TOEIC - Tuần ${weeklyPlan.week_plan.week || 1}`;
   const lpDesc = weeklyPlan.week_plan.goal || "Lộ trình học TOEIC 1 tuần (RAG)";
   const lpLevel = CERFLevel.B1; // mặc định
+
+  // Calculate time_per_day from weekly_study_hours
+  const weeklyHours = userInput?.weekly_study_hours || 10;
+  const daysPerWeek = userInput?.study_days_per_week || 7;
+  const timePerDayMinutes = Math.round((weeklyHours / daysPerWeek) * 60);
+
   const learningPath = await LearningPath.create({
     user_id: userObjectId,
     title: lpTitle,
     description: lpDesc,
     level: lpLevel,
     target_score: userInput?.target_score || 0,
+    time_per_day: timePerDayMinutes,
+    days_per_week: daysPerWeek,
     isActive: true,
     created_at: new Date(),
     created_by: userObjectId,
     week_study_ids: [], // sẽ update sau
   } as any);
-  console.log(`📝 Created LearningPath: ${learningPath._id}`);
 
   // 4) Tạo WeekStudy (tuần 1) - TẠM THỜI CHƯA GẮN days
   const weekDoc = await WeekStudy.create({
@@ -1224,7 +1288,6 @@ export async function buildWeeklyLearningPath(
     accuracy_overall: 0,
     days: [], // sẽ update sau
   } as any);
-  console.log(`📝 Created WeekStudy: ${weekDoc._id}`);
 
   // 5) Duyệt từng ngày và tạo DayStudy + sessions
   const days = weeklyPlan.week_plan.days || [];
@@ -1350,12 +1413,6 @@ export async function buildWeeklyLearningPath(
         continue;
       }
 
-      console.log(
-        `✅ Day ${
-          dayIndex + 1
-        } session ${sessionNo}: ${t} → ${collectionName} [${ridStr}]`
-      );
-
       const sessionStatus = isFirstSession
         ? WeekStudyStatus.IN_PROGRESS
         : WeekStudyStatus.LOCK;
@@ -1395,7 +1452,6 @@ export async function buildWeeklyLearningPath(
     if (sessions.length === 0) {
       // không có session hợp lệ -> xoá day vừa tạo để tránh rác
       await DayStudy.deleteOne({ _id: dayStudyDoc._id });
-      console.log(`⚠️ Day ${dayIndex + 1} không có session hợp lệ, đã xoá`);
       continue;
     }
 
@@ -1403,34 +1459,15 @@ export async function buildWeeklyLearningPath(
     dayStudyDoc.sessions = sessions as any;
     await dayStudyDoc.save();
     dayStudyIds.push(dayStudyDoc._id as Types.ObjectId);
-    console.log(
-      `✅ Created DayStudy ${dayIndex + 1} (${dayStudyDoc._id}) with ${
-        sessions.length
-      } sessions`
-    );
   }
-
-  console.log(`📊 Total days created: ${dayStudyIds.length}`);
 
   // 6) GẮN days vào WeekStudy VÀ LƯU LẠI
   weekDoc.days = dayStudyIds;
   await weekDoc.save();
-  console.log(
-    `✅ Updated WeekStudy ${weekDoc._id} with ${dayStudyIds.length} days`
-  );
 
   // 7) GẮN week_study_ids vào LearningPath VÀ LƯU LẠI
   learningPath.week_study_ids = [weekDoc._id as Types.ObjectId];
   await learningPath.save();
-  console.log(
-    `✅ Updated LearningPath ${learningPath._id} with week ${weekDoc._id}`
-  );
-
-  console.log("✅ ĐÃ TẠO LỘ TRÌNH 1 TUẦN (RAG) THÀNH CÔNG:", {
-    learningPathId: learningPath._id?.toString(),
-    weekId: weekDoc._id?.toString(),
-    days: dayStudyIds.length,
-  });
 
   // 8) Lưu UserProgress để track tiến độ học
   try {
@@ -1440,20 +1477,38 @@ export async function buildWeeklyLearningPath(
     });
     if (up) {
       up.mentor_id = new Types.ObjectId(mentorId);
+      up.current_score = userInput?.current_score || up.current_score || 0;
+      up.target_score = userInput?.target_score || up.target_score || 0;
       up.updated_at = new Date();
       await up.save();
-      console.log(`✅ Updated UserProgress for user ${userId}`);
     } else {
       await UserProgress.create({
         user_id: userObjectId,
         learningPath_id: learningPath._id,
         mentor_id: new Types.ObjectId(mentorId),
+        current_score: userInput?.current_score || 0,
+        target_score: userInput?.target_score || 0,
+        completed_lessons: 0,
+        total_lessons: 0,
+        completion_rate: 0,
+        total_study_time: 0,
+        streak_days: 0,
+        longest_streak: 0,
         updated_at: new Date(),
       } as any);
-      console.log(`✅ Created UserProgress for user ${userId}`);
     }
   } catch (e) {
     console.warn("⚠️ Failed to save UserProgress:", e);
+  }
+
+  // Recompute full UserProgress one time after creating weekly learning path
+  try {
+    await updateUserProgress(userObjectId, learningPath._id as Types.ObjectId);
+  } catch (err) {
+    console.warn(
+      "⚠️ Failed to recompute UserProgress for weekly learning path:",
+      err
+    );
   }
 
   return {
