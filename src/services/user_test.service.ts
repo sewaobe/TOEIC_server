@@ -218,3 +218,17 @@ export const getTestHistoryDetailService = async (historyId: string) => {
     };
 
 }
+
+export const updatedThetaInUserTestService = async (
+    theta_parts: Record<number, number>,
+    theta_overall: number,
+    userTestId: string
+) => {
+    const userTestObjectId = new Types.ObjectId(userTestId);
+    const updated = await UserTest.updateOne(
+        { _id: userTestObjectId },
+        { theta_parts, theta_overall }
+    ).exec();
+
+    return updated;
+}

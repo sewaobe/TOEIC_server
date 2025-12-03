@@ -3,6 +3,6 @@ import { generateIrtWeeklyPlanController } from '../controllers/irt.controller';
 
 const router = Router();
 
-router.post('/irt/weekly-plan', generateIrtWeeklyPlanController);
+router.post('/weekly-plan', generateIrtWeeklyPlanController);
 
 export default router;

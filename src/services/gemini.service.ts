@@ -1037,6 +1037,7 @@ export const IrtWeeklyPlannerSchema = {
             type: Type.ARRAY,
             items: {
               type: Type.OBJECT,
+              required: ["session_no", "part", "items"],
               properties: {
                 session_no: { type: Type.NUMBER },
                 part: { type: Type.NUMBER },
@@ -1075,32 +1076,40 @@ export const IrtWeeklyPlannerSchema = {
 export function buildIRTWeeklyPlannerPrompt(data: {
   userProfile: any;
   thetaOverall: number;
-  thetaByPart: Record<number, number>;
+  classifiedParts: {
+    weak_parts: number[],
+    medium_parts: number[],
+    strong_parts: number[],
+    sorted_list: any[]
+  };
+  timeConstraints: {
+    totalWeekMinutes: number,
+    weakMinutes: number,
+    mediumMinutes: number,
+    strongMinutes: number,
+    minutesPerDayMin: number,
+    minutesPerDayMax: number
+  };
   candidateItems: any;
   miniTest: any;
 }) {
   const templatePath = path.resolve(__dirname, "../configs/irt_weekly_planner.txt");
   const promptTemplate = fs.readFileSync(templatePath, "utf8");
 
-  const hoursPerDay = data.userProfile.hours_per_day;     // vd: 2
-  const minutesPerDay = hoursPerDay * 60;                 // vd: 120
-  const minMinutesPerDay = minutesPerDay - 10;            // vd: 110
-
   const prompt = promptTemplate
-    .replace("{{HOURS_PER_DAY}}", String(hoursPerDay))
-    .replace("{{STUDY_DAYS_PER_WEEK}}", String(data.userProfile.study_days_per_week))
-    .replace("{{TARGET_SCORE}}", String(data.userProfile.target_score))
-    .replace("{{TARGET_DATE}}", String(data.userProfile.target_date))
     .replace("{{USER_PROFILE_JSON}}", JSON.stringify(data.userProfile, null, 2))
-    .replace("{{ABILITIES_JSON}}", JSON.stringify({
-      overall: data.thetaOverall,
-      parts: data.thetaByPart
-    }, null, 2))
     .replace("{{MINITEST_JSON}}", JSON.stringify(data.miniTest, null, 2))
     .replace("{{RAG_ITEMS_JSON}}", JSON.stringify(data.candidateItems, null, 2))
-    .replace("{{MINUTES_PER_DAY}}", String(minutesPerDay))
-    .replace("{{MINUTES_PER_DAY_MIN}}", String(minMinutesPerDay))
-    .replace("{{MINUTES_PER_DAY_MAX}}", String(minutesPerDay));
+    .replace("{{TOTAL_WEEK_MINUTES}}", String(data.timeConstraints.totalWeekMinutes))
+    .replace("{{WEAK_MINUTES}}", String(data.timeConstraints.weakMinutes))
+    .replace("{{MEDIUM_MINUTES}}", String(data.timeConstraints.mediumMinutes))
+    .replace("{{STRONG_MINUTES}}", String(data.timeConstraints.strongMinutes))
+    .replace("{{MINUTES_PER_DAY_MIN}}", String(data.timeConstraints.minutesPerDayMin))
+    .replace("{{MINUTES_PER_DAY_MAX}}", String(data.timeConstraints.minutesPerDayMax))
+    .replace("{{WEAK_PARTS_JSON}}", JSON.stringify(data.classifiedParts.weak_parts, null, 2))
+    .replace("{{MEDIUM_PARTS_JSON}}", JSON.stringify(data.classifiedParts.medium_parts, null, 2))
+    .replace("{{STRONG_PARTS_JSON}}", JSON.stringify(data.classifiedParts.strong_parts, null, 2))
+    .replace("{{STUDY_DAYS_PER_WEEK}}", String(data.userProfile.study_days_per_week))
 
   return prompt;
 }
