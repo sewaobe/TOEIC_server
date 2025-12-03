@@ -9,8 +9,8 @@ import { Types } from 'mongoose';
 export const getFlashCardById = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const flashCard: any = await getFlashCardByIdService(req.params.id);
-        res.status(200).json(ApiResponse.success(flashCard[0]?.topic?.vocabularies, "Get flash card successfully!", {
-            topic_id: flashCard[0]?.topic?._id
+        res.status(200).json(ApiResponse.success(flashCard[0]?.topic[0]?.vocabularies, "Get flash card successfully!", {
+            topic_id: flashCard[0]?.topic[0]?._id
         }));
     } catch (err) {
         next(err);

@@ -1,44 +1,37 @@
 import mongoose from "mongoose";
-import { FlashCardAttempt, FlashCardPlan, IFlashCardAttempt } from "../models";
+import { FlashCardAttempt,  IFlashCardAttempt, TopicVocabulary } from "../models";
 import { SubmissionType } from "../models/enums/SubmissionType";
 
 export const getFlashCardByIdService = async (id: string): Promise<any> => {
-  const result = await FlashCardPlan.aggregate([
+  // id ở đây là id của TopicVocabulary
+  const result = await TopicVocabulary.aggregate([
     { $match: { _id: new mongoose.Types.ObjectId(id) } },
     {
       $lookup: {
-        from: "topicvocabularies",
-        localField: "topic_vocabulary_id",
-        foreignField: "_id",
-        as: "topic",
-      },
-    },
-    { $unwind: "$topic" },
-    {
-      $lookup: {
         from: "vocabularies",
-        localField: "topic.vocabularies_id",
+        localField: "vocabularies_id",
         foreignField: "_id",
-        as: "topic.vocabularies",
+        as: "vocabularies",
       },
     },
     {
       $addFields: {
-        "topic.vocabularies": { $slice: ["$topic.vocabularies", 20] },
+        vocabularies: { $slice: ["$vocabularies", 20] },
       },
     },
     {
       $project: {
-        "topic.vocabularies._id": 1,
-        "topic.vocabularies.word": 1,
-        "topic.vocabularies.definition": 1,
-        "topic.vocabularies.phonetic": 1,
-        "topic.vocabularies.weight": 1,
-        "topic._id": 1,
         _id: 0,
+        "topic._id": "$_id", // nếu FE đang dùng cấu trúc topic._id
+        "topic.vocabularies._id": "$vocabularies._id",
+        "topic.vocabularies.word": "$vocabularies.word",
+        "topic.vocabularies.definition": "$vocabularies.definition",
+        "topic.vocabularies.phonetic": "$vocabularies.phonetic",
+        "topic.vocabularies.weight": "$vocabularies.weight",
       },
     },
   ]);
+
   return result;
 };
 
