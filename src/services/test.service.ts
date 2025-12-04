@@ -646,6 +646,8 @@ export const submitMiniTestService = async (
     testId,
     totalCorrect,
     totalQuestions: responses.length,
-    responses
+    responses,
+    score,
+    detailedAnswers
   };
 };

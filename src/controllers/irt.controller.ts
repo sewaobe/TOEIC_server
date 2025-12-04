@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { generateIRTWeeklyPlanService } from "../services/irt.service";
+import { ApiResponse } from "../utils/ApiResponse";
 
 export const generateIrtWeeklyPlanController = async (
     req: Request,
@@ -10,12 +11,11 @@ export const generateIrtWeeklyPlanController = async (
         const userId = req.user._id;
         const { testId, answers, duration } = req.body;
 
-        await generateIRTWeeklyPlanService(userId, testId, answers, duration);
+        const result = await generateIRTWeeklyPlanService(userId, testId, answers, duration);
 
-        res.status(200).json({
-            success: true,
-            message: "IRT weekly plan generated successfully",
-        });
+        res.status(200).json(
+            ApiResponse.success(result, "IRT weekly plan generated successfully")
+        )
     } catch (error) {
         next(error);
     }

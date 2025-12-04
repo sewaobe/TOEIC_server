@@ -631,7 +631,7 @@ export const generateIRTWeeklyPlanService = async (
     });
 
     const dayIds: Types.ObjectId[] = [];
-    
+
     if (Array.isArray(weekly_data?.days)) {
         const totalDays = weekly_data.days.length;
 
@@ -744,8 +744,12 @@ export const generateIRTWeeklyPlanService = async (
     await estimateThetaForUserTest2PL(result.userTestId.toString());
     await saveAbilityToDB(userId, testId, abilities);
 
-    saveDebugFile(
-        `irt_weekly_plan_user_${userId}.json`,
-        weeklyNextPlan
-    )
+    // saveDebugFile(
+    //     `irt_weekly_plan_user_${userId}.json`,
+    //     weeklyNextPlan
+    // )
+    return {
+        score: result.score,
+        detailedAnswers: result.detailedAnswers,
+    }
 }
