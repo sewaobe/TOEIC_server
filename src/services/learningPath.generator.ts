@@ -1181,47 +1181,27 @@ export async function buildWeeklyLearningPath(
   const userObjectId =
     typeof userId === "string" ? new Types.ObjectId(userId) : userId;
 
-  // 1. Prefetch relevant content per TOEIC part (1..7) to improve RAG matching.
-  //    For each part, construct a part-aware query and retrieve from Chroma (global).
-  const perPartResults: any[] = [];
-  const seenIds = new Set<string>();
-  for (let p = 1; p <= 7; p++) {
-    try {
-      const sq = constructSearchQuery({ ...userInput, part: p });
-      // build a lightweight metadata filter to increase precision
-      const metadataFilter: Record<string, any> = { part_type: p };
-      if (userInput.level) metadataFilter.level = userInput.level;
-      if (userInput.difficulty)
-        metadataFilter.difficulty = userInput.difficulty;
-      if (userInput.interested_topics && userInput.interested_topics.length > 0)
-        metadataFilter.topic = userInput.interested_topics[0];
+  // 1. Retrieve lesson-only content (no parts)
+  //    We query Chroma for items with item_type='lesson', prefer items with weight <= 0.5,
+  //    ask for up to 50 results and require at least 20 (top up from Mongo if needed).
+  const metadataFilter: Record<string, any> = { item_type: "lesson" };
+  if (userInput.level) metadataFilter.level = userInput.level;
+  const searchQuery = constructSearchQuery({ ...userInput });
 
-      const { results: partResults, source: partSource } =
-        await retrieveRelevantContentFromChroma(null, sq, metadataFilter);
-      // Merge while deduplicating by _id
-      for (const r of partResults || []) {
-        const id = r && (r._id || r.id) ? (r._id || r.id).toString() : null;
-        if (!id) continue;
-        if (seenIds.has(id)) continue;
-        seenIds.add(id);
-        perPartResults.push(r);
-      }
-    } catch (e) {
-      console.warn(
-        `Failed to retrieve part ${p} from Chroma:`,
-        (e as Error).message
-      );
-    }
-  }
+  const { results: ragResults, source } =
+    await retrieveRelevantContentFromChroma(
+      null,
+      searchQuery,
+      metadataFilter,
+      50, // nResults
+      0.5, // maxWeight (<= 0.5)
+      20 // minResults
+    );
 
-  const ragResults = perPartResults;
-  const source = "chroma"; // if all parts fallbacked to mongo retriever it returns mongo per-call, but we treat merged as chroma-origin when available
-
-  // Only log the source of retrieved data (chroma or mongo)
   console.log(`RAG source: ${source}`);
 
-  // 3. Group flat RAG results into RetrievedContent structure
-  const retrievedContent = groupRagResultsToRetrievedContent(ragResults);
+  // 2. Group flat RAG results into RetrievedContent structure
+  const retrievedContent = groupRagResultsToRetrievedContent(ragResults || []);
 
   // 4. Format content for LLM prompt
   const formattedContent = formatContentForPrompt(retrievedContent);
@@ -1376,42 +1356,9 @@ export async function buildWeeklyLearningPath(
         continue;
       }
 
-      // Validate resource_id có tồn tại trong RAG content không
-      let found = false;
+      // Do not check retrievedContent / DB for resource presence.
+      // Trust Gemini's `resource_id` and create session referencing it directly.
       const ridStr = rid.toString();
-      if (collectionName === "lessons")
-        found = retrievedContent.lessons.some(
-          (l: any) => l._id?.toString() === ridStr
-        );
-      else if (collectionName === "quizzes")
-        found = retrievedContent.quizzes.some(
-          (q: any) => q._id?.toString() === ridStr
-        );
-      else if (collectionName === "topicvocabularies")
-        found = retrievedContent.vocabularies.some(
-          (v: any) => v._id?.toString() === ridStr
-        );
-      else if (collectionName === "dictations")
-        found = retrievedContent.dictations.some(
-          (d: any) => d._id?.toString() === ridStr
-        );
-      else if (collectionName === "shadowings")
-        found = retrievedContent.shadowings.some(
-          (s: any) => s._id?.toString() === ridStr
-        );
-      else if (collectionName === "tests")
-        found = retrievedContent.tests.some(
-          (t: any) => t._id?.toString() === ridStr
-        );
-
-      if (!found) {
-        console.warn(
-          `⚠️ Day ${
-            dayIndex + 1
-          }: resource_id "${ridStr}" (type="${t}") KHÔNG TÌM THẤY trong collection "${collectionName}", bỏ qua`
-        );
-        continue;
-      }
 
       const sessionStatus = isFirstSession
         ? WeekStudyStatus.IN_PROGRESS
@@ -1419,14 +1366,14 @@ export async function buildWeeklyLearningPath(
       // Sau khi tạo session đầu tiên của ngày đầu tiên -> các session còn lại lock
       if (isFirstSession) isFirstSession = false;
 
-      // Validate part_type: phải từ 1-7, nếu không hợp lệ thì không set
+      // Optionally set part_type from Gemini activity if provided (1..7)
       let validPartType: number | undefined = undefined;
-      if (
-        typeof activity?.part_type === "number" &&
-        activity.part_type >= 1 &&
-        activity.part_type <= 7
-      ) {
-        validPartType = activity.part_type;
+      try {
+        const candidate = Number(activity?.part || activity?.part_type);
+        if (!isNaN(candidate) && candidate >= 1 && candidate <= 7)
+          validPartType = candidate;
+      } catch (e) {
+        /* ignore */
       }
 
       const sessionData: any = {
@@ -1441,7 +1388,6 @@ export async function buildWeeklyLearningPath(
         ],
       };
 
-      // Chỉ thêm part_type nếu hợp lệ
       if (validPartType !== undefined) {
         sessionData.part_type = validPartType;
       }

@@ -1,7 +1,7 @@
-// import dotenv from 'dotenv';
-// import { connectDB } from "../configs/db";
-// dotenv.config();
-// connectDB();
+import dotenv from "dotenv";
+import { connectDB } from "../configs/db";
+dotenv.config();
+connectDB();
 
 // import { Group, User, UserTest } from "../models"
 // import { Lesson } from "../models/lesson.model";
@@ -11,29 +11,351 @@
 // import { TopicVocabulary } from "../models/topic_vocabulary.model";
 import fs from "fs";
 import path from "path";
+import { User, UserTest, Question, TopicVocabulary } from "../models";
 // import { retrieveLearning } from '../retriever/retriever_learning';
 // import { generateNextWeekMiniTest } from '../utils/mini_test.util';
 // import { generateIRTWeeklyPlan } from './gemini.service';
 
 export function saveDebugFile(filename: string, data: any) {
-    const folder = path.join(process.cwd(), "debug_output");
+  const folder = path.join(process.cwd(), "debug_output");
 
-    // Tạo folder nếu chưa có
-    if (!fs.existsSync(folder)) {
-        fs.mkdirSync(folder, { recursive: true });
-    }
+  // Tạo folder nếu chưa có
+  if (!fs.existsSync(folder)) {
+    fs.mkdirSync(folder, { recursive: true });
+  }
 
-    const filepath = path.join(folder, filename);
+  const filepath = path.join(folder, filename);
 
-    fs.writeFileSync(
-        filepath,
-        JSON.stringify(data, null, 2),
-        "utf-8"
-    );
+  fs.writeFileSync(filepath, JSON.stringify(data, null, 2), "utf-8");
 
-    console.log("📄 Debug file saved:", filepath);
+  console.log("📄 Debug file saved:", filepath);
 }
 
+// ======================================================
+// ESTIMATE IRT PARAMETERS (2PL, c = 0.25)
+// ======================================================
+
+function logistic2PL(theta: number, a: number, b: number, c: number = 0.25) {
+  const expTerm = Math.exp(-a * (theta - b));
+  return c + (1 - c) / (1 + expTerm);
+}
+
+function estimateIRTParametersForQuestion(
+  responses: { theta: number; correct: boolean }[]
+) {
+  if (!responses.length) {
+    return { a: 1.0, b: 0.0, c: 0.25 };
+  }
+
+  // Khởi tạo giá trị hợp lý
+  let a = 1.0; // discrimination
+  let b = 0.0; // difficulty
+  const c = 0.25; // guessing (cố định theo yêu cầu)
+
+  const maxIter = 40;
+  const lr = 0.01; // learning rate nhỏ để ổn định
+
+  for (let iter = 0; iter < maxIter; iter++) {
+    let gradA = 0;
+    let gradB = 0;
+
+    for (const r of responses) {
+      const { theta, correct } = r;
+      const y = correct ? 1 : 0;
+      const p = logistic2PL(theta, a, b, c);
+
+      // Gradient w.r.t a, b (bỏ qua thành phần của c vì c cố định)
+      const common = (y - p) * (1 - c);
+      gradA += common * (theta - b);
+      gradB += -common * a;
+    }
+
+    a += lr * gradA;
+    b += lr * gradB;
+
+    // Ràng buộc nhẹ để tránh giá trị quá cực đoan
+    if (!Number.isFinite(a)) a = 1.0;
+    if (!Number.isFinite(b)) b = 0.0;
+    a = Math.max(0.01, Math.min(a, 3));
+    b = Math.max(-4, Math.min(b, 4));
+  }
+
+  return { a, b, c };
+}
+
+// ======================================================
+// TÍNH THETA_OVERALL & THETA_PARTS TỪ USER_TEST
+// ======================================================
+
+// Hàm sigmoid 2PL (không đoán mò, c = 0)
+function P2PL(theta: number, a: number, b: number) {
+  return 1 / (1 + Math.exp(-a * (theta - b)));
+}
+
+// Newton–Raphson ước lượng theta cho 1 bài test, dùng thông số IRT từng câu hỏi
+function estimateTheta2PLFromQuestions(
+  rows: {
+    a: number;
+    b: number;
+    correct: number;
+  }[]
+) {
+  if (!rows.length) return 0;
+
+  let theta = 0; // khởi tạo trung bình
+  const maxIter = 40;
+
+  for (let iter = 0; iter < maxIter; iter++) {
+    let num = 0;
+    let den = 0;
+
+    for (const row of rows) {
+      const { a, b, correct } = row;
+      const p = P2PL(theta, a, b);
+      const q = 1 - p;
+
+      num += a * (correct - p);
+      den += a * a * p * q;
+    }
+
+    if (den === 0) break;
+
+    theta += num / den;
+    theta = Math.max(-4, Math.min(theta, 4));
+  }
+
+  return theta;
+}
+
+/**
+ * Tính IRT parameters cho tất cả Question từ bảng UserTest
+ * - Với mỗi question: gom toàn bộ (theta_overall của bài test, isCorrect cho câu đó)
+ * - Ước lượng a, b bằng mô hình 2PL, c = 0.25 cố định
+ * - Cập nhật lại vào Question.irt_discrimination, Question.irt_difficulty, Question.irt_guessing
+ * - Optionally: có thể dùng để phân tích thêm cho User nếu cần sau này
+ */
+export async function recomputeIRTParamsFromUserTests() {
+  console.log("🚀 Recomputing IRT parameters from UserTest...");
+
+  const userTests = await UserTest.find({}).lean();
+  if (!userTests.length) {
+    console.log("⚠️ No UserTest records found.");
+    return;
+  }
+
+  // Gom responses theo question_id
+  const byQuestion: Record<string, { theta: number; correct: boolean }[]> = {};
+
+  for (const ut of userTests) {
+    const theta = typeof ut.theta_overall === "number" ? ut.theta_overall : 0;
+    if (!ut.answers || !ut.answers.length) continue;
+
+    for (const ans of ut.answers) {
+      if (!ans.question_id) continue;
+      const qid = ans.question_id.toString();
+      if (!byQuestion[qid]) byQuestion[qid] = [];
+      byQuestion[qid].push({ theta, correct: !!ans.isCorrect });
+    }
+  }
+
+  console.log(
+    `📊 Collected responses for ${Object.keys(byQuestion).length} questions.`
+  );
+
+  const bulkOps: any[] = [];
+
+  for (const [questionId, responses] of Object.entries(byQuestion)) {
+    const { a, b, c } = estimateIRTParametersForQuestion(responses);
+
+    bulkOps.push({
+      updateOne: {
+        filter: { _id: questionId },
+        update: {
+          $set: {
+            irt_discrimination: a,
+            irt_difficulty: b,
+            irt_guessing: c,
+          },
+        },
+      },
+    });
+  }
+
+  if (!bulkOps.length) {
+    console.log("⚠️ No question responses to update.");
+    return;
+  }
+
+  const result = await Question.bulkWrite(bulkOps);
+}
+/**
+ * Tính theta_overall và theta_parts cho tất cả UserTest, sau đó
+ * - cập nhật vào UserTest.theta_overall, UserTest.theta_parts
+ * - cập nhật luôn vào User.latest_theta_overall, User.latest_theta_parts
+ *
+ * Yêu cầu: Question đã có 3 tham số IRT (irt_discrimination, irt_difficulty, irt_guessing),
+ * nhưng ở đây ta dùng mô hình 2PL nên chỉ dùng a,b; guessing khi tính theta = 0.25 cố định.
+ */
+export async function recomputeThetaFromUserTests() {
+  console.log("🚀 Recomputing theta_overall & theta_parts from UserTest...");
+
+  const userTests = await UserTest.find({})
+    .populate({
+      path: "answers.question_id",
+      model: "Question",
+      select: "irt_discrimination irt_difficulty tags",
+    })
+    .lean();
+
+  if (!userTests.length) {
+    console.log("⚠️ No UserTest records found.");
+    return;
+  }
+
+  const userBulkUpdates: Record<
+    string,
+    { latest_theta_overall: number; latest_theta_parts: Record<number, number> }
+  > = {};
+  const userTestBulkOps: any[] = [];
+
+  for (const ut of userTests as any[]) {
+    if (!ut.answers || !ut.answers.length) continue;
+
+    const overallRows: { a: number; b: number; correct: number }[] = [];
+    const rowsByPart: Record<
+      number,
+      { a: number; b: number; correct: number }[]
+    > = {};
+
+    for (const ans of ut.answers) {
+      const q: any = ans.question_id;
+      if (!q || typeof q !== "object") continue;
+
+      const a =
+        typeof q.irt_discrimination === "number" ? q.irt_discrimination : 1.0;
+      const b = typeof q.irt_difficulty === "number" ? q.irt_difficulty : 0.0;
+      const correct = ans.isCorrect ? 1 : 0;
+
+      overallRows.push({ a, b, correct });
+
+      // Detect part number từ tags dạng "[Part X]"
+      let partNum: number | null = null;
+      for (const t of q.tags || []) {
+        const match = typeof t === "string" ? t.match(/\[Part (\d+)\]/) : null;
+        if (match) {
+          partNum = parseInt(match[1], 10);
+          break;
+        }
+      }
+
+      if (partNum && partNum >= 1 && partNum <= 7) {
+        if (!rowsByPart[partNum]) rowsByPart[partNum] = [];
+        rowsByPart[partNum].push({ a, b, correct });
+      }
+    }
+
+    const thetaOverall = estimateTheta2PLFromQuestions(overallRows);
+    const thetaByPart: Record<number, number> = {};
+
+    for (let part = 1; part <= 7; part++) {
+      const rows = rowsByPart[part] || [];
+      thetaByPart[part] = estimateTheta2PLFromQuestions(rows);
+    }
+
+    // Chuẩn bị update cho UserTest
+    userTestBulkOps.push({
+      updateOne: {
+        filter: { _id: ut._id },
+        update: {
+          $set: {
+            theta_overall: thetaOverall,
+            theta_parts: thetaByPart,
+          },
+        },
+      },
+    });
+
+    // Ghi nhận giá trị mới nhất cho User
+    const userId = ut.user_id?.toString();
+    if (userId) {
+      userBulkUpdates[userId] = {
+        latest_theta_overall: thetaOverall,
+        latest_theta_parts: thetaByPart,
+      };
+    }
+  }
+
+  if (userTestBulkOps.length) {
+    const res = await UserTest.bulkWrite(userTestBulkOps);
+    console.log("✅ Updated theta for UserTest docs");
+  } else {
+    console.log("⚠️ No UserTest updates to perform.");
+  }
+
+  const userBulkOps: any[] = [];
+  for (const [userId, payload] of Object.entries(userBulkUpdates)) {
+    userBulkOps.push({
+      updateOne: {
+        filter: { _id: userId },
+        update: {
+          $set: {
+            latest_theta_overall: payload.latest_theta_overall,
+            latest_theta_parts: payload.latest_theta_parts,
+          },
+        },
+      },
+    });
+  }
+
+  if (userBulkOps.length) {
+    const resUser = await User.bulkWrite(userBulkOps);
+    console.log("✅ Updated latest theta for Users");
+  } else {
+    console.log("⚠️ No User updates to perform.");
+  }
+}
+// recomputeThetaFromUserTests();
+
+// ======================================================
+// RANDOMIZE part_type CHO TẤT CẢ TOPIC_VOCABULARY (1..7)
+// ======================================================
+
+export async function randomizeTopicVocabularyPartType() {
+  console.log("🚀 Randomizing part_type for all TopicVocabulary (1..7)...");
+
+  const topics = await TopicVocabulary.find({}).select("_id part_type").lean();
+  if (!topics.length) {
+    console.log("⚠️ No TopicVocabulary found.");
+    return;
+  }
+
+  const bulkOps: any[] = [];
+
+  for (const t of topics) {
+    const randomPart = Math.floor(Math.random() * 7) + 1; // 1..7
+
+    bulkOps.push({
+      updateOne: {
+        filter: { _id: t._id },
+        update: { $set: { part_type: randomPart } },
+      },
+    });
+  }
+
+  if (!bulkOps.length) {
+    console.log("⚠️ No updates to perform for TopicVocabulary.");
+    return;
+  }
+
+  await TopicVocabulary.bulkWrite(bulkOps);
+  console.log("✅ Randomized part_type for TopicVocabulary");
+}
+randomizeTopicVocabularyPartType();
+// Chạy 1 lần khi cần:
+// randomizeTopicVocabularyPartType().then(() => process.exit(0));
+
+// Gọi tạm khi chạy file này trực tiếp để backfill
+// recomputeThetaFromUserTests().then(() => process.exit(0));
 // // ======================================================
 
 // export const submitMiniTestService = async (
@@ -189,7 +511,6 @@ export function saveDebugFile(filename: string, data: any) {
 //         thetaByPart
 //     };
 // }
-
 
 // /************************************************************
 //  * STEP 5 — SAVE ABILITY TO DATABASE

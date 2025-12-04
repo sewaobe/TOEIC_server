@@ -1,0 +1,1444 @@
+{
+  "total": 196,
+  "byType": {
+    "lesson": 30,
+    "quiz": 55,
+    "vocab": 64,
+    "dictation": 7,
+    "shadowing": 40
+  },
+  "byPart": {
+    "1": 7,
+    "2": 41,
+    "3": 1,
+    "5": 147
+  },
+  "ids": [
+    {
+      "id": "lesson_5_6926b85f221b3567f1dc13da",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926b85f221b3567f1dc13da"
+    },
+    {
+      "id": "lesson_5_6926c322221b3567f1dc14a2",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c322221b3567f1dc14a2"
+    },
+    {
+      "id": "lesson_5_6926c3b2221b3567f1dc14c7",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c3b2221b3567f1dc14c7"
+    },
+    {
+      "id": "lesson_5_6926c480221b3567f1dc14d8",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c480221b3567f1dc14d8"
+    },
+    {
+      "id": "lesson_5_6926c4ce221b3567f1dc14f5",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c4ce221b3567f1dc14f5"
+    },
+    {
+      "id": "lesson_5_6926c500221b3567f1dc1509",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c500221b3567f1dc1509"
+    },
+    {
+      "id": "lesson_5_6926c52d221b3567f1dc151d",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c52d221b3567f1dc151d"
+    },
+    {
+      "id": "lesson_5_6926c5bb221b3567f1dc154c",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c5bb221b3567f1dc154c"
+    },
+    {
+      "id": "lesson_5_6926c626221b3567f1dc15a2",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c626221b3567f1dc15a2"
+    },
+    {
+      "id": "lesson_5_6926c677221b3567f1dc15ba",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c677221b3567f1dc15ba"
+    },
+    {
+      "id": "lesson_1_6926c70c221b3567f1dc1610",
+      "item_type": "lesson",
+      "part_type": 1,
+      "weight": 0.1,
+      "item_id": "6926c70c221b3567f1dc1610"
+    },
+    {
+      "id": "lesson_5_6926c6a4221b3567f1dc15d4",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c6a4221b3567f1dc15d4"
+    },
+    {
+      "id": "lesson_5_6926c6ca221b3567f1dc15e8",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c6ca221b3567f1dc15e8"
+    },
+    {
+      "id": "lesson_5_6926c6eb221b3567f1dc15fc",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c6eb221b3567f1dc15fc"
+    },
+    {
+      "id": "lesson_5_6926c735221b3567f1dc1627",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c735221b3567f1dc1627"
+    },
+    {
+      "id": "lesson_5_6926c756221b3567f1dc163b",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c756221b3567f1dc163b"
+    },
+    {
+      "id": "lesson_5_6926c773221b3567f1dc164f",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c773221b3567f1dc164f"
+    },
+    {
+      "id": "lesson_5_6926c790221b3567f1dc1663",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c790221b3567f1dc1663"
+    },
+    {
+      "id": "lesson_5_6926c7c1221b3567f1dc1677",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c7c1221b3567f1dc1677"
+    },
+    {
+      "id": "lesson_5_6926c7e2221b3567f1dc168b",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c7e2221b3567f1dc168b"
+    },
+    {
+      "id": "lesson_5_6926c802221b3567f1dc169f",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c802221b3567f1dc169f"
+    },
+    {
+      "id": "lesson_5_6926c822221b3567f1dc16b3",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c822221b3567f1dc16b3"
+    },
+    {
+      "id": "lesson_5_6926c84a221b3567f1dc16ca",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c84a221b3567f1dc16ca"
+    },
+    {
+      "id": "lesson_5_6926c87a221b3567f1dc16de",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c87a221b3567f1dc16de"
+    },
+    {
+      "id": "lesson_5_6926c8ca221b3567f1dc16f2",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c8ca221b3567f1dc16f2"
+    },
+    {
+      "id": "lesson_5_6926c8ec221b3567f1dc1706",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c8ec221b3567f1dc1706"
+    },
+    {
+      "id": "lesson_5_6926c90d221b3567f1dc171a",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c90d221b3567f1dc171a"
+    },
+    {
+      "id": "lesson_5_6926c92b221b3567f1dc172e",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c92b221b3567f1dc172e"
+    },
+    {
+      "id": "lesson_5_6926c946221b3567f1dc1742",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c946221b3567f1dc1742"
+    },
+    {
+      "id": "lesson_5_6926c965221b3567f1dc1756",
+      "item_type": "lesson",
+      "part_type": 5,
+      "weight": 0.1,
+      "item_id": "6926c965221b3567f1dc1756"
+    },
+    {
+      "id": "quiz_5_0f7e4e2564167c1217ff2eeb",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "0f7e4e2564167c1217ff2eeb"
+    },
+    {
+      "id": "quiz_5_95efeb5b23426b7e10be34e4",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "95efeb5b23426b7e10be34e4"
+    },
+    {
+      "id": "quiz_5_f7934ddafb42906a8241be47",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "f7934ddafb42906a8241be47"
+    },
+    {
+      "id": "quiz_5_50814fc63f5e99fd8b725131",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "50814fc63f5e99fd8b725131"
+    },
+    {
+      "id": "quiz_5_5164148673cb874d27e8f365",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "5164148673cb874d27e8f365"
+    },
+    {
+      "id": "quiz_5_141c596f8bcf8b3f78ff3f55",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "141c596f8bcf8b3f78ff3f55"
+    },
+    {
+      "id": "quiz_5_9b36b82aa1f49c1c581d6fd5",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "9b36b82aa1f49c1c581d6fd5"
+    },
+    {
+      "id": "quiz_5_4b75fb661ba87624db383bb8",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "4b75fb661ba87624db383bb8"
+    },
+    {
+      "id": "quiz_5_da8f4681abf47ffb0b2bd5f3",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "da8f4681abf47ffb0b2bd5f3"
+    },
+    {
+      "id": "quiz_5_3c0cf89450aa65852055fc0f",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "3c0cf89450aa65852055fc0f"
+    },
+    {
+      "id": "quiz_5_f4caf0ae9fa5991615cbab3e",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "f4caf0ae9fa5991615cbab3e"
+    },
+    {
+      "id": "quiz_5_555cb2b4014649fcf0a62c8e",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "555cb2b4014649fcf0a62c8e"
+    },
+    {
+      "id": "quiz_5_514525ef25db74ecb710b065",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "514525ef25db74ecb710b065"
+    },
+    {
+      "id": "quiz_5_b85190f1332433acfdf97762",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "b85190f1332433acfdf97762"
+    },
+    {
+      "id": "quiz_5_45d103f0867b5f2b0b0313a3",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "45d103f0867b5f2b0b0313a3"
+    },
+    {
+      "id": "quiz_5_292a9c7cb0c551653d184c44",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "292a9c7cb0c551653d184c44"
+    },
+    {
+      "id": "quiz_5_3789bfbf591717f2ebb586d1",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "3789bfbf591717f2ebb586d1"
+    },
+    {
+      "id": "quiz_5_4df6e55556fb952adf68175a",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "4df6e55556fb952adf68175a"
+    },
+    {
+      "id": "quiz_5_b893227eff19fecb2457f7c2",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "b893227eff19fecb2457f7c2"
+    },
+    {
+      "id": "quiz_5_08182645a72643716dc63d71",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "08182645a72643716dc63d71"
+    },
+    {
+      "id": "quiz_5_b269e36a4dfad56db0cea611",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "b269e36a4dfad56db0cea611"
+    },
+    {
+      "id": "quiz_5_b5515a083c4c6856504ea6d3",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "b5515a083c4c6856504ea6d3"
+    },
+    {
+      "id": "quiz_5_343e2c629a79edb049444ac4",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "343e2c629a79edb049444ac4"
+    },
+    {
+      "id": "quiz_5_78cc4429b7893a390530eb3c",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "78cc4429b7893a390530eb3c"
+    },
+    {
+      "id": "quiz_5_66cc3473fb1a4b1c11b8f0d7",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "66cc3473fb1a4b1c11b8f0d7"
+    },
+    {
+      "id": "quiz_5_c95b6bd2891593f3051dd564",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "c95b6bd2891593f3051dd564"
+    },
+    {
+      "id": "quiz_5_f4b37ce33422207f2f605335",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "f4b37ce33422207f2f605335"
+    },
+    {
+      "id": "quiz_5_879a2b3d3dfaf38615fe1f79",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "879a2b3d3dfaf38615fe1f79"
+    },
+    {
+      "id": "quiz_5_e308acf778c3aa7dacc57185",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "e308acf778c3aa7dacc57185"
+    },
+    {
+      "id": "quiz_5_b33d766a8975863ce79bae81",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "b33d766a8975863ce79bae81"
+    },
+    {
+      "id": "quiz_5_9f60f987f783d3b25e8392ce",
+      "item_type": "quiz",
+      "part_type": 5,
+      "level": "A2",
+      "weight": 0.1,
+      "item_id": "9f60f987f783d3b25e8392ce"
+    },
+    {
+      "id": "vocab_5_cefbac61b17cc33e42312204",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "cefbac61b17cc33e42312204"
+    },
+    {
+      "id": "vocab_5_d273048ee14f104630ca1a5a",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "d273048ee14f104630ca1a5a"
+    },
+    {
+      "id": "vocab_5_0bc36e1c6aef432d0298bce7",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "0bc36e1c6aef432d0298bce7"
+    },
+    {
+      "id": "vocab_5_5ddc5dee814b499c21432ccf",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "5ddc5dee814b499c21432ccf"
+    },
+    {
+      "id": "vocab_5_aab046d7c9685492f3bb9bb0",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "aab046d7c9685492f3bb9bb0"
+    },
+    {
+      "id": "vocab_5_59fedc5e941fee83d3d683ba",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "59fedc5e941fee83d3d683ba"
+    },
+    {
+      "id": "vocab_5_5e1670cd1618b6b700333a8a",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "5e1670cd1618b6b700333a8a"
+    },
+    {
+      "id": "vocab_5_71b9e70e5d474520e77196ca",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "71b9e70e5d474520e77196ca"
+    },
+    {
+      "id": "vocab_5_610b0f3cb7478148889e93e7",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "610b0f3cb7478148889e93e7"
+    },
+    {
+      "id": "vocab_5_713f9ae25dd9c2a73ba86986",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "713f9ae25dd9c2a73ba86986"
+    },
+    {
+      "id": "vocab_5_1d1f2f1c12dc3ebb31d4d7a2",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "1d1f2f1c12dc3ebb31d4d7a2"
+    },
+    {
+      "id": "vocab_5_c47b962b6f849b9a6e27233a",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "c47b962b6f849b9a6e27233a"
+    },
+    {
+      "id": "vocab_5_5a2acd9eaa7a8a4ff28c49ff",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "5a2acd9eaa7a8a4ff28c49ff"
+    },
+    {
+      "id": "vocab_5_da092634a4681aef85f5ce96",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "da092634a4681aef85f5ce96"
+    },
+    {
+      "id": "vocab_5_8b7fc360c2c3c5ae3dad7882",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "8b7fc360c2c3c5ae3dad7882"
+    },
+    {
+      "id": "vocab_5_f3039f67392d26c21068936d",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "f3039f67392d26c21068936d"
+    },
+    {
+      "id": "vocab_5_892784a56a8e76593196345a",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "892784a56a8e76593196345a"
+    },
+    {
+      "id": "vocab_5_cf5d839e8234bc3f285d3e1b",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "cf5d839e8234bc3f285d3e1b"
+    },
+    {
+      "id": "vocab_5_ec3f8b48178c5d6b99d1d908",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "ec3f8b48178c5d6b99d1d908"
+    },
+    {
+      "id": "vocab_5_e805b4adf447aeb5d58fa510",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "e805b4adf447aeb5d58fa510"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e139fd3",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e139fd3"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a022",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a022"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a071",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a071"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a0c0",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a0c0"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a10f",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a10f"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a155",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a155"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a1a4",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a1a4"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a1f3",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a1f3"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a242",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a242"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a291",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a291"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a2e0",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a2e0"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a326",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a326"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a375",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a375"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a3c4",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a3c4"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a413",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a413"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a462",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a462"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a4b1",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a4b1"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a4e4",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a4e4"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a533",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a533"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a582",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a582"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a61e",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a61e"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a666",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a666"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a6b5",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a6b5"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a704",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a704"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a753",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a753"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a7a0",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a7a0"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a7d3",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a7d3"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a840",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a840"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a88f",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a88f"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a8de",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a8de"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a92d",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a92d"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a960",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a960"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a9a8",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a9a8"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13a9f7",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a9f7"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13aa46",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13aa46"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13aa95",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13aa95"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13aae4",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13aae4"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13ab17",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13ab17"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13ab56",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13ab56"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13ab95",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13ab95"
+    },
+    {
+      "id": "vocab_3_6929f109d9ef34a632a3d790",
+      "item_type": "vocab",
+      "part_type": 3,
+      "level": "A1",
+      "item_id": "6929f109d9ef34a632a3d790"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13abc8",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13abc8"
+    },
+    {
+      "id": "vocab_5_6926fd39914027218e13abfb",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13abfb"
+    },
+    {
+      "id": "vocab_5_6926fd3a914027218e13acc1",
+      "item_type": "vocab",
+      "part_type": 5,
+      "level": "A2",
+      "item_id": "6926fd3a914027218e13acc1"
+    },
+    {
+      "id": "dictation_1_6926ce09221b3567f1dc1888",
+      "item_type": "dictation",
+      "part_type": 1,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "6926ce09221b3567f1dc1888"
+    },
+    {
+      "id": "dictation_1_6926ced1221b3567f1dc188f",
+      "item_type": "dictation",
+      "part_type": 1,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "6926ced1221b3567f1dc188f"
+    },
+    {
+      "id": "dictation_1_6926cf41221b3567f1dc1896",
+      "item_type": "dictation",
+      "part_type": 1,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "6926cf41221b3567f1dc1896"
+    },
+    {
+      "id": "dictation_1_6926cf92221b3567f1dc189d",
+      "item_type": "dictation",
+      "part_type": 1,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "6926cf92221b3567f1dc189d"
+    },
+    {
+      "id": "dictation_1_6926cfed221b3567f1dc18a4",
+      "item_type": "dictation",
+      "part_type": 1,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "6926cfed221b3567f1dc18a4"
+    },
+    {
+      "id": "dictation_1_6926d2c0221b3567f1dc18b4",
+      "item_type": "dictation",
+      "part_type": 1,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "6926d2c0221b3567f1dc18b4"
+    },
+    {
+      "id": "dictation_2_6926d431221b3567f1dc18bb",
+      "item_type": "dictation",
+      "part_type": 2,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "6926d431221b3567f1dc18bb"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a001",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a001"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a050",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a050"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a09f",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a09f"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a0ee",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a0ee"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a13d",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a13d"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a183",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a183"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a1d2",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a1d2"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a221",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a221"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a270",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a270"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a2bf",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a2bf"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a30e",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a30e"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a354",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a354"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a3a3",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a3a3"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a3f2",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a3f2"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a441",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a441"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a490",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a490"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a4df",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a4df"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a512",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a512"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a561",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a561"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a5b0",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a5b0"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a5d3",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a5d3"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a5f6",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a5f6"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a619",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a619"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a694",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a694"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a6e3",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a6e3"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a732",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a732"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a77f",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a77f"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a7ce",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a7ce"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a81f",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a81f"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a86e",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a86e"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a8bd",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a8bd"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a90c",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a90c"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a95b",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a95b"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13a9d6",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13a9d6"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13aa25",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13aa25"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13aa74",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13aa74"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13aac3",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13aac3"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13ab12",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13ab12"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13abc3",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13abc3"
+    },
+    {
+      "id": "shadowing_2_6926fd39914027218e13abf6",
+      "item_type": "shadowing",
+      "part_type": 2,
+      "level": "B1",
+      "weight": 0,
+      "item_id": "6926fd39914027218e13abf6"
+    },
+    {
+      "id": "quiz_5_68af86121918226d4c424fa6",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "68af86121918226d4c424fa6"
+    },
+    {
+      "id": "quiz_5_68af86fb1918226d4c4250cd",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "68af86fb1918226d4c4250cd"
+    },
+    {
+      "id": "quiz_5_68af87d21918226d4c4251c8",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "68af87d21918226d4c4251c8"
+    },
+    {
+      "id": "quiz_5_68af88ca1918226d4c4252b9",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "68af88ca1918226d4c4252b9"
+    },
+    {
+      "id": "quiz_5_68ecd5b03d187a3b9af564c7",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "68ecd5b03d187a3b9af564c7"
+    },
+    {
+      "id": "quiz_5_68ed34de3d187a3b9af56d93",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "68ed34de3d187a3b9af56d93"
+    },
+    {
+      "id": "quiz_5_68ed51ee3d187a3b9af572e5",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "68ed51ee3d187a3b9af572e5"
+    },
+    {
+      "id": "quiz_5_68efb1a3eb213e2caa7ad3ad",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "68efb1a3eb213e2caa7ad3ad"
+    },
+    {
+      "id": "quiz_5_68af851b1918226d4c424e7f",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "68af851b1918226d4c424e7f"
+    },
+    {
+      "id": "quiz_5_691636ae5f59cb4ffc85fa14",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "691636ae5f59cb4ffc85fa14"
+    },
+    {
+      "id": "quiz_5_69277dfbb05c37cc3ecaa500",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "69277dfbb05c37cc3ecaa500"
+    },
+    {
+      "id": "quiz_5_69308f886e8b3775548b9a55",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "69308f886e8b3775548b9a55"
+    },
+    {
+      "id": "quiz_5_69308f906e8b3775548b9e21",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "69308f906e8b3775548b9e21"
+    },
+    {
+      "id": "quiz_5_69308f956e8b3775548ba22d",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "69308f956e8b3775548ba22d"
+    },
+    {
+      "id": "quiz_5_69308fac6e8b3775548ba696",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "69308fac6e8b3775548ba696"
+    },
+    {
+      "id": "quiz_5_69308faf6e8b3775548bb2d9",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "69308faf6e8b3775548bb2d9"
+    },
+    {
+      "id": "quiz_5_69308faf6e8b3775548bb95e",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "69308faf6e8b3775548bb95e"
+    },
+    {
+      "id": "quiz_5_69308fb06e8b3775548bbcaf",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "69308fb06e8b3775548bbcaf"
+    },
+    {
+      "id": "quiz_5_69308fb06e8b3775548bbd5e",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "69308fb06e8b3775548bbd5e"
+    },
+    {
+      "id": "quiz_5_69308fb06e8b3775548bbdec",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "69308fb06e8b3775548bbdec"
+    },
+    {
+      "id": "quiz_5_69308fbf6e8b3775548bc3dc",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "69308fbf6e8b3775548bc3dc"
+    },
+    {
+      "id": "quiz_5_693090836e8b3775548bca66",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "693090836e8b3775548bca66"
+    },
+    {
+      "id": "quiz_5_693091856540b4366f17aede",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "693091856540b4366f17aede"
+    },
+    {
+      "id": "quiz_5_69316853f0c795cdbc8c85aa",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "69316853f0c795cdbc8c85aa"
+    }
+  ]
+}

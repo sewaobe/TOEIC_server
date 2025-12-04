@@ -263,7 +263,10 @@ export function constructSearchQuery(userInput: {
 export async function retrieveRelevantContentFromChroma(
   mentorId: string | null,
   searchQuery: string,
-  metadataFilter?: Record<string, any>
+  metadataFilter?: Record<string, any>,
+  nResults: number = 40,
+  maxWeight?: number,
+  minResults: number = 0
 ): Promise<{ results: any[]; source: "chroma" | "mongo" }> {
   try {
     const collection = await getLearningItemCollection();
@@ -271,7 +274,7 @@ export async function retrieveRelevantContentFromChroma(
     // Build query params. If mentorId is null, do not apply mentor filter (global search)
     const queryParams: any = {
       queryTexts: [searchQuery],
-      nResults: 40,
+      nResults: nResults,
     };
     // Prefer explicit metadata filter when provided (part_type, level, item_type, topic, etc.)
     if (metadataFilter && Object.keys(metadataFilter).length > 0) {
@@ -287,7 +290,69 @@ export async function retrieveRelevantContentFromChroma(
     const metadatas = result.metadatas?.[0] || [];
     const documents = result.documents?.[0] || [];
 
-    if (ids.length === 0) {
+    // Map Chroma results back to MongoDB-like document structure
+    const mappedResults: any[] = [];
+    for (let i = 0; i < ids.length; i++) {
+      const metadata = metadatas[i] as any;
+      const document = documents[i];
+
+      mappedResults.push({
+        _id: metadata.original_id || ids[i],
+        title: metadata.title,
+        type: metadata.type || metadata.item_type,
+        item_type: metadata.item_type || metadata.type,
+        part_type: metadata.part_type,
+        level: metadata.level,
+        planned_completion_time: metadata.duration, // For Lesson/Quiz
+        duration: metadata.duration, // For Dictation/Shadowing
+        question_ids: new Array(metadata.question_count || 0), // Mock array for length check
+        vocabularies_id: new Array(metadata.question_count || 0), // For vocabularies
+        groups: new Array(metadata.question_count || 0), // For tests
+        metadata: metadata,
+        description: document,
+        summary: document,
+      });
+    }
+
+    // Local filtering by item_type and weight (maxWeight) when requested
+    let filtered = mappedResults;
+    if (metadataFilter && Object.keys(metadataFilter).length > 0) {
+      // simple equality filters
+      filtered = filtered.filter((it) => {
+        let ok = true;
+        for (const k of Object.keys(metadataFilter)) {
+          const v = metadataFilter[k];
+          const actual = it.metadata?.[k] ?? (it as any)[k];
+          if (v === undefined) continue;
+          if (actual === undefined) {
+            ok = false;
+            break;
+          }
+          if (typeof v === "string") {
+            if (
+              actual?.toString().toLowerCase() !== v.toString().toLowerCase()
+            ) {
+              ok = false;
+              break;
+            }
+          } else if (actual !== v) {
+            ok = false;
+            break;
+          }
+        }
+        return ok;
+      });
+    }
+
+    if (typeof maxWeight === "number") {
+      filtered = filtered.filter((it) => {
+        const w = Number(it.metadata?.weight ?? it.weight ?? 1);
+        return !isNaN(w) && w <= maxWeight;
+      });
+    }
+
+    // If Chroma returned none after filtering, fallback to Mongo
+    if (filtered.length === 0 && ids.length === 0) {
       console.warn(
         "ChromaDB returned 0 results for semantic query. Falling back to MongoDB retrieval. Query=",
         searchQuery
@@ -296,29 +361,43 @@ export async function retrieveRelevantContentFromChroma(
       return { results: fallback, source: "mongo" };
     }
 
-    // Map Chroma results back to MongoDB-like document structure
-    const mappedResults: any[] = [];
-    for (let i = 0; i < ids.length; i++) {
-      const metadata = metadatas[i] as any;
-      const document = documents[i];
-
-      mappedResults.push({
-        _id: metadata.original_id,
-        title: metadata.title,
-        type: metadata.type,
-        part_type: metadata.part_type,
-        level: metadata.level,
-        planned_completion_time: metadata.duration, // For Lesson/Quiz
-        duration: metadata.duration, // For Dictation/Shadowing
-        question_ids: new Array(metadata.question_count || 0), // Mock array for length check
-        vocabularies_id: new Array(metadata.question_count || 0), // For vocabularies
-        groups: new Array(metadata.question_count || 0), // For tests
-        description: document,
-        summary: document,
+    // If fewer than minResults requested, try to top up from Mongo fallback
+    if (minResults > 0 && filtered.length < minResults) {
+      const fallback = await fallbackToMongoRetrieval(mentorId);
+      // keep only lessons from fallback and apply same maxWeight/filter rules
+      const fallbackFiltered = (fallback || []).filter((it: any) => {
+        const type = (it?.type || it?.item_type || "").toString().toLowerCase();
+        if (
+          metadataFilter &&
+          metadataFilter.item_type &&
+          metadataFilter.item_type !== type
+        )
+          return false;
+        const w = Number(it.weight ?? it.metadata?.weight ?? 1);
+        if (
+          typeof maxWeight === "number" &&
+          (!w || isNaN(w) ? false : w > maxWeight)
+        )
+          return false;
+        return true;
       });
+
+      // merge dedup
+      const idsSeen = new Set(filtered.map((r) => (r._id || r.id).toString()));
+      for (const f of fallbackFiltered) {
+        const fid = (f._id || f.id || "").toString();
+        if (!fid) continue;
+        if (idsSeen.has(fid)) continue;
+        filtered.push(f);
+        idsSeen.add(fid);
+        if (filtered.length >= minResults) break;
+      }
     }
 
-    return { results: mappedResults, source: "chroma" };
+    // limit to nResults
+    const finalResults = filtered.slice(0, nResults);
+
+    return { results: finalResults, source: "chroma" };
   } catch (error) {
     const errMsg = (error as any)?.message || error;
     console.warn(
