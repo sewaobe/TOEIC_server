@@ -1,6 +1,12 @@
 import { Schema, model, Types, Document } from "mongoose";
 
-export type ChatType = "question" | "reading" | "shadowing" | "dictation" | "lesson";
+export type ChatType =
+    | "question"
+    | "reading"
+    | "shadowing"
+    | "dictation"
+    | "lesson"
+    | "speaking_conversation";
 
 export interface IChatSession extends Document {
     user_id?: Types.ObjectId;
@@ -11,6 +17,8 @@ export interface IChatSession extends Document {
     last_message_preview?: string;
     total_messages?: number;
     is_archived?: boolean;
+    // Optional config used for speaking practice or other specialized sessions
+    config?: any;
 }
 
 const ChatSessionSchema = new Schema<IChatSession>({
@@ -18,7 +26,14 @@ const ChatSessionSchema = new Schema<IChatSession>({
     title: { type: String, required: true },
     type: {
         type: String,
-        enum: ["question", "reading", "shadowing", "dictation", "lesson"],
+        enum: [
+            "question",
+            "reading",
+            "shadowing",
+            "dictation",
+            "lesson",
+            "speaking_conversation",
+        ],
         required: true,
     },
     created_at: { type: Date, default: Date.now },
@@ -26,6 +41,7 @@ const ChatSessionSchema = new Schema<IChatSession>({
     last_message_preview: String,
     total_messages: { type: Number, default: 0 },
     is_archived: { type: Boolean, default: false },
+    config: { type: Schema.Types.Mixed },
 });
 
 export const ChatSession = model<IChatSession>("ChatSession", ChatSessionSchema);

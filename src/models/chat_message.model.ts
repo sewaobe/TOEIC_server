@@ -1,10 +1,32 @@
 import { Schema, model, Types, Document } from "mongoose";
 
+export interface IPronunciationMistake {
+    original: string;
+    correction: string;
+    type: "grammar" | "vocabulary" | "pronunciation";
+    explanation: string;
+}
+
+export interface IPronunciationFeedback {
+    pronunciationScore?: number;
+    fluencyScore?: number;
+    intonationScore?: number;
+    grammarScore?: number;
+    mistakes?: IPronunciationMistake[];
+    improvementTip?: string;
+    totalScore?: number;
+}
+
 export interface IChatMessageMeta {
     token_usage?: number;
     model?: string;
     feedback?: "like" | "dislike" | null;
     error?: string;
+
+    // Speaking conversation specific metadata (no audio stored in DB)
+    stt_text?: string;
+    pronunciation_feedback?: IPronunciationFeedback;
+    is_unintelligible?: boolean;
 }
 
 export interface IChatMessage extends Document {
@@ -25,6 +47,28 @@ const ChatMessageSchema = new Schema<IChatMessage>({
         model: String,
         feedback: { type: String, enum: ["like", "dislike", null], default: null },
         error: String,
+
+        stt_text: String,
+        pronunciation_feedback: {
+            pronunciationScore: Number,
+            fluencyScore: Number,
+            intonationScore: Number,
+            grammarScore: Number,
+            mistakes: [
+                {
+                    original: String,
+                    correction: String,
+                    type: {
+                        type: String,
+                        enum: ["grammar", "vocabulary", "pronunciation"],
+                    },
+                    explanation: String,
+                },
+            ],
+            improvementTip: String,
+            totalScore: Number,
+        },
+        is_unintelligible: Boolean,
     },
 });
 

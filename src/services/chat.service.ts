@@ -1,5 +1,5 @@
 import { generateAnswer } from "../core/llm";
-import { ChatMessage } from "../models/chat_message.model";
+import { ChatMessage, IChatMessageMeta } from "../models/chat_message.model";
 import { ChatSession, ChatType } from "../models/chat_session.model";
 import { getContextById, retrieveContext } from "../retriever/retriever";
 
@@ -15,16 +15,18 @@ function getInitialBotMessage(type: ChatType): string {
             return "✍️ Let's work on your dictation! I can help you with listening and writing practice.";
         case "lesson":
             return "🧠 Let's review grammar points or take a mini test. Which topic do you want to start with?";
+        case "speaking_conversation":
+            return "🗣️ Let's practice speaking together. You can start by introducing yourself or describing your day.";
         default:
             return "Hello! How can I help you with your TOEIC preparation today?";
     }
 }
-
-export const createChatSessionService = async (userId: string, title: string, type: ChatType) => {
+export const createChatSessionService = async (userId: string, title: string, type: ChatType, config?: any) => {
     const created = await ChatSession.create({
         user_id: userId,
         title,
         type,
+        config,
     });
 
     const introText = getInitialBotMessage(type);
@@ -34,7 +36,7 @@ export const createChatSessionService = async (userId: string, title: string, ty
         text: introText,
     });
 
-    return created;
+    return created.toObject();
 }
 
 export const getChatSessionByUserIdService = async (userId: string, page = 1, limit = 10) => {
@@ -59,6 +61,30 @@ export const getChatSessionByUserIdService = async (userId: string, page = 1, li
 export const getAllChatMessageInSessionService = async (sessionId: string) => {
     const messages = await ChatMessage.find({ session_id: sessionId }).sort({ created_at: 1 });
     return messages;
+}
+
+export const createChatMessageService = async (
+    sessionId: string,
+    sender: "user" | "bot",
+    text: string,
+    meta?: IChatMessageMeta
+) => {
+    const message = await ChatMessage.create({
+        session_id: sessionId,
+        sender,
+        text,
+        meta,
+    });
+
+    await ChatSession.findByIdAndUpdate(sessionId, {
+        $set: {
+            last_message_preview: text.slice(0, 100),
+            updated_at: new Date(),
+        },
+        $inc: { total_messages: 1 },
+    });
+
+    return message;
 }
 
 export const processUserMessageService = async (sessionId: string, userText: string, questionId?: string) => {
