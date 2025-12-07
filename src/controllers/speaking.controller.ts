@@ -232,3 +232,42 @@ export const processSpeakingTurnController = async (req: Request, res: Response,
         next(err);
     }
 };
+
+// 3. End speaking conversation session
+export const endSpeakingSessionController = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const userId = req.user._id;
+        const { sessionId, actualDurationSeconds } = req.body as {
+            sessionId: string;
+            actualDurationSeconds?: number;
+        };
+
+        if (!sessionId) {
+            return res.status(400).json(
+                ApiResponse.fail("Thiếu tham số `sessionId`.")
+            );
+        }
+
+        const session = await ChatSession.findOne({ _id: sessionId, user_id: userId });
+        if (!session) {
+            return res.status(404).json(
+                ApiResponse.fail("Phiên luyện nói không tồn tại.")
+            );
+        }
+
+        session.status = "ended";
+        session.ended_at = new Date();
+        if (typeof actualDurationSeconds === "number") {
+            // Lưu số giây người dùng thực sự luyện
+            (session as any).actual_duration_seconds = actualDurationSeconds;
+        }
+
+        await session.save();
+
+        return res.status(200).json(
+            ApiResponse.success(session, "Kết thúc phiên luyện nói thành công")
+        );
+    } catch (err) {
+        next(err);
+    }
+};

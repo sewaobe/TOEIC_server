@@ -19,6 +19,11 @@ export interface IChatSession extends Document {
     is_archived?: boolean;
     // Optional config used for speaking practice or other specialized sessions
     config?: any;
+
+    // Speaking session lifecycle
+    status?: "active" | "ended";
+    ended_at?: Date;
+    actual_duration_seconds?: number;
 }
 
 const ChatSessionSchema = new Schema<IChatSession>({
@@ -42,6 +47,9 @@ const ChatSessionSchema = new Schema<IChatSession>({
     total_messages: { type: Number, default: 0 },
     is_archived: { type: Boolean, default: false },
     config: { type: Schema.Types.Mixed },
+    status: { type: String, enum: ["active", "ended"], default: "active" },
+    ended_at: { type: Date },
+    actual_duration_seconds: { type: Number },
 });
 
 export const ChatSession = model<IChatSession>("ChatSession", ChatSessionSchema);

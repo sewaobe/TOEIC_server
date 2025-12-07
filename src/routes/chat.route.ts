@@ -1,6 +1,6 @@
 import Router from 'express';
 import { createChatSessionController, deleteChatSessionController, getAllChatMessageInSessionController, getChatSessionByUserIdController, processUserMessageController } from '../controllers/chat.controller';
-import { createSpeakingSessionController, processSpeakingTurnController } from '../controllers/speaking.controller';
+import { createSpeakingSessionController, processSpeakingTurnController, endSpeakingSessionController } from '../controllers/speaking.controller';
 import { getSpeakingSessionsController, getSpeakingSessionMessagesController } from '../controllers/speakingHistory.controller';
 
 const router = Router();
@@ -38,6 +38,9 @@ router.post("/message", processUserMessageController);
  *         description: Lỗi hệ thống
  */
 router.post("/speaking/session", createSpeakingSessionController);
+
+// Kết thúc phiên luyện nói, lưu thời gian luyện thực tế
+router.post("/speaking/session/end", endSpeakingSessionController);
 
 /**
  * @openapi
