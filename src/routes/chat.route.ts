@@ -2,6 +2,7 @@ import Router from 'express';
 import { createChatSessionController, deleteChatSessionController, getAllChatMessageInSessionController, getChatSessionByUserIdController, processUserMessageController } from '../controllers/chat.controller';
 import { createSpeakingSessionController, processSpeakingTurnController, endSpeakingSessionController } from '../controllers/speaking.controller';
 import { getSpeakingSessionsController, getSpeakingSessionMessagesController } from '../controllers/speakingHistory.controller';
+import { getSpeakingSessionReportController } from '../controllers/speakingReport.controller';
 
 const router = Router();
 
@@ -143,5 +144,8 @@ router.get("/speaking/sessions", getSpeakingSessionsController);
  *         description: Lỗi hệ thống
  */
 router.get("/speaking/messages/:sessionId", getSpeakingSessionMessagesController);
+
+// Tổng hợp báo cáo tổng quan cho một phiên luyện nói (dựa trên pronunciation_feedback)
+router.get("/speaking/report/:sessionId", getSpeakingSessionReportController);
 
 export default router;
