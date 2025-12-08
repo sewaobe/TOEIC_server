@@ -3,8 +3,6 @@ import { WeekStudyStatus } from "../models/enums/WeekStudyStatus";
 import { SessionType } from "../models/enums/SessionType";
 import { Types } from "mongoose";
 import { Question } from "../models/question.model";
-import dotenv from "dotenv";
-import { connectDB } from "../configs/db";
 import { Dictation } from "../models/dictation.model";
 import { Shadowing } from "../models/shadowing.model";
 import { submitMiniTestService } from "./test.service";
@@ -13,9 +11,6 @@ import { retrieveLearning } from "../retriever/retriever_learning";
 import { generateIRTWeeklyPlan } from "./gemini.service";
 import { saveDebugFile } from "./demo.service";
 import { updatedThetaInUserTestService } from "./user_test.service";
-
-dotenv.config();
-connectDB();
 
 /************************************************************
  * 2PL MODEL (a, b)
