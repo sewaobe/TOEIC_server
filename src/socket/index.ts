@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { SocketWithUser } from "./types";
 import { registerNotificationHandlers } from "./notification.socket";
 import { registerChatHandlers } from "./chat.socket";
+import { registerMeetHandlers } from "./meet.socket";
 
 export const onlineUsers = new Map<string, string>(); // userId → socketId
 export let io: Server;
@@ -57,6 +58,7 @@ export function initSocket(server: any) {
     // Kích hoạt các module socket
     registerNotificationHandlers(io, socket, onlineUsers);
     registerChatHandlers(socket);
+    registerMeetHandlers(io, socket);
 
     // ===========================
     // 🔌 Khi socket ngắt kết nối
