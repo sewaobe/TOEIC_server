@@ -67,8 +67,8 @@ export const getSpeakingSessionReportController = async (
     }
 
     let fluencySum = 0;
-    let coherenceSum = 0; // sẽ dùng grammarScore làm proxy cho coherence ở giai đoạn đầu
-    let lexicalRangeSum = 0; // tạm thời cũng dùng grammarScore hoặc totalScore
+    let pronunciationSum = 0;
+    let intonationSum = 0;
     let grammarSum = 0;
     let avgScoreSum = 0;
     let countWithFeedback = 0;
@@ -80,8 +80,8 @@ export const getSpeakingSessionReportController = async (
 
       fluencySum += pf.fluencyScore ?? 0;
       grammarSum += pf.grammarScore ?? 0;
-      coherenceSum += pf.grammarScore ?? 0;
-      lexicalRangeSum += pf.totalScore ?? pf.grammarScore ?? 0;
+      pronunciationSum += pf.pronunciationScore ?? 0;
+      intonationSum += pf.intonationScore ?? 0;
       avgScoreSum += pf.totalScore ?? 0;
       totalMistakes += pf.mistakes?.length ?? 0;
       countWithFeedback++;
@@ -91,8 +91,8 @@ export const getSpeakingSessionReportController = async (
 
     const report = {
       fluency: safeDiv(fluencySum, countWithFeedback),
-      coherence: 0,
-      lexicalRange: 0,
+      pronunciation: safeDiv(pronunciationSum, countWithFeedback),
+      intonation: safeDiv(intonationSum, countWithFeedback),
       grammaticalAccuracy: safeDiv(grammarSum, countWithFeedback),
       averageScore: safeDiv(avgScoreSum, countWithFeedback),
       totalTurns: countWithFeedback,
