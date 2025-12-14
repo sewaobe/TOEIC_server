@@ -5,6 +5,7 @@ import { SocketWithUser } from "./types";
 import { registerNotificationHandlers } from "./notification.socket";
 import { registerChatHandlers } from "./chat.socket";
 import { registerAdjustmentHandlers } from "./adjustment.socket";
+import { registerMeetHandlers } from "./meet.socket";
 
 export const onlineUsers = new Map<string, string>(); // userId → socketId
 export let io: Server;
@@ -31,10 +32,10 @@ export function initSocket(server: any) {
         return next(new Error("Authentication required"));
       }
 
-      const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET!) as { _id: string };
-      socket.user = { id: decoded._id };
+      const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET!) as { _id: string; fullname: string };
+      socket.user = { id: decoded._id, fullname: decoded.fullname };
 
-      console.log("Authenticated socket for user:", decoded._id);
+      console.log("Authenticated socket for user:", decoded._id, "-", decoded.fullname);
       return next();
     } catch (err) {
       console.warn("Invalid or expired token — blocking connection");
@@ -59,6 +60,7 @@ export function initSocket(server: any) {
     registerNotificationHandlers(io, socket, onlineUsers);
     registerChatHandlers(socket);
     registerAdjustmentHandlers(io, socket, onlineUsers);
+    registerMeetHandlers(io, socket);
 
     // ===========================
     // 🔌 Khi socket ngắt kết nối

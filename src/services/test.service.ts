@@ -16,8 +16,7 @@ import {
   updateGroupWithRelations,
   deleteGroupWithRelations,
 } from "./group.service";
-import { pushNotification } from "../utils/pushNotification";
-import { pushNotificationToAdmin } from "../utils/pushNotificationToAdmin";
+import { TestType } from "../models/enums/TestType";
 
 export const getFullTest = async (testId: string): Promise<any | null> => {
   const test = await Test.findById(testId)
@@ -176,8 +175,8 @@ export const getTestsWithScoreAndSearch = async (
   const skip = (page - 1) * limit;
 
   const matchStage = search
-    ? { title: { $regex: new RegExp(search, "i") } }
-    : {};
+    ? { title: { $regex: new RegExp(search, "i") }, status: TestStatus.APPROVED, type: TestType.FULL_TEST }
+    : { status: TestStatus.APPROVED, type: TestType.FULL_TEST };
 
   // 1️⃣ Truy vấn danh sách test theo trang
   const tests = await Test.aggregate([
