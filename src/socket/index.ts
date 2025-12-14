@@ -31,10 +31,10 @@ export function initSocket(server: any) {
         return next(new Error("Authentication required"));
       }
 
-      const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET!) as { _id: string };
-      socket.user = { id: decoded._id };
+      const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET!) as { _id: string; fullname: string };
+      socket.user = { id: decoded._id, fullname: decoded.fullname };
 
-      console.log("Authenticated socket for user:", decoded._id);
+      console.log("Authenticated socket for user:", decoded._id, "-", decoded.fullname);
       return next();
     } catch (err) {
       console.warn("Invalid or expired token — blocking connection");
