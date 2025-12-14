@@ -9,7 +9,10 @@ export interface IUserActivity extends Document {
     | "COMMENT"
     | "OTHER"
     | "DAY_STUDY_COMPLETED"
-    | "WEEK_STUDY_COMPLETED";
+    | "WEEK_STUDY_COMPLETED"
+    | "ADJUSTMENT_REQUEST_CREATED"
+    | "ADJUSTMENT_REQUEST_APPROVED"
+    | "ADJUSTMENT_REQUEST_REJECTED";
   title: string;
   description?: string;
   related_id?: Types.ObjectId;
@@ -30,6 +33,9 @@ const UserActivitySchema = new Schema<IUserActivity>({
       "OTHER",
       "DAY_STUDY_COMPLETED",
       "WEEK_STUDY_COMPLETED",
+      "ADJUSTMENT_REQUEST_CREATED",
+      "ADJUSTMENT_REQUEST_APPROVED",
+      "ADJUSTMENT_REQUEST_REJECTED",
     ],
     required: true,
   },

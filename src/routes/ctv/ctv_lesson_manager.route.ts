@@ -1,8 +1,59 @@
-import Router from 'express';
-import { verifyAccessToken } from '../../middlewares/verifyAccessToken.middleware';
-import { createLessonManagerController, deleteLessonManagerController, getAllLessonManagerController, getAllTopicTitlesController, getLessonManagerByIdController, updateLessonManagerController, updateStatusLessonManagerController } from '../../controllers/lesson_manager.controller';
+import Router from "express";
+import { verifyAccessToken } from "../../middlewares/verifyAccessToken.middleware";
+import {
+  createLessonManagerController,
+  deleteLessonManagerController,
+  getAllLessonManagerController,
+  getAllTopicTitlesController,
+  getLessonManagerByIdController,
+  searchLessonManagerController,
+  updateLessonManagerController,
+  updateStatusLessonManagerController,
+} from "../../controllers/lesson_manager.controller";
 
 const router = Router();
+
+/**
+ * @openapi
+ * /ctv/lesson-manager/search:
+ *   get:
+ *     tags:
+ *       - CTV Lesson Manager
+ *     summary: Search lesson managers
+ *     description: Tìm kiếm bài học theo tên, level, part type cho CTV để thêm vào lộ trình học viên.
+ *     parameters:
+ *       - name: query
+ *         in: query
+ *         schema:
+ *           type: string
+ *         description: Từ khóa tìm kiếm (title hoặc description)
+ *       - name: level
+ *         in: query
+ *         schema:
+ *           type: string
+ *           enum: [A1, A2, B1, B2, C1, C2]
+ *         description: Lọc theo CERF level
+ *       - name: part_type
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           enum: [1, 2, 3, 4, 5, 6, 7]
+ *         description: Lọc theo TOEIC Part
+ *       - name: page
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - name: limit
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *     responses:
+ *       200:
+ *         description: Danh sách bài học tìm được
+ */
+router.get("/search", verifyAccessToken, searchLessonManagerController);
 
 /**
  * @openapi
@@ -319,7 +370,11 @@ router.post("/", verifyAccessToken, createLessonManagerController);
  *                   type: string
  *                   example: "Lỗi máy chủ nội bộ."
  */
-router.put("/:id/status", verifyAccessToken, updateStatusLessonManagerController);
+router.put(
+  "/:id/status",
+  verifyAccessToken,
+  updateStatusLessonManagerController
+);
 
 /**
  * @openapi
@@ -360,7 +415,6 @@ router.put("/:id/status", verifyAccessToken, updateStatusLessonManagerController
  *                   example: "Updated lesson manager successfully."
  */
 router.put("/:id", verifyAccessToken, updateLessonManagerController);
-
 
 /**
  * @openapi

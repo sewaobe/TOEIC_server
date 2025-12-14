@@ -67,6 +67,7 @@ import vocabularyWordRouter from "./routes/vocabulary_word.route";
 import ctvPracticeTopicVocabularyRouter from "./routes/ctv/ctv_practice_topic_vocabulary.route";
 import practice_definition_router from "./routes/practice_definition.route";
 import irtRouter from "./routes/irt.route";
+import adjustmentRequestRouter from "./routes/adjustment_request.route";
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
 import { verifyAccessToken } from "./middlewares/verifyAccessToken.middleware";
@@ -136,6 +137,7 @@ app.use("/api/dictation-learningpath", dictationLearningPathRouter);
 app.use("/api/lessons-learningpath", lessonLearningPathRouter);
 app.use("/api/flashcards-learningpath", flashcardLearningPathRouter);
 app.use("/api/shadowing-learningpath", shadowingLearningPathRouter);
+app.use("/api/adjustment-requests", adjustmentRequestRouter);
 app.use("/api/irt", verifyAccessToken, irtRouter);
 
 // User study general routes
