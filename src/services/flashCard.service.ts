@@ -1,5 +1,9 @@
 import mongoose from "mongoose";
-import { FlashCardAttempt,  IFlashCardAttempt, TopicVocabulary } from "../models";
+import {
+  FlashCardAttempt,
+  IFlashCardAttempt,
+  TopicVocabulary,
+} from "../models";
 import { SubmissionType } from "../models/enums/SubmissionType";
 
 export const getFlashCardByIdService = async (id: string): Promise<any> => {

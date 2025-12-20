@@ -8,7 +8,6 @@ import {
   formatContentForPrompt,
 } from "./learningPath.retriever";
 
-
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 });
@@ -479,8 +478,9 @@ export async function fetchUnsplashImages(keywords: string[], limit = 2) {
 
   // 🎯 Lọc ảnh có từ khóa xuất hiện trong mô tả / alt_description
   const filtered = (data.results || []).filter((img: any) => {
-    const desc = `${img.description || ""} ${img.alt_description || ""
-      }`.toLowerCase();
+    const desc = `${img.description || ""} ${
+      img.alt_description || ""
+    }`.toLowerCase();
     return keywords.some((kw) => desc.includes(kw.toLowerCase()));
   });
 
@@ -1032,7 +1032,7 @@ export const IrtWeeklyPlannerSchema = {
       items: {
         type: Type.OBJECT,
         properties: {
-          day_index: { type: Type.NUMBER },  // 1..days_per_week
+          day_index: { type: Type.NUMBER }, // 1..days_per_week
           sessions: {
             type: Type.ARRAY,
             items: {
@@ -1049,15 +1049,15 @@ export const IrtWeeklyPlannerSchema = {
                     properties: {
                       kind: { type: Type.STRING },
                       resource_id: { type: Type.STRING },
-                      estimated_time: { type: Type.NUMBER }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+                      estimated_time: { type: Type.NUMBER },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     },
     mini_test: {
       type: Type.OBJECT,
@@ -1065,51 +1065,81 @@ export const IrtWeeklyPlannerSchema = {
         test_id: { type: Type.STRING },
         day_index: { type: Type.NUMBER },
         session_no: { type: Type.NUMBER },
-        estimated_time: { type: Type.NUMBER }
-      }
+        estimated_time: { type: Type.NUMBER },
+      },
     },
-    debug_log: { type: Type.STRING }
+    debug_log: { type: Type.STRING },
   },
-  propertyOrdering: ["week_number", "focus_parts", "days", "mini_test", "debug_log"],
+  propertyOrdering: [
+    "week_number",
+    "focus_parts",
+    "days",
+    "mini_test",
+    "debug_log",
+  ],
 };
 
 export function buildIRTWeeklyPlannerPrompt(data: {
   userProfile: any;
   thetaOverall: number;
   classifiedParts: {
-    weak_parts: number[],
-    medium_parts: number[],
-    strong_parts: number[],
-    sorted_list: any[]
+    weak_parts: number[];
+    medium_parts: number[];
+    strong_parts: number[];
+    sorted_list: any[];
   };
   timeConstraints: {
-    totalWeekMinutes: number,
-    weakMinutes: number,
-    mediumMinutes: number,
-    strongMinutes: number,
-    minutesPerDayMin: number,
-    minutesPerDayMax: number
+    totalWeekMinutes: number;
+    weakMinutes: number;
+    mediumMinutes: number;
+    strongMinutes: number;
+    minutesPerDayMin: number;
+    minutesPerDayMax: number;
   };
   candidateItems: any;
   miniTest: any;
 }) {
-  const templatePath = path.resolve(__dirname, "../configs/irt_weekly_planner.txt");
+  const templatePath = path.resolve(
+    __dirname,
+    "../configs/irt_weekly_planner.txt"
+  );
   const promptTemplate = fs.readFileSync(templatePath, "utf8");
 
   const prompt = promptTemplate
     .replace("{{USER_PROFILE_JSON}}", JSON.stringify(data.userProfile, null, 2))
     .replace("{{MINITEST_JSON}}", JSON.stringify(data.miniTest, null, 2))
     .replace("{{RAG_ITEMS_JSON}}", JSON.stringify(data.candidateItems, null, 2))
-    .replace("{{TOTAL_WEEK_MINUTES}}", String(data.timeConstraints.totalWeekMinutes))
+    .replace(
+      "{{TOTAL_WEEK_MINUTES}}",
+      String(data.timeConstraints.totalWeekMinutes)
+    )
     .replace("{{WEAK_MINUTES}}", String(data.timeConstraints.weakMinutes))
     .replace("{{MEDIUM_MINUTES}}", String(data.timeConstraints.mediumMinutes))
     .replace("{{STRONG_MINUTES}}", String(data.timeConstraints.strongMinutes))
-    .replace("{{MINUTES_PER_DAY_MIN}}", String(data.timeConstraints.minutesPerDayMin))
-    .replace("{{MINUTES_PER_DAY_MAX}}", String(data.timeConstraints.minutesPerDayMax))
-    .replace("{{WEAK_PARTS_JSON}}", JSON.stringify(data.classifiedParts.weak_parts, null, 2))
-    .replace("{{MEDIUM_PARTS_JSON}}", JSON.stringify(data.classifiedParts.medium_parts, null, 2))
-    .replace("{{STRONG_PARTS_JSON}}", JSON.stringify(data.classifiedParts.strong_parts, null, 2))
-    .replace("{{STUDY_DAYS_PER_WEEK}}", String(data.userProfile.study_days_per_week))
+    .replace(
+      "{{MINUTES_PER_DAY_MIN}}",
+      String(data.timeConstraints.minutesPerDayMin)
+    )
+    .replace(
+      "{{MINUTES_PER_DAY_MAX}}",
+      String(data.timeConstraints.minutesPerDayMax)
+    )
+    .replace(
+      "{{WEAK_PARTS_JSON}}",
+      JSON.stringify(data.classifiedParts.weak_parts, null, 2)
+    )
+    .replace(
+      "{{MEDIUM_PARTS_JSON}}",
+      JSON.stringify(data.classifiedParts.medium_parts, null, 2)
+    )
+    .replace(
+      "{{STRONG_PARTS_JSON}}",
+      JSON.stringify(data.classifiedParts.strong_parts, null, 2)
+    )
+    .replace(
+      "{{STUDY_DAYS_PER_WEEK}}",
+      String(data.userProfile.study_days_per_week)
+    );
 
   return prompt;
 }
@@ -1128,8 +1158,8 @@ export async function generateIRTWeeklyPlan(input: any) {
           temperature: 0.1,
           maxOutputTokens: 62000,
           responseMimeType: "application/json",
-          responseSchema: IrtWeeklyPlannerSchema
-        }
+          responseSchema: IrtWeeklyPlannerSchema,
+        },
       });
 
       const jsonText = result.text?.trim();
@@ -1138,7 +1168,6 @@ export async function generateIRTWeeklyPlan(input: any) {
       const parsed = JSON.parse(jsonText);
 
       return { model, json: parsed };
-
     } catch (err: any) {
       console.warn(`⚠️ Model ${model} error:`, err.message);
       continue;

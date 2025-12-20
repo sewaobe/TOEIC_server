@@ -17,7 +17,8 @@ import path from "path";
 // // import { generateIRTWeeklyPlan } from './gemini.service';
 
 export function saveDebugFile(filename: string, data: any) {
-  const folder = path.join(process.cwd(), "debug_output");
+  // Lưu ra ngoài thư mục TOEIC_server để tránh reload chậm
+  const folder = path.join(process.cwd(), "..", "toeic_outputs");
 
   // Tạo folder nếu chưa có
   if (!fs.existsSync(folder)) {

@@ -20,12 +20,16 @@ export * from "./practice_topic_vocabulary.model";
 export * from "./week_study.model";
 export * from "./dictation_attempt.model";
 export * from "./dictation_plan.model";
+export * from "./dictation.model";
 export * from "./flashcard_attempt.model";
 export * from "./flashcard_plan.model";
+export * from "./flashcard_progress.model";
 export * from "./quiz_attempt.model";
 export * from "./quiz_plan.model";
 export * from "./shadowing_attempt.model";
 export * from "./shadowing_plan.model";
+export * from "./shadowing.model";
+export * from "./lesson_plan.model";
 export * from "./group.model";
 export * from "./media_folder.model";
 

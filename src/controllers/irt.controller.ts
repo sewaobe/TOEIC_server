@@ -3,20 +3,28 @@ import { generateIRTWeeklyPlanService } from "../services/irt.service";
 import { ApiResponse } from "../utils/ApiResponse";
 
 export const generateIrtWeeklyPlanController = async (
-    req: Request,
-    res: Response,
-    next: NextFunction
+  req: Request,
+  res: Response,
+  next: NextFunction
 ) => {
-    try {
-        const userId = req.user._id;
-        const { testId, answers, duration } = req.body;
+  try {
+    const userId = req.user._id;
+    const { testId, answers, duration, day_study_id } = req.body;
 
-        const result = await generateIRTWeeklyPlanService(userId, testId, answers, duration);
+    const result = await generateIRTWeeklyPlanService(
+      userId,
+      testId,
+      answers,
+      duration,
+      day_study_id
+    );
 
-        res.status(200).json(
-            ApiResponse.success(result, "IRT weekly plan generated successfully")
-        )
-    } catch (error) {
-        next(error);
-    }
-}
+    res
+      .status(200)
+      .json(
+        ApiResponse.success(result, "IRT weekly plan generated successfully")
+      );
+  } catch (error) {
+    next(error);
+  }
+};

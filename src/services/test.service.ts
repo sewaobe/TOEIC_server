@@ -175,7 +175,11 @@ export const getTestsWithScoreAndSearch = async (
   const skip = (page - 1) * limit;
 
   const matchStage = search
-    ? { title: { $regex: new RegExp(search, "i") }, status: TestStatus.APPROVED, type: TestType.FULL_TEST }
+    ? {
+        title: { $regex: new RegExp(search, "i") },
+        status: TestStatus.APPROVED,
+        type: TestType.FULL_TEST,
+      }
     : { status: TestStatus.APPROVED, type: TestType.FULL_TEST };
 
   // 1️⃣ Truy vấn danh sách test theo trang
@@ -530,18 +534,18 @@ export const submitMiniTestService = async (
   userId: string,
   testId: string,
   answers: {
-    question_id: string,
-    selectedOption: string
+    question_id: string;
+    selectedOption: string;
   }[],
   duration: number
 ) => {
   // 1) Lấy danh sách câu hỏi của mini test
-  const groups = await Group
-    .find({ test_id: testId })
-    .select("_id questions")
+  const groups = await Group.find({ test_id: testId })
+    .select("_id part questions")
     .populate({
       path: "questions",
-      select: "_id correctAnswer tags irt_discrimination irt_difficulty irt_guessing"
+      select:
+        "_id correctAnswer tags irt_discrimination irt_difficulty irt_guessing",
     })
     .lean();
 
@@ -549,27 +553,22 @@ export const submitMiniTestService = async (
     throw new Error("MiniTest not found");
   }
 
-  // Flatten danh sách câu hỏi
-  const questionList: any[] = groups.flatMap(g => g.questions);
+  // Flatten danh sách câu hỏi và gắn part từ group
+  const questionList: any[] = groups.flatMap((g) =>
+    (g.questions || []).map((q: any) => ({
+      ...q,
+      part: g.part, // Gắn part từ group vào question
+    }))
+  );
 
   // 2) Tính điểm (số câu đúng) + build responses
   let totalCorrect = 0;
 
   const responses = questionList.map((q: any) => {
-    const userAns = answers.find(a => a.question_id === q._id.toString());
+    const userAns = answers.find((a) => a.question_id === q._id.toString());
     const isCorrect = !!userAns && userAns.selectedOption === q.correctAnswer;
 
     if (isCorrect) totalCorrect++;
-
-    // Detect part number từ tags, ví dụ: "[Part 3]"
-    let partNum: number | null = null;
-    for (const t of q.tags || []) {
-      const match = t.match(/\[Part (\d+)\]/);
-      if (match) {
-        partNum = parseInt(match[1]);
-        break;
-      }
-    }
 
     return {
       questionId: q._id.toString(),
@@ -577,13 +576,13 @@ export const submitMiniTestService = async (
       a: q.irt_discrimination,
       b: q.irt_difficulty,
       c: q.irt_guessing ?? 0.25,
-      part: partNum // 1..7 hoặc null
+      part: q.part, // Lấy trực tiếp từ group.part
     };
   });
 
   // 3) Map sang format answers để lưu theo IUserTest
   const detailedAnswers = questionList.map((q: any) => {
-    const userAns = answers.find(a => a.question_id === q._id.toString());
+    const userAns = answers.find((a) => a.question_id === q._id.toString());
     const selected = userAns?.selectedOption ?? "";
     const isCorrect = selected !== "" && selected === q.correctAnswer;
 
@@ -632,12 +631,32 @@ export const submitMiniTestService = async (
     $inc: { countSubmit: 1 },
   });
 
-  console.log("=== MINI TEST SUBMISSION ===");
+  console.log("\n=== MINI TEST SUBMISSION ===");
   console.log(`User: ${userId}`);
   console.log(`Test: ${testId}`);
   console.log(`Total Questions: ${responses.length}`);
   console.log(`Total Correct: ${totalCorrect}`);
-  console.log("Responses:", responses);
+  console.log(`Score: ${score}/990`);
+
+  // 📊 Thống kê chi tiết từng Part
+  console.log("\n📊 THỐNG KÊ TỪNG PART:");
+  console.log("═══════════════════════════════════════════");
+
+  const sortedParts = Object.entries(partStats).sort((a, b) => {
+    const partA = parseInt(a[0].replace("Part ", ""));
+    const partB = parseInt(b[0].replace("Part ", ""));
+    return partA - partB;
+  });
+
+  sortedParts.forEach(([partName, stat]) => {
+    const accuracy =
+      stat.total > 0 ? ((stat.correct / stat.total) * 100).toFixed(1) : "0.0";
+    console.log(
+      `${partName}: ${stat.correct}/${stat.total} câu đúng (${accuracy}%)`
+    );
+  });
+
+  console.log("═══════════════════════════════════════════\n");
 
   return {
     userTestId: saved._id,
@@ -647,6 +666,6 @@ export const submitMiniTestService = async (
     totalQuestions: responses.length,
     responses,
     score,
-    detailedAnswers
+    detailedAnswers,
   };
 };
