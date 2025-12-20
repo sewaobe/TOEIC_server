@@ -59,6 +59,7 @@ export const getAllChatMessageInSessionController = async (req: Request, res: Re
 export const processUserMessageController = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { sessionId, userText, questionId } = req.body;
+        const userId = (req as any).user?._id; // attach authenticated user if available
 
         if (!sessionId || !userText) {
             return res.status(400).json(
@@ -66,7 +67,7 @@ export const processUserMessageController = async (req: Request, res: Response, 
             );
         }
 
-        const { botMessage } = await processUserMessageService(sessionId, userText, questionId);
+        const { botMessage } = await processUserMessageService(sessionId, userText, questionId, userId);
 
         return res.status(200).json(
             ApiResponse.success(

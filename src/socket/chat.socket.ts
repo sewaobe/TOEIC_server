@@ -48,7 +48,8 @@ export function registerChatHandlers(socket: SocketWithUser) {
             const { botMessage } = await processUserMessageService(
                 sessionId,
                 userText,
-                questionId
+                questionId,
+                userId
             );
 
             // Khi có kết quả → gửi tin bot

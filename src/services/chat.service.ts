@@ -2,6 +2,8 @@ import { generateAnswer } from "../core/llm";
 import { ChatMessage, IChatMessageMeta } from "../models/chat_message.model";
 import { ChatSession, ChatType } from "../models/chat_session.model";
 import { getContextById, retrieveContext } from "../retriever/retriever";
+import { retrieveIdentity } from "../retriever/retriever_identity";
+import { retrieveProgress } from "../retriever/retriever_progress";
 
 function getInitialBotMessage(type: ChatType): string {
     switch (type) {
@@ -42,7 +44,7 @@ export const createChatSessionService = async (userId: string, title: string, ty
 export const getChatSessionByUserIdService = async (userId: string, page = 1, limit = 10) => {
     const skip = (page - 1) * limit;
     const sessions = await ChatSession
-        .find({ user_id: userId, is_archived: false })
+        .find({ user_id: userId, is_archived: false, type: { $ne: "speaking_conversation" } })
         .sort({ updated_at: -1 })
         .skip(skip)
         .limit(limit);
@@ -87,16 +89,60 @@ export const createChatMessageService = async (
     return message;
 }
 
-export const processUserMessageService = async (sessionId: string, userText: string, questionId?: string) => {
-    // Lấy context từ 
-    let contextResult = null;
-    if (questionId) {
-        contextResult = await getContextById(questionId);
-    } else {
-        contextResult = await retrieveContext(userText);
+export const processUserMessageService = async (
+    sessionId: string,
+    userText: string,
+    questionId?: string,
+    authenticatedUserId?: string
+) => {
+    // Helper: simple intent classification - rule based, easy to extend
+    function detectIntent(text: string) {
+        const t = text.toLowerCase();
+        if (t.includes("tôi là ai") || t.includes("who am i") || t.includes("tôi là")) return "personal_identity";
+        if (t.includes("năng lực") || t.includes("năng lực như") || t.includes("tôi đang có")) return "progress_assessment";
+        // fallback: if contains keywords like 'why', 'đáp án', or a question id provided -> question_help
+        if (questionId) return "question_help";
+        if (t.includes("đáp án") || t.includes("tại sao") || t.includes("giải thích") || t.endsWith("?")) return "question_help";
+        return "general";
     }
 
-    if (!contextResult || !contextResult.context?.trim()) {
+    // Retrieval + aggregation
+    let contextTexts: string[] = [];
+
+    // If questionId is provided, prefer question retrieval
+    if (questionId) {
+        const ctxById = await getContextById(questionId);
+        if (ctxById && ctxById.context) contextTexts.push(`(source:question_${questionId})\n` + ctxById.context);
+    }
+
+    const intent = detectIntent(userText);
+
+    // For personal / progress intents, include user-specific vectors if available
+    if ((intent === "personal_identity" || intent === "progress_assessment" || intent === "general") && authenticatedUserId) {
+        try {
+            const idRes = await retrieveIdentity(authenticatedUserId, userText, 1);
+            if (idRes.documents && idRes.documents.length) contextTexts.push(`(source:user_profile)\n` + idRes.documents.join("\n"));
+        } catch (err) {
+            console.warn("Could not retrieve identity for user", authenticatedUserId, err);
+        }
+
+        try {
+            const pRes = await retrieveProgress(authenticatedUserId, userText, 1);
+            if (pRes.documents && pRes.documents.length) contextTexts.push(`(source:user_progress)\n` + pRes.documents.join("\n"));
+        } catch (err) {
+            console.warn("Could not retrieve progress for user", authenticatedUserId, err);
+        }
+    }
+
+    // If still no specific context, use general retriever (questions / content)
+    if (contextTexts.length === 0) {
+        const contextResult = await retrieveContext(userText);
+        if (contextResult && contextResult.context) contextTexts.push(`(source:general)\n` + contextResult.context);
+    }
+
+    const aggregatedContext = contextTexts.join("\n\n").trim();
+
+    if (!aggregatedContext) {
         // Lưu tin nhắn bot trả lời không có thông tin
         const botMessage = await ChatMessage.create({
             session_id: sessionId,
@@ -106,20 +152,21 @@ export const processUserMessageService = async (sessionId: string, userText: str
         return { botMessage };
     }
 
-    // Gọi LLM để lấy câu trả lời
-    const botAnswer = await generateAnswer(userText, contextResult.context);
+    // Call LLM with aggregated context
+    const botAnswer = await generateAnswer(userText, aggregatedContext);
 
-    // Lưu tin nhắn bot
+    // Persist bot message
     const botMessage = await ChatMessage.create({
         session_id: sessionId,
         sender: "bot",
         text: botAnswer,
         meta: {
             model: "gemini-2.5-flash-lite",
-        },
+            intent,
+        } as IChatMessageMeta,
     });
 
-    // Cập nhật lại thông tin phiên chat
+    // Update session preview
     await ChatSession.findByIdAndUpdate(sessionId, {
         $set: {
             last_message_preview: botAnswer.slice(0, 100),
@@ -129,7 +176,7 @@ export const processUserMessageService = async (sessionId: string, userText: str
     });
 
     return { botMessage };
-}
+};
 
 export const deleteChatSessionService = async (sessionId: string, userId: string) => {
     const session = await ChatSession.findOneAndUpdate(

@@ -3,6 +3,8 @@ import { getContextById, retrieveContext } from "../retriever/retriever";
 import { generateAnswer } from "../core/llm";
 import { ApiResponse } from "../utils/ApiResponse";
 import { ingestQuestion } from "../ingest/ingest_question";
+import { ingestUserProgress } from "../ingest/ingest_progress";
+import { ingestUserProfiles } from "../ingest/ingest_identity";
 
 export const handleAskQuestionController = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -48,7 +50,9 @@ export const handleAskQuestionController = async (req: Request, res: Response, n
  */
 export const handleIngestQuestionController = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        await ingestQuestion();
+        // await ingestQuestion();
+        await ingestUserProgress();
+        await ingestUserProfiles();
         res.status(200).json(ApiResponse.success(null, "Nạp dữ liệu Question vào Chroma thành công"));
     } catch (error) {
         next(error);
