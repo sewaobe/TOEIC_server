@@ -4,6 +4,7 @@ import { ChatSession, ChatType } from "../models/chat_session.model";
 import { getContextById, retrieveContext } from "../retriever/retriever";
 import { retrieveIdentity } from "../retriever/retriever_identity";
 import { retrieveProgress } from "../retriever/retriever_progress";
+import { recommendSkillPracticeService } from "./recommend_skill.service";
 
 function getInitialBotMessage(type: ChatType): string {
     switch (type) {
@@ -100,6 +101,7 @@ export const processUserMessageService = async (
         const t = text.toLowerCase();
         if (t.includes("tôi là ai") || t.includes("who am i") || t.includes("tôi là")) return "personal_identity";
         if (t.includes("năng lực") || t.includes("năng lực như") || t.includes("tôi đang có")) return "progress_assessment";
+        if (t.includes("tôi cần") || t.includes("cần làm gì") || t.includes("phải làm gì") || t.includes("gợi ý") || t.includes("lộ trình") || t.includes("tiếp theo")) return "next_steps";
         // fallback: if contains keywords like 'why', 'đáp án', or a question id provided -> question_help
         if (questionId) return "question_help";
         if (t.includes("đáp án") || t.includes("tại sao") || t.includes("giải thích") || t.endsWith("?")) return "question_help";
@@ -118,7 +120,7 @@ export const processUserMessageService = async (
     const intent = detectIntent(userText);
 
     // For personal / progress intents, include user-specific vectors if available
-    if ((intent === "personal_identity" || intent === "progress_assessment" || intent === "general") && authenticatedUserId) {
+    if ((intent === "personal_identity" || intent === "progress_assessment" || intent === "general" || intent === "next_steps") && authenticatedUserId) {
         try {
             const idRes = await retrieveIdentity(authenticatedUserId, userText, 1);
             if (idRes.documents && idRes.documents.length) contextTexts.push(`(source:user_profile)\n` + idRes.documents.join("\n"));
@@ -131,6 +133,34 @@ export const processUserMessageService = async (
             if (pRes.documents && pRes.documents.length) contextTexts.push(`(source:user_progress)\n` + pRes.documents.join("\n"));
         } catch (err) {
             console.warn("Could not retrieve progress for user", authenticatedUserId, err);
+        }
+    }
+
+    // If next_steps intent, produce recommendations for practice items (skill-focused)
+    if (intent === "next_steps" && authenticatedUserId) {
+        try {
+            const recs = await recommendSkillPracticeService(authenticatedUserId, { topK: 3 });
+
+            if (recs && recs.length > 0) {
+                const lines = recs.map((r, idx) => `${idx + 1}. ${r.title} — ${r.type} — Est: ${r.estimated_time || "~"} mins. Lý do: ${r.reason}`);
+                const botText = `Mình gợi ý ${recs.length} bài luyện tập để cải thiện điểm yếu của bạn:\n\n` + lines.join("\n");
+
+                const botMessage = await ChatMessage.create({
+                    session_id: sessionId,
+                    sender: "bot",
+                    text: botText,
+                    meta: { model: "local-recommender", intent: "next_steps", recommendations: recs } as any,
+                });
+
+                await ChatSession.findByIdAndUpdate(sessionId, {
+                    $set: { last_message_preview: botText.slice(0, 100), updated_at: new Date() },
+                    $inc: { total_messages: 2 },
+                });
+
+                return { botMessage };
+            }
+        } catch (err) {
+            console.warn("Failed to recommend practice items:", err);
         }
     }
 
