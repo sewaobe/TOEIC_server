@@ -20,12 +20,20 @@ Tạo ra một file JSON duy nhất chứa lộ trình học **đúng 7 ngày (1
    - `week_plan.days` bắt buộc phải có đủ 7 phần tử (7 objects ngày).
 
 3. **Phân bổ hoạt động (LUẬT NGHIÊM NGẶT):**
+   - **Thời gian cố định cho từng loại bài (BẮT BUỘC):**
+     + `lesson`: **20 phút**
+     + `quiz`: **10 phút**
+     + `vocabulary`: **30 phút**
+     + `dictation`: **10 phút**
+     + `shadowing`: **15 phút**
+     + `mini_test` (type = "test"): **60 phút**
    - **Ngày 1 đến Ngày 6 (Học tập):**
      + Phải kết hợp đa dạng: Lesson, Quiz, Vocabulary, Dictation, Shadowing.
-     + Bắt buộc: Sau mỗi `lesson` phải có 1 `quiz` đi kèm (nếu có trong kho).
-     + Tổng thời gian mỗi ngày = `hours_per_day` (sai số ±10%).
+     + Bắt buộc: Sau mỗi `lesson` phải có 1 `quiz` liên quan đi kèm (nếu có trong kho).
+     + Mỗi hoạt động phải có `duration` đúng theo thời gian cố định ở trên.
+     + Bắt buộc: Tổng thời gian `duration` mỗi ngày = `minutes_per_day` phút (theo thông tin từ INPUT 1).
    - **Ngày 7 (Ngày cuối - Kiểm tra):**
-     + **CHỈ CÓ DUY NHẤT** 1 hoạt động là `mini_test` (type = "test").
+     + **CHỈ CÓ DUY NHẤT** 1 hoạt động là `mini_test` (type = "test") với duration = 60 phút.
      + ⛔ **CẤM:** KHÔNG ĐƯỢC xếp Lesson, Quiz, Vocabulary, Dictation hay Shadowing vào ngày này.
      + Nếu không có bài test nào trong kho, ngày này để trống activities.
 
@@ -42,7 +50,7 @@ Trả về JSON thuần (không Markdown ```json ... ```), theo cấu trúc sau:
   "summary": {
     "current_score": number,
     "target_score": number,
-    "hours_per_day": number,
+    "minutes_per_day": number,
     "study_days_per_week": 7,
     "start_date": "YYYY-MM-DD",
     "end_date": "YYYY-MM-DD (start_date + 6 days)"

@@ -1,17 +1,20 @@
 {
-  "total": 196,
+  "total": 246,
   "byType": {
     "lesson": 30,
-    "quiz": 55,
+    "quiz": 65,
     "vocab": 64,
-    "dictation": 7,
+    "dictation": 47,
     "shadowing": 40
   },
   "byPart": {
-    "1": 7,
-    "2": 41,
-    "3": 1,
-    "5": 147
+    "1": 22,
+    "2": 61,
+    "3": 21,
+    "4": 24,
+    "5": 100,
+    "6": 11,
+    "7": 7
   },
   "ids": [
     {
@@ -473,46 +476,32 @@
       "item_id": "9f60f987f783d3b25e8392ce"
     },
     {
-      "id": "vocab_5_cefbac61b17cc33e42312204",
+      "id": "vocab_2_d273048ee14f104630ca1a5a",
       "item_type": "vocab",
-      "part_type": 5,
-      "level": "A2",
-      "item_id": "cefbac61b17cc33e42312204"
-    },
-    {
-      "id": "vocab_5_d273048ee14f104630ca1a5a",
-      "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 2,
       "level": "A2",
       "item_id": "d273048ee14f104630ca1a5a"
     },
     {
-      "id": "vocab_5_0bc36e1c6aef432d0298bce7",
+      "id": "vocab_2_713f9ae25dd9c2a73ba86986",
       "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 2,
       "level": "A2",
-      "item_id": "0bc36e1c6aef432d0298bce7"
+      "item_id": "713f9ae25dd9c2a73ba86986"
     },
     {
-      "id": "vocab_5_5ddc5dee814b499c21432ccf",
+      "id": "vocab_4_cefbac61b17cc33e42312204",
       "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 4,
       "level": "A2",
-      "item_id": "5ddc5dee814b499c21432ccf"
+      "item_id": "cefbac61b17cc33e42312204"
     },
     {
-      "id": "vocab_5_aab046d7c9685492f3bb9bb0",
+      "id": "vocab_4_71b9e70e5d474520e77196ca",
       "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 4,
       "level": "A2",
-      "item_id": "aab046d7c9685492f3bb9bb0"
-    },
-    {
-      "id": "vocab_5_59fedc5e941fee83d3d683ba",
-      "item_type": "vocab",
-      "part_type": 5,
-      "level": "A2",
-      "item_id": "59fedc5e941fee83d3d683ba"
+      "item_id": "71b9e70e5d474520e77196ca"
     },
     {
       "id": "vocab_5_5e1670cd1618b6b700333a8a",
@@ -522,156 +511,156 @@
       "item_id": "5e1670cd1618b6b700333a8a"
     },
     {
-      "id": "vocab_5_71b9e70e5d474520e77196ca",
+      "id": "vocab_6_5ddc5dee814b499c21432ccf",
       "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 6,
       "level": "A2",
-      "item_id": "71b9e70e5d474520e77196ca"
+      "item_id": "5ddc5dee814b499c21432ccf"
     },
     {
-      "id": "vocab_5_610b0f3cb7478148889e93e7",
+      "id": "vocab_6_aab046d7c9685492f3bb9bb0",
       "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 6,
+      "level": "A2",
+      "item_id": "aab046d7c9685492f3bb9bb0"
+    },
+    {
+      "id": "vocab_7_0bc36e1c6aef432d0298bce7",
+      "item_type": "vocab",
+      "part_type": 7,
+      "level": "A2",
+      "item_id": "0bc36e1c6aef432d0298bce7"
+    },
+    {
+      "id": "vocab_7_59fedc5e941fee83d3d683ba",
+      "item_type": "vocab",
+      "part_type": 7,
+      "level": "A2",
+      "item_id": "59fedc5e941fee83d3d683ba"
+    },
+    {
+      "id": "vocab_7_610b0f3cb7478148889e93e7",
+      "item_type": "vocab",
+      "part_type": 7,
       "level": "A2",
       "item_id": "610b0f3cb7478148889e93e7"
     },
     {
-      "id": "vocab_5_713f9ae25dd9c2a73ba86986",
+      "id": "vocab_2_1d1f2f1c12dc3ebb31d4d7a2",
       "item_type": "vocab",
-      "part_type": 5,
-      "level": "A2",
-      "item_id": "713f9ae25dd9c2a73ba86986"
-    },
-    {
-      "id": "vocab_5_1d1f2f1c12dc3ebb31d4d7a2",
-      "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 2,
       "level": "A2",
       "item_id": "1d1f2f1c12dc3ebb31d4d7a2"
     },
     {
-      "id": "vocab_5_c47b962b6f849b9a6e27233a",
+      "id": "vocab_2_c47b962b6f849b9a6e27233a",
       "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 2,
       "level": "A2",
       "item_id": "c47b962b6f849b9a6e27233a"
     },
     {
-      "id": "vocab_5_5a2acd9eaa7a8a4ff28c49ff",
+      "id": "vocab_2_f3039f67392d26c21068936d",
       "item_type": "vocab",
-      "part_type": 5,
-      "level": "A2",
-      "item_id": "5a2acd9eaa7a8a4ff28c49ff"
-    },
-    {
-      "id": "vocab_5_da092634a4681aef85f5ce96",
-      "item_type": "vocab",
-      "part_type": 5,
-      "level": "A2",
-      "item_id": "da092634a4681aef85f5ce96"
-    },
-    {
-      "id": "vocab_5_8b7fc360c2c3c5ae3dad7882",
-      "item_type": "vocab",
-      "part_type": 5,
-      "level": "A2",
-      "item_id": "8b7fc360c2c3c5ae3dad7882"
-    },
-    {
-      "id": "vocab_5_f3039f67392d26c21068936d",
-      "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 2,
       "level": "A2",
       "item_id": "f3039f67392d26c21068936d"
     },
     {
-      "id": "vocab_5_892784a56a8e76593196345a",
+      "id": "vocab_2_cf5d839e8234bc3f285d3e1b",
       "item_type": "vocab",
-      "part_type": 5,
-      "level": "A2",
-      "item_id": "892784a56a8e76593196345a"
-    },
-    {
-      "id": "vocab_5_cf5d839e8234bc3f285d3e1b",
-      "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 2,
       "level": "A2",
       "item_id": "cf5d839e8234bc3f285d3e1b"
     },
     {
-      "id": "vocab_5_ec3f8b48178c5d6b99d1d908",
+      "id": "vocab_3_5a2acd9eaa7a8a4ff28c49ff",
       "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 3,
+      "level": "A2",
+      "item_id": "5a2acd9eaa7a8a4ff28c49ff"
+    },
+    {
+      "id": "vocab_3_8b7fc360c2c3c5ae3dad7882",
+      "item_type": "vocab",
+      "part_type": 3,
+      "level": "A2",
+      "item_id": "8b7fc360c2c3c5ae3dad7882"
+    },
+    {
+      "id": "vocab_3_ec3f8b48178c5d6b99d1d908",
+      "item_type": "vocab",
+      "part_type": 3,
       "level": "A2",
       "item_id": "ec3f8b48178c5d6b99d1d908"
     },
     {
-      "id": "vocab_5_e805b4adf447aeb5d58fa510",
+      "id": "vocab_4_892784a56a8e76593196345a",
       "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 4,
+      "level": "A2",
+      "item_id": "892784a56a8e76593196345a"
+    },
+    {
+      "id": "vocab_7_da092634a4681aef85f5ce96",
+      "item_type": "vocab",
+      "part_type": 7,
+      "level": "A2",
+      "item_id": "da092634a4681aef85f5ce96"
+    },
+    {
+      "id": "vocab_7_e805b4adf447aeb5d58fa510",
+      "item_type": "vocab",
+      "part_type": 7,
       "level": "A2",
       "item_id": "e805b4adf447aeb5d58fa510"
     },
     {
-      "id": "vocab_5_6926fd39914027218e139fd3",
+      "id": "vocab_3_6926fd39914027218e13a022",
       "item_type": "vocab",
-      "part_type": 5,
-      "level": "A2",
-      "item_id": "6926fd39914027218e139fd3"
-    },
-    {
-      "id": "vocab_5_6926fd39914027218e13a022",
-      "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 3,
       "level": "A2",
       "item_id": "6926fd39914027218e13a022"
     },
     {
-      "id": "vocab_5_6926fd39914027218e13a071",
+      "id": "vocab_3_6926fd39914027218e13a155",
       "item_type": "vocab",
-      "part_type": 5,
-      "level": "A2",
-      "item_id": "6926fd39914027218e13a071"
-    },
-    {
-      "id": "vocab_5_6926fd39914027218e13a0c0",
-      "item_type": "vocab",
-      "part_type": 5,
-      "level": "A2",
-      "item_id": "6926fd39914027218e13a0c0"
-    },
-    {
-      "id": "vocab_5_6926fd39914027218e13a10f",
-      "item_type": "vocab",
-      "part_type": 5,
-      "level": "A2",
-      "item_id": "6926fd39914027218e13a10f"
-    },
-    {
-      "id": "vocab_5_6926fd39914027218e13a155",
-      "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 3,
       "level": "A2",
       "item_id": "6926fd39914027218e13a155"
     },
     {
-      "id": "vocab_5_6926fd39914027218e13a1a4",
+      "id": "vocab_3_6926fd39914027218e13a1a4",
       "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 3,
       "level": "A2",
       "item_id": "6926fd39914027218e13a1a4"
     },
     {
-      "id": "vocab_5_6926fd39914027218e13a1f3",
+      "id": "vocab_3_6926fd39914027218e13a1f3",
       "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 3,
       "level": "A2",
       "item_id": "6926fd39914027218e13a1f3"
     },
     {
-      "id": "vocab_5_6926fd39914027218e13a242",
+      "id": "vocab_4_6926fd39914027218e139fd3",
       "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 4,
+      "level": "A2",
+      "item_id": "6926fd39914027218e139fd3"
+    },
+    {
+      "id": "vocab_4_6926fd39914027218e13a0c0",
+      "item_type": "vocab",
+      "part_type": 4,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a0c0"
+    },
+    {
+      "id": "vocab_4_6926fd39914027218e13a242",
+      "item_type": "vocab",
+      "part_type": 4,
       "level": "A2",
       "item_id": "6926fd39914027218e13a242"
     },
@@ -683,53 +672,53 @@
       "item_id": "6926fd39914027218e13a291"
     },
     {
-      "id": "vocab_5_6926fd39914027218e13a2e0",
+      "id": "vocab_6_6926fd39914027218e13a071",
       "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 6,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a071"
+    },
+    {
+      "id": "vocab_6_6926fd39914027218e13a10f",
+      "item_type": "vocab",
+      "part_type": 6,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a10f"
+    },
+    {
+      "id": "vocab_1_6926fd39914027218e13a2e0",
+      "item_type": "vocab",
+      "part_type": 1,
       "level": "A2",
       "item_id": "6926fd39914027218e13a2e0"
     },
     {
-      "id": "vocab_5_6926fd39914027218e13a326",
+      "id": "vocab_1_6926fd39914027218e13a4b1",
       "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 1,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a4b1"
+    },
+    {
+      "id": "vocab_2_6926fd39914027218e13a326",
+      "item_type": "vocab",
+      "part_type": 2,
       "level": "A2",
       "item_id": "6926fd39914027218e13a326"
     },
     {
-      "id": "vocab_5_6926fd39914027218e13a375",
+      "id": "vocab_2_6926fd39914027218e13a582",
       "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 2,
       "level": "A2",
-      "item_id": "6926fd39914027218e13a375"
+      "item_id": "6926fd39914027218e13a582"
     },
     {
-      "id": "vocab_5_6926fd39914027218e13a3c4",
+      "id": "vocab_4_6926fd39914027218e13a413",
       "item_type": "vocab",
-      "part_type": 5,
-      "level": "A2",
-      "item_id": "6926fd39914027218e13a3c4"
-    },
-    {
-      "id": "vocab_5_6926fd39914027218e13a413",
-      "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 4,
       "level": "A2",
       "item_id": "6926fd39914027218e13a413"
-    },
-    {
-      "id": "vocab_5_6926fd39914027218e13a462",
-      "item_type": "vocab",
-      "part_type": 5,
-      "level": "A2",
-      "item_id": "6926fd39914027218e13a462"
-    },
-    {
-      "id": "vocab_5_6926fd39914027218e13a4b1",
-      "item_type": "vocab",
-      "part_type": 5,
-      "level": "A2",
-      "item_id": "6926fd39914027218e13a4b1"
     },
     {
       "id": "vocab_5_6926fd39914027218e13a4e4",
@@ -739,107 +728,142 @@
       "item_id": "6926fd39914027218e13a4e4"
     },
     {
-      "id": "vocab_5_6926fd39914027218e13a533",
+      "id": "vocab_6_6926fd39914027218e13a375",
       "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 6,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a375"
+    },
+    {
+      "id": "vocab_6_6926fd39914027218e13a3c4",
+      "item_type": "vocab",
+      "part_type": 6,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a3c4"
+    },
+    {
+      "id": "vocab_7_6926fd39914027218e13a462",
+      "item_type": "vocab",
+      "part_type": 7,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a462"
+    },
+    {
+      "id": "vocab_7_6926fd39914027218e13a533",
+      "item_type": "vocab",
+      "part_type": 7,
       "level": "A2",
       "item_id": "6926fd39914027218e13a533"
     },
     {
-      "id": "vocab_5_6926fd39914027218e13a582",
+      "id": "vocab_1_6926fd39914027218e13a753",
       "item_type": "vocab",
-      "part_type": 5,
-      "level": "A2",
-      "item_id": "6926fd39914027218e13a582"
-    },
-    {
-      "id": "vocab_5_6926fd39914027218e13a61e",
-      "item_type": "vocab",
-      "part_type": 5,
-      "level": "A2",
-      "item_id": "6926fd39914027218e13a61e"
-    },
-    {
-      "id": "vocab_5_6926fd39914027218e13a666",
-      "item_type": "vocab",
-      "part_type": 5,
-      "level": "A2",
-      "item_id": "6926fd39914027218e13a666"
-    },
-    {
-      "id": "vocab_5_6926fd39914027218e13a6b5",
-      "item_type": "vocab",
-      "part_type": 5,
-      "level": "A2",
-      "item_id": "6926fd39914027218e13a6b5"
-    },
-    {
-      "id": "vocab_5_6926fd39914027218e13a704",
-      "item_type": "vocab",
-      "part_type": 5,
-      "level": "A2",
-      "item_id": "6926fd39914027218e13a704"
-    },
-    {
-      "id": "vocab_5_6926fd39914027218e13a753",
-      "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 1,
       "level": "A2",
       "item_id": "6926fd39914027218e13a753"
     },
     {
-      "id": "vocab_5_6926fd39914027218e13a7a0",
+      "id": "vocab_1_6926fd39914027218e13a7a0",
       "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 1,
       "level": "A2",
       "item_id": "6926fd39914027218e13a7a0"
     },
     {
-      "id": "vocab_5_6926fd39914027218e13a7d3",
+      "id": "vocab_3_6926fd39914027218e13a61e",
       "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 3,
       "level": "A2",
-      "item_id": "6926fd39914027218e13a7d3"
+      "item_id": "6926fd39914027218e13a61e"
     },
     {
-      "id": "vocab_5_6926fd39914027218e13a840",
+      "id": "vocab_3_6926fd39914027218e13a6b5",
       "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 3,
       "level": "A2",
-      "item_id": "6926fd39914027218e13a840"
+      "item_id": "6926fd39914027218e13a6b5"
     },
     {
-      "id": "vocab_5_6926fd39914027218e13a88f",
+      "id": "vocab_3_6926fd39914027218e13a8de",
       "item_type": "vocab",
-      "part_type": 5,
-      "level": "A2",
-      "item_id": "6926fd39914027218e13a88f"
-    },
-    {
-      "id": "vocab_5_6926fd39914027218e13a8de",
-      "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 3,
       "level": "A2",
       "item_id": "6926fd39914027218e13a8de"
     },
     {
-      "id": "vocab_5_6926fd39914027218e13a92d",
+      "id": "vocab_4_6926fd39914027218e13a666",
       "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 4,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a666"
+    },
+    {
+      "id": "vocab_4_6926fd39914027218e13a704",
+      "item_type": "vocab",
+      "part_type": 4,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a704"
+    },
+    {
+      "id": "vocab_4_6926fd39914027218e13a840",
+      "item_type": "vocab",
+      "part_type": 4,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a840"
+    },
+    {
+      "id": "vocab_4_6926fd39914027218e13a88f",
+      "item_type": "vocab",
+      "part_type": 4,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a88f"
+    },
+    {
+      "id": "vocab_6_6926fd39914027218e13a7d3",
+      "item_type": "vocab",
+      "part_type": 6,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13a7d3"
+    },
+    {
+      "id": "vocab_1_6926fd39914027218e13ab95",
+      "item_type": "vocab",
+      "part_type": 1,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13ab95"
+    },
+    {
+      "id": "vocab_2_6926fd39914027218e13aa95",
+      "item_type": "vocab",
+      "part_type": 2,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13aa95"
+    },
+    {
+      "id": "vocab_2_6926fd39914027218e13ab17",
+      "item_type": "vocab",
+      "part_type": 2,
+      "level": "A2",
+      "item_id": "6926fd39914027218e13ab17"
+    },
+    {
+      "id": "vocab_3_6926fd39914027218e13a92d",
+      "item_type": "vocab",
+      "part_type": 3,
       "level": "A2",
       "item_id": "6926fd39914027218e13a92d"
     },
     {
-      "id": "vocab_5_6926fd39914027218e13a960",
+      "id": "vocab_4_6926fd39914027218e13a960",
       "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 4,
       "level": "A2",
       "item_id": "6926fd39914027218e13a960"
     },
     {
-      "id": "vocab_5_6926fd39914027218e13a9a8",
+      "id": "vocab_4_6926fd39914027218e13a9a8",
       "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 4,
       "level": "A2",
       "item_id": "6926fd39914027218e13a9a8"
     },
@@ -858,27 +882,6 @@
       "item_id": "6926fd39914027218e13aa46"
     },
     {
-      "id": "vocab_5_6926fd39914027218e13aa95",
-      "item_type": "vocab",
-      "part_type": 5,
-      "level": "A2",
-      "item_id": "6926fd39914027218e13aa95"
-    },
-    {
-      "id": "vocab_5_6926fd39914027218e13aae4",
-      "item_type": "vocab",
-      "part_type": 5,
-      "level": "A2",
-      "item_id": "6926fd39914027218e13aae4"
-    },
-    {
-      "id": "vocab_5_6926fd39914027218e13ab17",
-      "item_type": "vocab",
-      "part_type": 5,
-      "level": "A2",
-      "item_id": "6926fd39914027218e13ab17"
-    },
-    {
       "id": "vocab_5_6926fd39914027218e13ab56",
       "item_type": "vocab",
       "part_type": 5,
@@ -886,39 +889,39 @@
       "item_id": "6926fd39914027218e13ab56"
     },
     {
-      "id": "vocab_5_6926fd39914027218e13ab95",
+      "id": "vocab_6_6926fd39914027218e13aae4",
       "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 6,
       "level": "A2",
-      "item_id": "6926fd39914027218e13ab95"
+      "item_id": "6926fd39914027218e13aae4"
     },
     {
-      "id": "vocab_3_6929f109d9ef34a632a3d790",
+      "id": "vocab_4_6926fd39914027218e13abc8",
       "item_type": "vocab",
-      "part_type": 3,
-      "level": "A1",
-      "item_id": "6929f109d9ef34a632a3d790"
-    },
-    {
-      "id": "vocab_5_6926fd39914027218e13abc8",
-      "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 4,
       "level": "A2",
       "item_id": "6926fd39914027218e13abc8"
     },
     {
-      "id": "vocab_5_6926fd39914027218e13abfb",
+      "id": "vocab_6_6926fd39914027218e13abfb",
       "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 6,
       "level": "A2",
       "item_id": "6926fd39914027218e13abfb"
     },
     {
-      "id": "vocab_5_6926fd3a914027218e13acc1",
+      "id": "vocab_6_6926fd3a914027218e13acc1",
       "item_type": "vocab",
-      "part_type": 5,
+      "part_type": 6,
       "level": "A2",
       "item_id": "6926fd3a914027218e13acc1"
+    },
+    {
+      "id": "vocab_6_6929f109d9ef34a632a3d790",
+      "item_type": "vocab",
+      "part_type": 6,
+      "level": "A1",
+      "item_id": "6929f109d9ef34a632a3d790"
     },
     {
       "id": "dictation_1_6926ce09221b3567f1dc1888",
@@ -969,12 +972,332 @@
       "item_id": "6926d2c0221b3567f1dc18b4"
     },
     {
+      "id": "dictation_1_69467b2f65bd6d9e31048cca",
+      "item_type": "dictation",
+      "part_type": 1,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b2f65bd6d9e31048cca"
+    },
+    {
+      "id": "dictation_1_69467b2f65bd6d9e31048ccb",
+      "item_type": "dictation",
+      "part_type": 1,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b2f65bd6d9e31048ccb"
+    },
+    {
+      "id": "dictation_1_69467b2f65bd6d9e31048ccc",
+      "item_type": "dictation",
+      "part_type": 1,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b2f65bd6d9e31048ccc"
+    },
+    {
       "id": "dictation_2_6926d431221b3567f1dc18bb",
       "item_type": "dictation",
       "part_type": 2,
       "level": "A1",
       "weight": 0,
       "item_id": "6926d431221b3567f1dc18bb"
+    },
+    {
+      "id": "dictation_1_69467b2f65bd6d9e31048ccd",
+      "item_type": "dictation",
+      "part_type": 1,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b2f65bd6d9e31048ccd"
+    },
+    {
+      "id": "dictation_1_69467b2f65bd6d9e31048cce",
+      "item_type": "dictation",
+      "part_type": 1,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b2f65bd6d9e31048cce"
+    },
+    {
+      "id": "dictation_1_69467b2f65bd6d9e31048ccf",
+      "item_type": "dictation",
+      "part_type": 1,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b2f65bd6d9e31048ccf"
+    },
+    {
+      "id": "dictation_1_69467b2f65bd6d9e31048cd0",
+      "item_type": "dictation",
+      "part_type": 1,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b2f65bd6d9e31048cd0"
+    },
+    {
+      "id": "dictation_1_69467b2f65bd6d9e31048cd1",
+      "item_type": "dictation",
+      "part_type": 1,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b2f65bd6d9e31048cd1"
+    },
+    {
+      "id": "dictation_1_69467b2f65bd6d9e31048cd2",
+      "item_type": "dictation",
+      "part_type": 1,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b2f65bd6d9e31048cd2"
+    },
+    {
+      "id": "dictation_1_69467b2f65bd6d9e31048cd3",
+      "item_type": "dictation",
+      "part_type": 1,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b2f65bd6d9e31048cd3"
+    },
+    {
+      "id": "dictation_2_69467b2f65bd6d9e31048cd4",
+      "item_type": "dictation",
+      "part_type": 2,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b2f65bd6d9e31048cd4"
+    },
+    {
+      "id": "dictation_2_69467b2f65bd6d9e31048cd5",
+      "item_type": "dictation",
+      "part_type": 2,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b2f65bd6d9e31048cd5"
+    },
+    {
+      "id": "dictation_2_69467b2f65bd6d9e31048cd6",
+      "item_type": "dictation",
+      "part_type": 2,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b2f65bd6d9e31048cd6"
+    },
+    {
+      "id": "dictation_2_69467b2f65bd6d9e31048cd7",
+      "item_type": "dictation",
+      "part_type": 2,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b2f65bd6d9e31048cd7"
+    },
+    {
+      "id": "dictation_2_69467b2f65bd6d9e31048cd8",
+      "item_type": "dictation",
+      "part_type": 2,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b2f65bd6d9e31048cd8"
+    },
+    {
+      "id": "dictation_2_69467b2f65bd6d9e31048cd9",
+      "item_type": "dictation",
+      "part_type": 2,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b2f65bd6d9e31048cd9"
+    },
+    {
+      "id": "dictation_2_69467b2f65bd6d9e31048cda",
+      "item_type": "dictation",
+      "part_type": 2,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b2f65bd6d9e31048cda"
+    },
+    {
+      "id": "dictation_2_69467b2f65bd6d9e31048cdb",
+      "item_type": "dictation",
+      "part_type": 2,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b2f65bd6d9e31048cdb"
+    },
+    {
+      "id": "dictation_2_69467b2f65bd6d9e31048cdc",
+      "item_type": "dictation",
+      "part_type": 2,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b2f65bd6d9e31048cdc"
+    },
+    {
+      "id": "dictation_2_69467b2f65bd6d9e31048cdd",
+      "item_type": "dictation",
+      "part_type": 2,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b2f65bd6d9e31048cdd"
+    },
+    {
+      "id": "dictation_3_69467b3065bd6d9e31048cde",
+      "item_type": "dictation",
+      "part_type": 3,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b3065bd6d9e31048cde"
+    },
+    {
+      "id": "dictation_3_69467b3065bd6d9e31048cdf",
+      "item_type": "dictation",
+      "part_type": 3,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b3065bd6d9e31048cdf"
+    },
+    {
+      "id": "dictation_3_69467b3065bd6d9e31048ce0",
+      "item_type": "dictation",
+      "part_type": 3,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b3065bd6d9e31048ce0"
+    },
+    {
+      "id": "dictation_3_69467b3065bd6d9e31048ce1",
+      "item_type": "dictation",
+      "part_type": 3,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b3065bd6d9e31048ce1"
+    },
+    {
+      "id": "dictation_3_69467b3065bd6d9e31048ce2",
+      "item_type": "dictation",
+      "part_type": 3,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b3065bd6d9e31048ce2"
+    },
+    {
+      "id": "dictation_3_69467b3065bd6d9e31048ce3",
+      "item_type": "dictation",
+      "part_type": 3,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b3065bd6d9e31048ce3"
+    },
+    {
+      "id": "dictation_3_69467b3065bd6d9e31048ce4",
+      "item_type": "dictation",
+      "part_type": 3,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b3065bd6d9e31048ce4"
+    },
+    {
+      "id": "dictation_3_69467b3065bd6d9e31048ce5",
+      "item_type": "dictation",
+      "part_type": 3,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b3065bd6d9e31048ce5"
+    },
+    {
+      "id": "dictation_3_69467b3065bd6d9e31048ce6",
+      "item_type": "dictation",
+      "part_type": 3,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b3065bd6d9e31048ce6"
+    },
+    {
+      "id": "dictation_3_69467b3065bd6d9e31048ce7",
+      "item_type": "dictation",
+      "part_type": 3,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b3065bd6d9e31048ce7"
+    },
+    {
+      "id": "dictation_4_69467b3065bd6d9e31048ce8",
+      "item_type": "dictation",
+      "part_type": 4,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b3065bd6d9e31048ce8"
+    },
+    {
+      "id": "dictation_4_69467b3065bd6d9e31048ce9",
+      "item_type": "dictation",
+      "part_type": 4,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b3065bd6d9e31048ce9"
+    },
+    {
+      "id": "dictation_4_69467b3065bd6d9e31048cea",
+      "item_type": "dictation",
+      "part_type": 4,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b3065bd6d9e31048cea"
+    },
+    {
+      "id": "dictation_4_69467b3065bd6d9e31048ceb",
+      "item_type": "dictation",
+      "part_type": 4,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b3065bd6d9e31048ceb"
+    },
+    {
+      "id": "dictation_4_69467b3065bd6d9e31048cec",
+      "item_type": "dictation",
+      "part_type": 4,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b3065bd6d9e31048cec"
+    },
+    {
+      "id": "dictation_4_69467b3065bd6d9e31048ced",
+      "item_type": "dictation",
+      "part_type": 4,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b3065bd6d9e31048ced"
+    },
+    {
+      "id": "dictation_4_69467b3065bd6d9e31048cee",
+      "item_type": "dictation",
+      "part_type": 4,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b3065bd6d9e31048cee"
+    },
+    {
+      "id": "dictation_4_69467b3065bd6d9e31048cef",
+      "item_type": "dictation",
+      "part_type": 4,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b3065bd6d9e31048cef"
+    },
+    {
+      "id": "dictation_4_69467b3065bd6d9e31048cf0",
+      "item_type": "dictation",
+      "part_type": 4,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b3065bd6d9e31048cf0"
+    },
+    {
+      "id": "dictation_4_69467b3065bd6d9e31048cf1",
+      "item_type": "dictation",
+      "part_type": 4,
+      "level": "A1",
+      "weight": 0,
+      "item_id": "69467b3065bd6d9e31048cf1"
     },
     {
       "id": "shadowing_2_6926fd39914027218e13a001",
@@ -1439,6 +1762,66 @@
       "item_type": "quiz",
       "part_type": 5,
       "item_id": "69316853f0c795cdbc8c85aa"
+    },
+    {
+      "id": "quiz_5_69317c221a77d282395e443d",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "69317c221a77d282395e443d"
+    },
+    {
+      "id": "quiz_5_69317cdf1a77d282395e4b62",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "69317cdf1a77d282395e4b62"
+    },
+    {
+      "id": "quiz_5_693182e53536e96973129bbc",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "693182e53536e96973129bbc"
+    },
+    {
+      "id": "quiz_5_693183523536e9697312a3ee",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "693183523536e9697312a3ee"
+    },
+    {
+      "id": "quiz_5_6933c637de4f4861b93baf36",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "6933c637de4f4861b93baf36"
+    },
+    {
+      "id": "quiz_5_6933d2d1de4f4861b93bbb42",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "6933d2d1de4f4861b93bbb42"
+    },
+    {
+      "id": "quiz_5_6933d406de4f4861b93bc385",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "6933d406de4f4861b93bc385"
+    },
+    {
+      "id": "quiz_5_6933d4eade4f4861b93bcc30",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "6933d4eade4f4861b93bcc30"
+    },
+    {
+      "id": "quiz_5_6933d54ede4f4861b93bd51b",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "6933d54ede4f4861b93bd51b"
+    },
+    {
+      "id": "quiz_5_6936d27dce245154b8d38053",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "6936d27dce245154b8d38053"
     }
   ]
 }

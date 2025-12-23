@@ -15,9 +15,9 @@ const ai = new GoogleGenAI({
 const MODELS = [
   "gemini-2.5-flash-lite",
   "gemini-2.0-flash-lite",
-  "gemini-1.5-flash-lite",
   "gemini-2.0-pro",
   "gemini-2.5-flash",
+  "gemini-3-flash",
   "gemini-2.0-flash",
   "gemini-1.5-flash",
 ];
@@ -269,13 +269,26 @@ export async function generateToeicPlan(userInput: any) {
       return { model, json: parsed };
     } catch (err: any) {
       const msg = err?.message || err?.error?.message || "";
+      const code = err?.error?.code;
+
+      // Fallback cho lỗi quota (429), overload (503), model không tồn tại (404)
       if (
         msg.includes("503") ||
         msg.includes("overloaded") ||
         msg.includes("UNAVAILABLE") ||
-        err?.error?.code === 503
+        msg.includes("429") ||
+        msg.includes("quota") ||
+        msg.includes("RESOURCE_EXHAUSTED") ||
+        msg.includes("404") ||
+        msg.includes("NOT_FOUND") ||
+        msg.includes("not found") ||
+        code === 503 ||
+        code === 429 ||
+        code === 404
       ) {
-        console.warn(`🚧 ${model} bị quá tải, thử model kế tiếp...`);
+        console.warn(
+          `🚧 ${model} bị lỗi (${code || "unknown"}), thử model kế tiếp...`
+        );
         continue;
       }
       console.error(`❌ Lỗi khi gọi ${model}:`, msg);
@@ -283,7 +296,9 @@ export async function generateToeicPlan(userInput: any) {
     }
   }
 
-  throw new Error("Tất cả model đều quá tải, vui lòng thử lại sau vài phút.");
+  throw new Error(
+    "Tất cả model đều quá tải hoặc không khả dụng, vui lòng thử lại sau."
+  );
 }
 
 // ========== GENERATE WEEKLY PLAN WITH RAG ==========
@@ -377,13 +392,26 @@ export async function generateWeeklyPlanWithRAG(
       return { model, json: parsed };
     } catch (err: any) {
       const msg = err?.message || err?.error?.message || "";
+      const code = err?.error?.code;
+
+      // Fallback cho lỗi quota (429), overload (503), model không tồn tại (404)
       if (
         msg.includes("503") ||
         msg.includes("overloaded") ||
         msg.includes("UNAVAILABLE") ||
-        err?.error?.code === 503
+        msg.includes("429") ||
+        msg.includes("quota") ||
+        msg.includes("RESOURCE_EXHAUSTED") ||
+        msg.includes("404") ||
+        msg.includes("NOT_FOUND") ||
+        msg.includes("not found") ||
+        code === 503 ||
+        code === 429 ||
+        code === 404
       ) {
-        console.warn(`🚧 ${model} bị quá tải, thử model kế tiếp...`);
+        console.warn(
+          `🚧 ${model} bị lỗi (${code || "unknown"}), thử model kế tiếp...`
+        );
         continue;
       }
       console.error(`❌ Lỗi khi gọi ${model}:`, msg);
@@ -391,7 +419,9 @@ export async function generateWeeklyPlanWithRAG(
     }
   }
 
-  throw new Error("Tất cả model đều quá tải, vui lòng thử lại sau vài phút.");
+  throw new Error(
+    "Tất cả model đều quá tải hoặc không khả dụng, vui lòng thử lại sau."
+  );
 }
 
 export const DictionarySchema = {

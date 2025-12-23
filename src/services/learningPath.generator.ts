@@ -1220,9 +1220,20 @@ export async function buildWeeklyLearningPath(
     console.warn("⚠️ Không thể ghi RAG debug file:", e);
   }
 
-  // 2) Gọi Gemini sinh weekly plan dựa trên RAG
+  // 2) Tính minutes_per_day nếu chưa có (để truyền vào Gemini)
+  const weeklyHours = userInput?.weekly_study_hours || 10;
+  const daysPerWeek = userInput?.study_days_per_week || 7;
+  const minutesPerDay = Math.round((weeklyHours * 60) / daysPerWeek);
+
+  // Bổ sung minutes_per_day vào userInput trước khi gọi Gemini
+  const enrichedUserInput = {
+    ...userInput,
+    minutes_per_day: minutesPerDay,
+  };
+
+  // 3) Gọi Gemini sinh weekly plan dựa trên RAG
   const { model, json: weeklyPlan } = await generateWeeklyPlanWithRAG(
-    userInput,
+    enrichedUserInput,
     mentorId
   );
   if (!weeklyPlan || !weeklyPlan.week_plan) {
@@ -1230,15 +1241,13 @@ export async function buildWeeklyLearningPath(
   }
   // Weekly plan received from Gemini
 
-  // 3) Tạo LearningPath (chỉ 1 tuần) - TẠM THỜI CHƯA GẮN week_study_ids
+  // 4) Tạo LearningPath (chỉ 1 tuần) - TẠM THỜI CHƯA GẮN week_study_ids
   const lpTitle = `Lộ trình TOEIC - Tuần ${weeklyPlan.week_plan.week || 1}`;
   const lpDesc = weeklyPlan.week_plan.goal || "Lộ trình học TOEIC 1 tuần (RAG)";
   const lpLevel = CERFLevel.B1; // mặc định
 
-  // Calculate time_per_day from weekly_study_hours
-  const weeklyHours = userInput?.weekly_study_hours || 10;
-  const daysPerWeek = userInput?.study_days_per_week || 7;
-  const timePerDayMinutes = Math.round((weeklyHours / daysPerWeek) * 60);
+  // Use calculated minutes_per_day
+  const timePerDayMinutes = minutesPerDay;
 
   const learningPath = await LearningPath.create({
     user_id: userObjectId,
@@ -1246,6 +1255,9 @@ export async function buildWeeklyLearningPath(
     description: lpDesc,
     level: lpLevel,
     target_score: userInput?.target_score || 0,
+    target_completion_date: weeklyPlan.summary?.end_date
+      ? new Date(weeklyPlan.summary.end_date)
+      : undefined,
     time_per_day: timePerDayMinutes,
     days_per_week: daysPerWeek,
     isActive: true,
