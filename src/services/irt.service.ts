@@ -648,7 +648,7 @@ export const generateIRTWeeklyPlanService = async (
     throw new Error("Failed to normalize retrieved items for user " + userId);
   }
 
-  const minutesPerDay = (userProfile?.hours_per_day || 0) * 60;
+  const minutesPerDay = (userProfile?.hours_per_day || 0);
 
   const totalWeekMinutes =
     minutesPerDay * (userProfile?.study_days_per_week || 0);
@@ -676,6 +676,8 @@ export const generateIRTWeeklyPlanService = async (
   if (!weeklyNextPlan) {
     throw new Error("Failed to generate IRT weekly plan for user " + userId);
   }
+
+  saveDebugFile(`irt_weekly_raw_plan_user_${userId}.json`, weeklyNextPlan);
 
   const weekly_data = weeklyNextPlan.json;
 
@@ -709,57 +711,57 @@ export const generateIRTWeeklyPlanService = async (
       // Chuẩn bị sessions từ plan
       const sessions = Array.isArray(day.sessions)
         ? day.sessions.map((session: any, sessionIdx: number) => {
-            const partNum: number | null = session.part ?? null;
+          const partNum: number | null = session.part ?? null;
 
-            const isFirstSession = isFirstDay && sessionIdx === 0;
+          const isFirstSession = isFirstDay && sessionIdx === 0;
 
-            const items =
-              Array.isArray(session.items) && session.items.length > 0
-                ? session.items.map((it: any, itemIdx: number) => {
-                    let mappedKind: SessionType;
+          const items =
+            Array.isArray(session.items) && session.items.length > 0
+              ? session.items.map((it: any, itemIdx: number) => {
+                let mappedKind: SessionType;
 
-                    switch (it.kind) {
-                      case "dictation":
-                        mappedKind = SessionType.DICTATION;
-                        break;
-                      case "shadowing":
-                        mappedKind = SessionType.SHADOWING;
-                        break;
-                      case "quiz":
-                        mappedKind = SessionType.QUIZ;
-                        break;
-                      case "lesson":
-                        mappedKind = SessionType.LESSON;
-                        break;
-                      case "vocab":
-                      default:
-                        mappedKind = SessionType.FLASH_CARD;
-                        break;
-                    }
+                switch (it.kind) {
+                  case "dictation":
+                    mappedKind = SessionType.DICTATION;
+                    break;
+                  case "shadowing":
+                    mappedKind = SessionType.SHADOWING;
+                    break;
+                  case "quiz":
+                    mappedKind = SessionType.QUIZ;
+                    break;
+                  case "lesson":
+                    mappedKind = SessionType.LESSON;
+                    break;
+                  case "vocab":
+                  default:
+                    mappedKind = SessionType.FLASH_CARD;
+                    break;
+                }
 
-                    const isFirstItem = isFirstSession && itemIdx === 0;
+                const isFirstItem = isFirstSession && itemIdx === 0;
 
-                    return {
-                      kind: mappedKind,
-                      activity_id: it.resource_id
-                        ? new Types.ObjectId(it.resource_id)
-                        : undefined,
-                      status: isFirstItem
-                        ? WeekStudyStatus.IN_PROGRESS
-                        : WeekStudyStatus.LOCK,
-                    };
-                  })
-                : [];
+                return {
+                  kind: mappedKind,
+                  activity_id: it.resource_id
+                    ? new Types.ObjectId(it.resource_id)
+                    : undefined,
+                  status: isFirstItem
+                    ? WeekStudyStatus.IN_PROGRESS
+                    : WeekStudyStatus.LOCK,
+                };
+              })
+              : [];
 
-            return {
-              session_no: session.session_no,
-              status: isFirstSession
-                ? WeekStudyStatus.IN_PROGRESS
-                : WeekStudyStatus.LOCK,
-              part_type: partNum,
-              items,
-            };
-          })
+          return {
+            session_no: session.session_no,
+            status: isFirstSession
+              ? WeekStudyStatus.IN_PROGRESS
+              : WeekStudyStatus.LOCK,
+            part_type: partNum,
+            items,
+          };
+        })
         : [];
 
       // Bổ sung mini test vào session cuối của ngày cuối cùng

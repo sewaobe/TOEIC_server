@@ -7,6 +7,7 @@ import {
   retrieveContentByMentor,
   formatContentForPrompt,
 } from "./learningPath.retriever";
+import { saveDebugFile } from "./demo.service";
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
@@ -508,9 +509,8 @@ export async function fetchUnsplashImages(keywords: string[], limit = 2) {
 
   // 🎯 Lọc ảnh có từ khóa xuất hiện trong mô tả / alt_description
   const filtered = (data.results || []).filter((img: any) => {
-    const desc = `${img.description || ""} ${
-      img.alt_description || ""
-    }`.toLowerCase();
+    const desc = `${img.description || ""} ${img.alt_description || ""
+      }`.toLowerCase();
     return keywords.some((kw) => desc.includes(kw.toLowerCase()));
   });
 
