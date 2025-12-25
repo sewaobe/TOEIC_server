@@ -23,6 +23,7 @@ import { saveDebugFile } from "./demo.service";
 import { updatedThetaInUserTestService } from "./user_test.service";
 import { updateUserStreak } from "./streak.service";
 import { autoUnlockAfterComplete } from "./auto_unlock.service";
+import { emitToUser } from "../socket/emitToUser.socket";
 
 /************************************************************
  * 2PL MODEL (a, b)
@@ -604,12 +605,36 @@ export const generateIRTWeeklyPlanService = async (
   // Bước 1: Tính điểm bài test
   const result = await submitMiniTestService(userId, testId, answers, duration);
 
+  // Emit grading result immediately so frontend can show correct/incorrect per item
+  try {
+    emitToUser(userId, "mini_test_submitted", {
+      step: "submitted",
+      userTestId: result.userTestId,
+      score: result.score,
+      totalCorrect: result.totalCorrect,
+      totalQuestions: result.totalQuestions,
+      detailedAnswers: result.detailedAnswers,
+      responses: result.responses,
+    });
+  } catch (err) {
+    console.warn("Failed to emit mini_test_submitted after submit:", err);
+  }
+
   if (!result) {
     throw new Error("Failed to submit mini test for user " + userId);
   }
 
   // Bước 2: Tính theta cho từng part
   const abilities = calculateTheta2PL(result);
+
+  // Emit abilities immediately after theta calculation (step 2)
+  try {
+    emitToUser(userId, "mini_test_abilities", {
+      abilities: abilities,
+    });
+  } catch (err) {
+    console.warn("Failed to emit mini_test_abilities after calculateTheta2PL:", err);
+  }
 
   if (!abilities) {
     throw new Error("Failed to calculate abilities for user " + userId);
