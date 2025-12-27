@@ -43,22 +43,24 @@ export const getLessonHistory = async (
         .lean();
 
       const mapped = attempts.map((a: any) => {
-        const easy = a.results?.filter((r: any) => r.eval_type === "easy").length || 0;
+        const easy =
+          a.results?.filter((r: any) => r.eval_type === "easy").length || 0;
         const medium =
           a.results?.filter((r: any) => r.eval_type === "medium").length || 0;
-        const hard = a.results?.filter((r: any) => r.eval_type === "hard").length || 0;
-        const skip = a.results?.filter((r: any) => r.eval_type === "skip").length || 0;
-        const avgResponseTime =
-          a.results?.length
-            ? Number(
-                (
-                  a.results.reduce(
-                    (sum: number, r: any) => sum + Number(r.response_time || 0),
-                    0
-                  ) / a.results.length
-                ).toFixed(2)
-              )
-            : undefined;
+        const hard =
+          a.results?.filter((r: any) => r.eval_type === "hard").length || 0;
+        const skip =
+          a.results?.filter((r: any) => r.eval_type === "skip").length || 0;
+        const avgResponseTime = a.results?.length
+          ? Number(
+              (
+                a.results.reduce(
+                  (sum: number, r: any) => sum + Number(r.response_time || 0),
+                  0
+                ) / a.results.length
+              ).toFixed(2)
+            )
+          : undefined;
 
         return {
           id: a._id.toString(),
@@ -95,14 +97,18 @@ export const getLessonHistory = async (
         user_id: userObjectId,
         quiz_id: objectId,
       })
-        .populate("answers.question_id", "textQuestion choices correctAnswer name")
+        .populate(
+          "answers.question_id",
+          "textQuestion choices correctAnswer name"
+        )
         .sort({ started_at: -1 })
         .limit(limit)
         .lean();
 
       const mapped = attempts.map((a: any) => {
         const totalQuestions = a.answers?.length || 0;
-        const correct = a.answers?.filter((ans: any) => ans.correct).length || 0;
+        const correct =
+          a.answers?.filter((ans: any) => ans.correct).length || 0;
 
         return {
           id: a._id.toString(),
@@ -110,8 +116,12 @@ export const getLessonHistory = async (
           started_at: a.started_at,
           finished_at: a.finished_at,
           durationSec: toSeconds(a.started_at, a.finished_at),
-          scoreLabel: `${a.score ?? Math.round((correct / Math.max(totalQuestions, 1)) * 100)} điểm`,
-          scoreValue: a.score ?? Math.round((correct / Math.max(totalQuestions, 1)) * 100),
+          scoreLabel: `${
+            a.score ?? Math.round((correct / Math.max(totalQuestions, 1)) * 100)
+          } điểm`,
+          scoreValue:
+            a.score ??
+            Math.round((correct / Math.max(totalQuestions, 1)) * 100),
           submit_type: a.submit_type || "practice",
           meta: {
             totalQuestions,
@@ -145,10 +155,32 @@ export const getLessonHistory = async (
       })
         .sort({ started_at: -1 })
         .limit(limit)
+        .populate({
+          path: "dictation_id",
+          select: "timings",
+        })
         .lean();
 
       const mapped = attempts.map((a: any) => {
-        const totalSegments = a.answers ? Object.keys(a.answers || {}).length : 0;
+        const timings = a.dictation_id?.timings || [];
+        const answers = a.answers || {};
+        const totalSegments = timings.length;
+
+        // Build segments array mapping user answers to correct text
+        const segments = timings.map((seg: any, idx: number) => {
+          const userText = answers[String(idx)] || "";
+          const correctText = seg.text || "";
+          // Simple comparison - consider correct if texts match (case-insensitive, trimmed)
+          const isCorrect =
+            userText.trim().toLowerCase() === correctText.trim().toLowerCase();
+          return {
+            index: idx + 1,
+            correctText,
+            userText,
+            isCorrect,
+          };
+        });
+
         return {
           id: a._id.toString(),
           type: "dictation",
@@ -161,7 +193,7 @@ export const getLessonHistory = async (
           meta: {
             mistakes: Array.isArray(a.mistakes) ? a.mistakes.length : 0,
             totalSegments,
-            segments: [],
+            segments,
           },
         };
       });

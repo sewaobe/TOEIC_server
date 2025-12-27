@@ -1181,51 +1181,12 @@ export async function buildWeeklyLearningPath(
   const userObjectId =
     typeof userId === "string" ? new Types.ObjectId(userId) : userId;
 
-  // 1. Retrieve lesson-only content (no parts)
-  //    We query Chroma for items with item_type='lesson', prefer items with weight <= 0.5,
-  //    ask for up to 50 results and require at least 20 (top up from Mongo if needed).
-  const metadataFilter: Record<string, any> = { item_type: "lesson" };
-  if (userInput.level) metadataFilter.level = userInput.level;
-  const searchQuery = constructSearchQuery({ ...userInput });
-
-  const { results: ragResults, source } =
-    await retrieveRelevantContentFromChroma(
-      null,
-      searchQuery,
-      metadataFilter,
-      50, // nResults
-      0.5, // maxWeight (<= 0.5)
-      20 // minResults
-    );
-
-  console.log(`RAG source: ${source}`);
-
-  // 2. Group flat RAG results into RetrievedContent structure
-  const retrievedContent = groupRagResultsToRetrievedContent(ragResults || []);
-
-  // 4. Format content for LLM prompt
-  const formattedContent = formatContentForPrompt(retrievedContent);
-
-  // Xuất RAG content ra file debug
-  try {
-    const path = require("path");
-    const fs = require("fs");
-    const outputsRoot = path.resolve(__dirname, "../../../", "toeic_outputs");
-    fs.mkdirSync(outputsRoot, { recursive: true });
-    const now = new Date();
-    const ts = now.toISOString().replace(/[:.]/g, "-");
-    const ragDebugPath = path.join(outputsRoot, `${ts}-rag-content.txt`);
-    fs.writeFileSync(ragDebugPath, formattedContent, "utf8");
-  } catch (e) {
-    console.warn("⚠️ Không thể ghi RAG debug file:", e);
-  }
-
-  // 2) Tính minutes_per_day nếu chưa có (để truyền vào Gemini)
+  // 1) Tính minutes_per_day nếu chưa có (để truyền vào Gemini)
   const weeklyHours = userInput?.weekly_study_hours || 10;
   const daysPerWeek = userInput?.study_days_per_week || 7;
   const minutesPerDay = Math.round((weeklyHours * 60) / daysPerWeek);
 
-  // Bổ sung minutes_per_day vào userInput trước khi gọi Gemini
+  // 2) Bổ sung minutes_per_day vào userInput trước khi gọi Gemini
   const enrichedUserInput = {
     ...userInput,
     minutes_per_day: minutesPerDay,
@@ -1255,8 +1216,10 @@ export async function buildWeeklyLearningPath(
     description: lpDesc,
     level: lpLevel,
     target_score: userInput?.target_score || 0,
-    target_completion_date: weeklyPlan.summary?.end_date
-      ? new Date(weeklyPlan.summary.end_date)
+    target_completion_date: userInput?.deadline
+      ? new Date(userInput.deadline)
+      : userInput?.end_date
+      ? new Date(userInput.end_date)
       : undefined,
     time_per_day: timePerDayMinutes,
     days_per_week: daysPerWeek,

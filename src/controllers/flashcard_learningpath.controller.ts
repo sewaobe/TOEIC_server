@@ -52,18 +52,25 @@ export const submitFlashCardController = async (
   try {
     const { id: rawId } = req.params;
     const userId = new Types.ObjectId(req.user._id);
-    const { learned_words, time_spent, day_study_id } = req.body;
+    const { learned_words, time_spent, day_study_id, results } = req.body;
     const submitType = SubmissionType.LEARNING_PATH;
     const topicVocabId = new Types.ObjectId(rawId);
     const accuracy =
-      typeof req.body.accuracy === "number"
-        ? Number(req.body.accuracy)
-        : 100;
+      typeof req.body.accuracy === "number" ? Number(req.body.accuracy) : 100;
 
     // Validate day_study_id (b?t bu?c d? xác d?nh ngày h?c)
     if (!day_study_id) {
       return res.status(400).json(ApiResponse.fail("day_study_id là b?t bu?c"));
     }
+
+    // Parse results array nếu có
+    const resultsArray = Array.isArray(results)
+      ? results.map((r: any) => ({
+          vocabulary_id: new Types.ObjectId(r.vocabulary_id),
+          eval_type: r.eval_type,
+          response_time: Number(r.response_time || 0),
+        }))
+      : [];
 
     // 1. T?o FlashCardAttempt (luu metadata id)
     const now = new Date();
@@ -72,7 +79,7 @@ export const submitFlashCardController = async (
       topic_vocabulary_id: topicVocabId,
       submit_type: submitType,
       accuracy,
-      results: [],
+      results: resultsArray,
       learned_words: learned_words || [],
       time_spent: time_spent || 0,
       started_at: now,
@@ -126,4 +133,3 @@ export const submitFlashCardController = async (
     next(error);
   }
 };
-

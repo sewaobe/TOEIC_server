@@ -14,13 +14,12 @@ const ai = new GoogleGenAI({
 });
 
 const MODELS = [
-  "gemini-2.5-flash-lite",
-  "gemini-2.0-flash-lite",
-  "gemini-2.0-pro",
   "gemini-2.5-flash",
   "gemini-3-flash",
   "gemini-2.0-flash",
-  "gemini-1.5-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-2.0-flash-lite",
+  "gemini-2.0-pro",
 ];
 
 export const ToeicPlanSchema = {
@@ -509,8 +508,9 @@ export async function fetchUnsplashImages(keywords: string[], limit = 2) {
 
   // 🎯 Lọc ảnh có từ khóa xuất hiện trong mô tả / alt_description
   const filtered = (data.results || []).filter((img: any) => {
-    const desc = `${img.description || ""} ${img.alt_description || ""
-      }`.toLowerCase();
+    const desc = `${img.description || ""} ${
+      img.alt_description || ""
+    }`.toLowerCase();
     return keywords.some((kw) => desc.includes(kw.toLowerCase()));
   });
 

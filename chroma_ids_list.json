@@ -1,8 +1,8 @@
 {
-  "total": 246,
+  "total": 270,
   "byType": {
     "lesson": 30,
-    "quiz": 65,
+    "quiz": 89,
     "vocab": 64,
     "dictation": 47,
     "shadowing": 40
@@ -12,7 +12,7 @@
     "2": 61,
     "3": 21,
     "4": 24,
-    "5": 100,
+    "5": 124,
     "6": 11,
     "7": 7
   },
@@ -1822,6 +1822,150 @@
       "item_type": "quiz",
       "part_type": 5,
       "item_id": "6936d27dce245154b8d38053"
+    },
+    {
+      "id": "quiz_5_69468102b2a012d6e92e2c67",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "69468102b2a012d6e92e2c67"
+    },
+    {
+      "id": "quiz_5_6946831911c852252f290601",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "6946831911c852252f290601"
+    },
+    {
+      "id": "quiz_5_694684ce4f06740ae05e9558",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "694684ce4f06740ae05e9558"
+    },
+    {
+      "id": "quiz_5_69469fffdbd36a5cec569b6f",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "69469fffdbd36a5cec569b6f"
+    },
+    {
+      "id": "quiz_5_6946a3f8dc3e403d23d95fbc",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "6946a3f8dc3e403d23d95fbc"
+    },
+    {
+      "id": "quiz_5_6946a5db8516a8ae85322339",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "6946a5db8516a8ae85322339"
+    },
+    {
+      "id": "quiz_5_6946a868c48db4f4d338c97b",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "6946a868c48db4f4d338c97b"
+    },
+    {
+      "id": "quiz_5_6946a9d84757b12e4fe75c11",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "6946a9d84757b12e4fe75c11"
+    },
+    {
+      "id": "quiz_5_6946aabae9668c108aa5ef4e",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "6946aabae9668c108aa5ef4e"
+    },
+    {
+      "id": "quiz_5_6946af12e9668c108aa5fc0f",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "6946af12e9668c108aa5fc0f"
+    },
+    {
+      "id": "quiz_5_6946b0c2e9668c108aa60939",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "6946b0c2e9668c108aa60939"
+    },
+    {
+      "id": "quiz_5_6946b1dedb3cff94eb39c980",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "6946b1dedb3cff94eb39c980"
+    },
+    {
+      "id": "quiz_5_6948297cffae3f3467005db3",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "6948297cffae3f3467005db3"
+    },
+    {
+      "id": "quiz_5_69495fdb156d2fd585e3b3c1",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "69495fdb156d2fd585e3b3c1"
+    },
+    {
+      "id": "quiz_5_694abdc01d774e37bb04082f",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "694abdc01d774e37bb04082f"
+    },
+    {
+      "id": "quiz_5_694ad2935c29fd7f112c6e7e",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "694ad2935c29fd7f112c6e7e"
+    },
+    {
+      "id": "quiz_5_694bf9a5ba2d0750ea0d041e",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "694bf9a5ba2d0750ea0d041e"
+    },
+    {
+      "id": "quiz_5_694c0521b6f3fb9a4a9d45db",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "694c0521b6f3fb9a4a9d45db"
+    },
+    {
+      "id": "quiz_5_694c16ce4f7b58ecafe9f4fc",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "694c16ce4f7b58ecafe9f4fc"
+    },
+    {
+      "id": "quiz_5_694c18fd16d696693fec90ca",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "694c18fd16d696693fec90ca"
+    },
+    {
+      "id": "quiz_5_694c20c016d696693feca377",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "694c20c016d696693feca377"
+    },
+    {
+      "id": "quiz_5_694d6829e2bbd37f43f4451b",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "694d6829e2bbd37f43f4451b"
+    },
+    {
+      "id": "quiz_5_694d7a0ae2bbd37f43f45402",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "694d7a0ae2bbd37f43f45402"
+    },
+    {
+      "id": "quiz_5_694d7c71e2bbd37f43f46305",
+      "item_type": "quiz",
+      "part_type": 5,
+      "item_id": "694d7c71e2bbd37f43f46305"
     }
   ]
 }

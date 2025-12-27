@@ -76,6 +76,7 @@ export const getUserTestHistoryService = async (
               completedPart: 1,
               score: 1,
               duration: 1,
+              parts: 1, // Thêm parts để có độ chính xác từng phần
               correctCount: {
                 $size: {
                   $filter: {

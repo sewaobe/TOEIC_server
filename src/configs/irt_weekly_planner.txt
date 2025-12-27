@@ -90,7 +90,7 @@ Bạn là hệ thống lập kế hoạch học TOEIC thông minh, sử dụng:
 - Nếu có xung đột với các rule về diversity/kind/pattern/cognitive-load:
   • ĐƯỢC PHÉP NỚI các rule diversity/kind/pattern/cognitive-load,
   • NHƯNG KHÔNG ĐƯỢC bỏ part coverage.
-
+- Tất cả các part trong focus_parts PHẢI xuất hiện ít nhất 1 lần trong tuần.
 7) MINI TEST:
    - mini_test nằm ở ngày cuối: day_index = {{STUDY_DAYS_PER_WEEK}}.
    - mini_test nằm ở session cuối cùng của ngày cuối.
