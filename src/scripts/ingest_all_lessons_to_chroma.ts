@@ -4,6 +4,8 @@ import { Dictation } from "../models/dictation.model";
 import { Shadowing } from "../models/shadowing.model";
 import { Test as TestModel } from "../models/test.model";
 import { ingestLearning } from "../ingest/ingest_learning";
+import { initChroma } from "../core/initChroma";
+import { resetLearningItemCollection } from "../core/collections/learning";
 import path from "path";
 import dotenv from "dotenv";
 
@@ -152,3 +154,29 @@ if (require.main === module) {
 }
 
 export default runIngestAllLessons;
+
+export async function clearLearningCollection() {
+  try {
+    const { chromaClient } = await initChroma();
+    const collectionName = "learning_items";
+    console.log(`🗑️ Attempting to delete Chroma collection: ${collectionName}`);
+    try {
+      await chromaClient.deleteCollection({ name: collectionName });
+      console.log(`✔ Deleted Chroma collection: ${collectionName}`);
+    } catch (err: any) {
+      console.warn(
+        `⚠️ Could not delete collection ${collectionName}:`,
+        err?.message || err
+      );
+    }
+
+    // Clear cached reference so next ingest recreates it
+    await resetLearningItemCollection();
+    console.log("✅ learning_items collection cleared (cache reset)");
+  } catch (err) {
+    console.error("❌ Failed to clear learning_items collection:", err);
+    throw err;
+  }
+}
+
+// clearLearningCollection();

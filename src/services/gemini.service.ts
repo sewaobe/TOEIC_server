@@ -228,7 +228,7 @@ export async function generateToeicPlan(userInput: any) {
       // Parse JSON kết quả an toàn
       let parsed: any = null;
       try {
-        parsed = JSON.parse(result.text);
+        parsed = JSON.parse(result.text?.trim());
       } catch (e) {
         console.warn("⚠️ Không parse được JSON, trả về text thô.");
       }
@@ -508,9 +508,8 @@ export async function fetchUnsplashImages(keywords: string[], limit = 2) {
 
   // 🎯 Lọc ảnh có từ khóa xuất hiện trong mô tả / alt_description
   const filtered = (data.results || []).filter((img: any) => {
-    const desc = `${img.description || ""} ${
-      img.alt_description || ""
-    }`.toLowerCase();
+    const desc = `${img.description || ""} ${img.alt_description || ""
+      }`.toLowerCase();
     return keywords.some((kw) => desc.includes(kw.toLowerCase()));
   });
 
