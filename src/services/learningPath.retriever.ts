@@ -12,6 +12,7 @@ import { Shadowing } from "../models/shadowing.model";
 import { TestStatus } from "../models/enums/TestStatus";
 import { getLearningItemCollection } from "../core/collections/learning";
 import { ingestLearning } from "../ingest/ingest_learning";
+import { getAllTestsWithPopulate } from "../retriever/retriever_test";
 
 export interface RetrievedContent {
   lessons: any[];
@@ -33,7 +34,7 @@ export async function retrieveContentByMentor(
     typeof mentorId === "string" ? new Types.ObjectId(mentorId) : mentorId;
 
   // Query song song tất cả collections
-  const [lessons, quizzes, vocabularies, dictations, shadowings, tests] =
+  const [lessons, quizzes, vocabularies, dictations, shadowings] =
     await Promise.all([
       Lesson.find({
         created_by: mentorObjectId,
@@ -53,13 +54,13 @@ export async function retrieveContentByMentor(
       Dictation.find({}).lean(),
 
       Shadowing.find({}).lean(),
-
-      Test.find({
-        created_by: mentorObjectId,
-      })
-        .populate("groups")
-        .lean(),
     ]);
+
+  // Lấy tests từ ChromaDB test_items collection thay vì MongoDB
+  // Dùng getAllTestsWithPopulate để tránh vấn đề embedding function
+  console.log("🔍 Querying tests from ChromaDB test_items collection...");
+  const tests = await getAllTestsWithPopulate(50);
+  console.log(`✅ Found ${tests.length} tests from ChromaDB`);
 
   return {
     lessons: lessons || [],

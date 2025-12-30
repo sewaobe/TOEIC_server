@@ -5,8 +5,10 @@ import { Lesson, Quiz, TopicVocabulary, Test as TestModel } from "../models";
 import { Dictation } from "../models/dictation.model";
 import { Shadowing } from "../models/shadowing.model";
 import { ingestLearning } from "../ingest/ingest_learning";
+import { ingestTests } from "../ingest/ingest_test";
 import { initChroma } from "../core/initChroma";
 import { resetLearningItemCollection } from "../core/collections/learning";
+import { resetTestItemCollection } from "../core/collections/test";
 
 // load .env
 const envPath = path.resolve(__dirname, "../../.env");
@@ -21,24 +23,41 @@ function chunkArray<T>(arr: T[], size: number) {
 async function run() {
   await connectDB();
 
-  // Reset Chroma collection: delete existing `learning_items` collection then clear local cache
+  // Reset Chroma collections: delete existing collections then clear local cache
   try {
     const { chromaClient } = await initChroma();
-    const collectionName = "learning_items";
-    console.log(`🗑️ Attempting to delete Chroma collection: ${collectionName}`);
+
+    // Delete learning_items collection
+    const learningCollectionName = "learning_items";
+    console.log(
+      `🗑️ Attempting to delete Chroma collection: ${learningCollectionName}`
+    );
     try {
-      await chromaClient.deleteCollection({ name: collectionName });
-      console.log(`✔ Deleted Chroma collection: ${collectionName}`);
+      await chromaClient.deleteCollection({ name: learningCollectionName });
+      console.log(`✔ Deleted Chroma collection: ${learningCollectionName}`);
     } catch (err: any) {
-      // If the collection doesn't exist or deletion fails, log and continue
       console.warn(
-        `⚠️ Could not delete collection ${collectionName}:`,
+        `⚠️ Could not delete collection ${learningCollectionName}:`,
         err?.message || err
       );
     }
-
-    // Clear cached reference so next getLearningItemCollection recreates it
     await resetLearningItemCollection();
+
+    // Delete test_items collection
+    const testCollectionName = "test_items";
+    console.log(
+      `🗑️ Attempting to delete Chroma collection: ${testCollectionName}`
+    );
+    try {
+      await chromaClient.deleteCollection({ name: testCollectionName });
+      console.log(`✔ Deleted Chroma collection: ${testCollectionName}`);
+    } catch (err: any) {
+      console.warn(
+        `⚠️ Could not delete collection ${testCollectionName}:`,
+        err?.message || err
+      );
+    }
+    await resetTestItemCollection();
   } catch (err) {
     console.error(
       "❌ Error initializing Chroma (will continue to attempt ingest):",
@@ -97,16 +116,16 @@ async function run() {
     return grouped;
   };
 
-  // list of activity sets to ingest sequentially
+  // list of activity sets to ingest sequentially (KHÔNG bao gồm tests)
   const activitySets: { name: string; items: any[]; key: any }[] = [
     { name: "lessons", items: lessons as any[], key: "lessons" },
     { name: "quizzes", items: quizzes as any[], key: "quizzes" },
     { name: "vocab", items: topicVocs as any[], key: "vocab" },
     { name: "dictations", items: dictations as any[], key: "dictations" },
     { name: "shadowings", items: shadowings as any[], key: "shadowings" },
-    { name: "tests", items: tests as any[], key: "quizzes" }, // push tests into quizzes bucket
   ];
 
+  // Ingest learning items vào learning_items collection
   for (const set of activitySets) {
     console.log(
       `\n➡️ Ingesting activity type: ${set.name} (${set.items.length} items)`
@@ -128,6 +147,27 @@ async function run() {
       // small delay between batches
       await new Promise((r) => setTimeout(r, 500));
     }
+  }
+
+  // Ingest tests riêng vào test_items collection
+  console.log(
+    `\n➡️ Ingesting tests into test_items collection (${tests.length} items)`
+  );
+  const testChunks = chunkArray(tests as any[], CHUNK_SIZE);
+  let testIdx = 0;
+  for (const chunk of testChunks) {
+    testIdx++;
+    console.log(
+      `  - Test Batch ${testIdx}/${testChunks.length} (size=${chunk.length})`
+    );
+    try {
+      await ingestTests(chunk);
+      console.log(`    ✔ Test Batch ${testIdx} ingested`);
+    } catch (err) {
+      console.error(`    ❌ Test Batch ${testIdx} failed:`, err);
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    await new Promise((r) => setTimeout(r, 500));
   }
 
   console.log("\n✅ Incremental ingest finished.");

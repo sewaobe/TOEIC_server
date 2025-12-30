@@ -26,17 +26,20 @@ export const getFlashCardByIdService = async (id: string): Promise<any> => {
     {
       $project: {
         _id: 0,
-        "topic._id": "$_id", // nếu FE đang dùng cấu trúc topic._id
-        "topic.vocabularies._id": "$vocabularies._id",
-        "topic.vocabularies.word": "$vocabularies.word",
-        "topic.vocabularies.definition": "$vocabularies.definition",
-        "topic.vocabularies.phonetic": "$vocabularies.phonetic",
-        "topic.vocabularies.weight": "$vocabularies.weight",
+        "TopicVocabulary._id": "$_id", // nếu FE đang dùng cấu trúc topic._id
+        "TopicVocabulary.vocabularies._id": "$vocabularies._id",
+        "TopicVocabulary.vocabularies.word": "$vocabularies.word",
+        "TopicVocabulary.vocabularies.definition": "$vocabularies.definition",
+        "TopicVocabulary.vocabularies.phonetic": "$vocabularies.phonetic",
+        "TopicVocabulary.vocabularies.weight": "$vocabularies.weight",
       },
     },
   ]);
+  const mappedResult = result.map(({ TopicVocabulary }) => ({
+    topic: TopicVocabulary,
+  }));
 
-  return result;
+  return mappedResult;
 };
 
 export const submitFlashCardService = async (

@@ -1,4 +1,5 @@
 import { getLearningItemCollection } from "../core/collections/learning";
+import { saveDebugFile } from "../services/demo.service";
 
 function formatItemToChromaDoc(item: any, part: number, type: string) {
   const textBlocks: string[] = [];
@@ -41,7 +42,7 @@ export async function ingestLearning(filteredData: Record<number, any>) {
     document: string;
     metadata: any;
   }[] = [];
-
+  saveDebugFile(`ingest.json`, filteredData);
   // gom data
   for (let part = 1; part <= 7; part++) {
     const bucket = filteredData[part];
@@ -54,7 +55,7 @@ export async function ingestLearning(filteredData: Record<number, any>) {
       { list: bucket.quizzes, type: "quiz" },
       { list: bucket.vocab, type: "vocab" },
     ];
-
+    
     for (const grp of groups) {
       for (const item of grp.list || []) {
         const doc = formatItemToChromaDoc(item, part, grp.type);
