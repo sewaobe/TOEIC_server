@@ -4,10 +4,8 @@ import { Dictation } from "../models/dictation.model";
 import { Shadowing } from "../models/shadowing.model";
 import { Test as TestModel } from "../models/test.model";
 import { ingestLearning } from "../ingest/ingest_learning";
-import { ingestTests } from "../ingest/ingest_test";
 import { initChroma } from "../core/initChroma";
 import { resetLearningItemCollection } from "../core/collections/learning";
-import { resetTestItemCollection } from "../core/collections/test";
 import path from "path";
 import dotenv from "dotenv";
 
@@ -136,27 +134,19 @@ async function runIngestAllLessons() {
     ti.summary = `${ti.summary || ti.description || ""}\nGroups(${
       (ti.groups || []).length
     }): ${groupsSummary}`;
+    // push tests into quizzes bucket so ingestLearning will include them (tests behave like quizzes for RAG)
+    pushToGroup(ti.part_type || ti.part || 5, "quizzes", ti);
   }
 
   console.log("📥 Starting ingest to ChromaDB (batches)...");
-
-  // Ingest learning items (lessons, quizzes, vocab, dictations, shadowings)
   try {
     await ingestLearning(grouped);
-    console.log("✅ Learning items ingest complete");
+    console.log("✅ Ingest complete");
   } catch (err) {
-    console.error("❌ Learning items ingest failed:", err);
+    console.error("❌ Ingest failed:", err);
+  } finally {
+    process.exit(0);
   }
-
-  // Ingest tests separately to test_items collection
-  try {
-    await ingestTests(tests);
-    console.log("✅ Tests ingest complete");
-  } catch (err) {
-    console.error("❌ Tests ingest failed:", err);
-  }
-
-  process.exit(0);
 }
 
 if (require.main === module) {
@@ -168,43 +158,23 @@ export default runIngestAllLessons;
 export async function clearLearningCollection() {
   try {
     const { chromaClient } = await initChroma();
-
-    // Clear learning_items collection
-    const learningCollectionName = "learning_items";
-    console.log(
-      `🗑️ Attempting to delete Chroma collection: ${learningCollectionName}`
-    );
+    const collectionName = "learning_items";
+    console.log(`🗑️ Attempting to delete Chroma collection: ${collectionName}`);
     try {
-      await chromaClient.deleteCollection({ name: learningCollectionName });
-      console.log(`✔ Deleted Chroma collection: ${learningCollectionName}`);
+      await chromaClient.deleteCollection({ name: collectionName });
+      console.log(`✔ Deleted Chroma collection: ${collectionName}`);
     } catch (err: any) {
       console.warn(
-        `⚠️ Could not delete collection ${learningCollectionName}:`,
+        `⚠️ Could not delete collection ${collectionName}:`,
         err?.message || err
       );
     }
 
-    // Clear test_items collection
-    const testCollectionName = "test_items";
-    console.log(
-      `🗑️ Attempting to delete Chroma collection: ${testCollectionName}`
-    );
-    try {
-      await chromaClient.deleteCollection({ name: testCollectionName });
-      console.log(`✔ Deleted Chroma collection: ${testCollectionName}`);
-    } catch (err: any) {
-      console.warn(
-        `⚠️ Could not delete collection ${testCollectionName}:`,
-        err?.message || err
-      );
-    }
-
-    // Clear cached references
+    // Clear cached reference so next ingest recreates it
     await resetLearningItemCollection();
-    await resetTestItemCollection();
-    console.log("✅ All collections cleared (cache reset)");
+    console.log("✅ learning_items collection cleared (cache reset)");
   } catch (err) {
-    console.error("❌ Failed to clear collections:", err);
+    console.error("❌ Failed to clear learning_items collection:", err);
     throw err;
   }
 }

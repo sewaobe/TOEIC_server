@@ -111,6 +111,17 @@ export const processUserMessageService = async (
     // Retrieval + aggregation
     let contextTexts: string[] = [];
 
+    // Include previous messages from this session to preserve conversational context
+    try {
+        const prevMessages = await ChatMessage.find({ session_id: sessionId }).sort({ created_at: 1 }).limit(40);
+        if (prevMessages && prevMessages.length) {
+            const formatted = prevMessages.map(m => `${m.sender === "user" ? "User" : "Bot"}: ${m.text}`).join("\n");
+            contextTexts.push(`(source:session_history)\n${formatted}`);
+        }
+    } catch (err) {
+        console.warn("Could not retrieve session messages for context", sessionId, err);
+    }
+
     // If questionId is provided, prefer question retrieval
     if (questionId) {
         const ctxById = await getContextById(questionId);
