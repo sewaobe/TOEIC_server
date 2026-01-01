@@ -16,6 +16,7 @@ export interface IUserProgress extends Document {
   current_score: number; // Điểm hiện tại
   target_score: number; // Điểm mục tiêu
   updated_at: Date; // Thời gian cập nhật gần nhất
+  status?: string; // trạng thái: active | at_risk | inactive | paused | completed
 
   // 🧩 Thông tin bổ sung
   mentor_id?: Types.ObjectId; // Người hướng dẫn (CTV/Admin)
@@ -34,6 +35,8 @@ const UserProgressSchema = new Schema<IUserProgress>({
   last_study_date: { type: Date, default: null },
   current_score: { type: Number, default: 0 },
   target_score: { type: Number, default: 0 },
+  // Trạng thái tiến độ của học viên
+  status: { type: String, enum: ["active", "at_risk", "inactive", "paused", "completed"], default: "active" },
   updated_at: { type: Date, default: Date.now },
 
   // 🧩 Thông tin bổ sung

@@ -204,9 +204,23 @@ export async function sendCollaboratorReviewEmail(
   `;
 
   const mail = await transporter.sendMail({
-    from: `"TOEIC Master" <${process.env.GMAIL_USER}>`,
+    from: `"TOEIC Smart" <${process.env.GMAIL_USER}>`,
     to,
     subject: title,
+    html,
+  });
+
+  return mail.messageId;
+}
+
+/**
+ * Gửi email tùy chỉnh (HTML) — dùng cho các email nhắc nhở từ CTV
+ */
+export async function sendCustomEmail(to: string, subject: string, html: string) {
+  const mail = await transporter.sendMail({
+    from: `"TOEIC Smart" <${process.env.GMAIL_USER}>`,
+    to,
+    subject,
     html,
   });
 

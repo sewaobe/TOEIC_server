@@ -2,8 +2,10 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcrypt';
 import { User } from '../models/user.model';
-import { sendOtpEmail } from '../services/mail.service';
+import { EmailLog } from '../models/emailLog.model';
+import { sendOtpEmail, sendCustomEmail } from '../services/mail.service';
 import { ApiResponse } from '../utils/ApiResponse';
+import { Types } from 'mongoose';
 
 // ===== In-memory OTP store =====
 type OtpEntry = {
@@ -151,5 +153,100 @@ export const resetPassword = async (
     console.error(err);
     return res.status(500).json(ApiResponse.fail('Lỗi server'));
 
+  }
+};
+
+// ==========================
+// 📧 Gửi email nhắc nhở học viên
+// ==========================
+const SendReminderSchema = z.object({
+  template: z.object({
+    subject: z.string().min(1),
+    body: z.string().min(1),
+  }),
+});
+
+export const sendReminderController = async (
+  req: Request<{ id: string }, unknown, z.infer<typeof SendReminderSchema>>,
+  res: Response,
+) => {
+  try {
+    const { id } = req.params;
+    if (!Types.ObjectId.isValid(id)) return res.status(400).json(ApiResponse.fail('ID không hợp lệ'));
+
+    const parsed = SendReminderSchema.parse(req.body);
+    const { template } = parsed;
+
+    const user = await User.findById(id).lean();
+    if (!user || !user.email) return res.status(404).json(ApiResponse.fail('Không tìm thấy học viên hoặc email'));
+
+    // Gửi email: nếu body đã chứa HTML tag thì dùng nguyên văn,
+    // còn nếu là plain-text (ví dụ có \n) thì chuyển thành HTML có <p> / <br/> để giữ format.
+    let htmlBody = template.body || "";
+    const containsHtmlTag = /<[^>]+>/.test(htmlBody);
+    if (!containsHtmlTag) {
+      // escape HTML special chars
+      const escaped = htmlBody
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+
+      // Split paragraphs by double newlines, convert single newlines to <br/>
+      const paragraphs = escaped.split(/\n\s*\n/).map((p) => p.replace(/\n/g, '<br/>'));
+      htmlBody = `<div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6">${paragraphs.map(p => `<p>${p}</p>`).join('')}</div>`;
+    }
+
+    await sendCustomEmail(user.email, template.subject, htmlBody);
+
+    // Ghi log email
+    try {
+      const collaboratorId = (req as any).user?._id || null;
+      await EmailLog.create({
+        student_id: user._id,
+        collaborator_id: collaboratorId,
+        subject: template.subject,
+        body_html: htmlBody,
+        sent_at: new Date(),
+        channel: 'email',
+        meta: {},
+      });
+    } catch (logErr) {
+      console.warn('Failed to write EmailLog', logErr);
+    }
+
+    return res.json(ApiResponse.success(null, 'Email nhắc nhở đã được gửi'));
+  } catch (err: any) {
+    if (err instanceof z.ZodError) return res.status(400).json(ApiResponse.fail(err.issues[0]?.message));
+    console.error('sendReminderController error', err);
+    return res.status(500).json(ApiResponse.fail('Lỗi khi gửi email'));
+  }
+};
+
+// ==========================
+// 📬 Lấy lịch sử email của 1 học viên (CTV)
+// ==========================
+export const getEmailLogsForStudentController = async (
+  req: Request<{ id: string }>,
+  res: Response,
+) => {
+  try {
+    const { id } = req.params;
+    if (!Types.ObjectId.isValid(id)) return res.status(400).json(ApiResponse.fail('ID không hợp lệ'));
+
+    const page = req.query.page ? parseInt(String(req.query.page), 10) : 1;
+    const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 20;
+    const skip = (page - 1) * limit;
+
+    const student_id = new Types.ObjectId(id);
+    const filter = { student_id: student_id };
+    const total = await EmailLog.countDocuments(filter);
+    const items = await EmailLog.find(filter).sort({ sent_at: -1 }).skip(skip).limit(limit).lean();
+    const pageCount = Math.ceil(total / limit);
+
+    return res.json(ApiResponse.success({ items, total, pageCount }, 'Lịch sử email'));
+  } catch (err: any) {
+    console.error('getEmailLogsForStudentController error', err);
+    return res.status(500).json(ApiResponse.fail('Lỗi server'));
   }
 };

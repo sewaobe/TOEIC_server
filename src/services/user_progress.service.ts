@@ -45,9 +45,11 @@ export async function updateUserProgress(
       });
     }
 
-    const streakDays = userProgress.streak_days || 0;
-    const longestStreak = userProgress.longest_streak || 0;
-    const lastStudyDate = userProgress.last_study_date;
+    const previousLastStudyDate = userProgress.last_study_date
+      ? new Date(userProgress.last_study_date)
+      : null;
+    let streakDays = userProgress.streak_days || 0;
+    let longestStreak = userProgress.longest_streak || 0;
 
     const completedActivities = await countCompletedActivities(
       userId,
@@ -65,13 +67,39 @@ export async function updateUserProgress(
 
     const currentScore = await calculateCurrentScore(userId);
 
+    // Update streak using `now` (assumes updateUserProgress called right after activity)
+    try {
+      const now = new Date();
+
+      if (!previousLastStudyDate) {
+        // first recorded study
+        streakDays = 1;
+      } else {
+        const diffDays = daysBetween(previousLastStudyDate, now);
+        if (diffDays === 0) {
+          // same day, keep existing streak
+          streakDays = userProgress.streak_days || streakDays;
+        } else if (diffDays === 1) {
+          // consecutive day
+          streakDays = (userProgress.streak_days || 0) + 1;
+        } else {
+          // gap >1 day -> reset
+          streakDays = 1;
+        }
+      }
+
+      if (streakDays > longestStreak) longestStreak = streakDays;
+      userProgress.last_study_date = now;
+    } catch (err) {
+      console.error("Error computing streak:", err);
+    }
+
     userProgress.completed_lessons = completedActivities;
     userProgress.total_lessons = totalActivities;
     userProgress.completion_rate = completionRate;
     userProgress.total_study_time = Math.round(totalStudyTime / 60);
     userProgress.streak_days = streakDays;
     userProgress.longest_streak = longestStreak;
-    userProgress.last_study_date = lastStudyDate;
     userProgress.current_score = currentScore;
     userProgress.updated_at = new Date();
 
@@ -261,6 +289,17 @@ async function calculateCurrentScore(userId: Types.ObjectId): Promise<number> {
 
   const avgScore = scores.reduce((sum, s) => sum + s, 0) / scores.length;
   return Math.round(avgScore);
+}
+
+function startOfDayUTC(d: Date) {
+  const dt = new Date(d);
+  return new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate()));
+}
+
+function daysBetween(d1: Date, d2: Date) {
+  const a = startOfDayUTC(d1).getTime();
+  const b = startOfDayUTC(d2).getTime();
+  return Math.round((b - a) / (24 * 60 * 60 * 1000));
 }
 
 export async function getUserProgress(

@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { Types } from "mongoose";
 import * as studentService from "../services/student.service";
+import { UserProgress } from "../models/user_progress.model";
 import { ApiResponse } from "../utils/ApiResponse";
 import { JwtUserPayload } from "../middlewares/verifyAccessToken.middleware";
 
@@ -110,6 +111,38 @@ export const getGroupReportsController = async (
     res
       .status(200)
       .json(ApiResponse.success(items, "Lấy báo cáo nhóm thành công!"));
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ==========================
+// 🛠️ Đặt trạng thái tiến độ của học viên (ví dụ: inactive)
+// ==========================
+export const markStudentInactiveController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    if (!Types.ObjectId.isValid(id)) {
+      res.status(400).json(ApiResponse.fail("ID học viên không hợp lệ!"));
+      return;
+    }
+
+    const progress = await UserProgress.findOneAndUpdate(
+      { user_id: id },
+      { status: "inactive", updated_at: new Date() },
+      { new: true }
+    );
+
+    if (!progress) {
+      res.status(404).json(ApiResponse.fail("Không tìm thấy tiến độ học viên!"));
+      return;
+    }
+
+    res.status(200).json(ApiResponse.success(progress, "Đã chuyển trạng thái sang inactive"));
   } catch (error) {
     next(error);
   }

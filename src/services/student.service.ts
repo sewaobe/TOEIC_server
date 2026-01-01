@@ -7,6 +7,23 @@ import {
   UserProgress,
 } from "../models";
 
+// thresholds (days)
+const AT_RISK_DAYS = 7;
+const INACTIVE_DAYS = 21;
+
+function startOfDayUTC(d?: Date | string | null) {
+  if (!d) return null;
+  const dt = new Date(d);
+  return new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate()));
+}
+
+function daysBetweenDates(d1?: Date | string | null, d2?: Date | string | null) {
+  if (!d1 || !d2) return Infinity;
+  const a = startOfDayUTC(d1)!.getTime();
+  const b = startOfDayUTC(d2)!.getTime();
+  return Math.round((b - a) / (24 * 60 * 60 * 1000));
+}
+
 /**
  * 🧩 Lấy danh sách học viên (Student[])
  */
@@ -183,34 +200,12 @@ export const getStudentsService = async (
 
   pipeline.push({ $match: match });
 
-  // 6️⃣ Lọc theo trạng thái (trước hoặc sau match đều được)
+  // 6️⃣ Lọc theo trạng thái (ưu tiên dùng trường `status` trong UserProgress nếu có)
   if (status && status !== "all") {
+    // If client filters by status string, match the stored `status` field.
     pipeline.push({
       $match: {
-        $expr: {
-          $switch: {
-            branches: [
-              {
-                case: { $eq: [status, "completed"] },
-                then: { $gte: ["$completion_rate", 100] },
-              },
-              {
-                case: { $eq: [status, "active"] },
-                then: {
-                  $and: [
-                    { $gt: ["$completion_rate", 0] },
-                    { $lt: ["$completion_rate", 100] },
-                  ],
-                },
-              },
-              {
-                case: { $eq: [status, "inactive"] },
-                then: { $eq: ["$completion_rate", 0] },
-              },
-            ],
-            default: true,
-          },
-        },
+        status: status,
       },
     });
   }
@@ -232,13 +227,31 @@ export const getStudentsService = async (
     const completionRate = s.completion_rate || 0;
     const totalLessons = s.total_lessons || 100;
     const completedLessons = Math.round((completionRate / 100) * totalLessons);
-    const computedStatus =
-      completionRate >= 100
-        ? "completed"
-        : completionRate > 0
-        ? "active"
-        : "inactive";
 
+    // derive status from last activity and completion if persisted status is not authoritative
+    const lastStudy = s.last_study_date ? new Date(s.last_study_date) : null;
+    const gapDays = lastStudy ? daysBetweenDates(lastStudy, new Date()) : Infinity;
+
+    let derivedStatus: string;
+    if (completionRate >= 100) {
+      derivedStatus = "completed";
+    } else if (!lastStudy) {
+      // no record of activity
+      derivedStatus = completionRate > 0 ? "active" : "inactive";
+    } else if (gapDays >= INACTIVE_DAYS) {
+      derivedStatus = "inactive";
+    } else if (gapDays >= AT_RISK_DAYS) {
+      derivedStatus = "at_risk";
+    } else {
+      derivedStatus = "active";
+    }
+
+    // respect explicit persisted states that should be authoritative (paused, inactive, completed)
+    const persisted = s.status;
+    const computedStatus = persisted && ["paused", "inactive", "completed"].includes(persisted)
+      ? persisted
+      : derivedStatus;
+    console.log("🧑‍🎓 Student:", s);
     return {
       id: String(s.user?._id),
       name: s.user?.profile?.fullname || "Chưa có tên",
@@ -246,7 +259,7 @@ export const getStudentsService = async (
       avatar: s.user?.profile?.avatar || "",
       status: computedStatus,
       enrollDate: s.user?.created_at?.toISOString() || "",
-      lastActive: s.user?.updated_at?.toISOString() || "",
+      lastActive: s.last_study_date || "",
       currentLevel: s.learningPath?.level || "A2",
       targetScore: s.target_score || 600,
       currentScore: s.current_score || 0,
@@ -412,21 +425,34 @@ export const getStudentDetailService = async (id: string) => {
     })),
   ].slice(0, 8);
 
+  // compute derived status for detail view too
+  const lastStudy = stat.last_study_date ? new Date(stat.last_study_date) : null;
+  const gapDays = lastStudy ? daysBetweenDates(lastStudy, new Date()) : Infinity;
+  let derivedStatusDetail: string;
+  if ((stat.completion_rate || 0) >= 100) derivedStatusDetail = "completed";
+  else if (!lastStudy) derivedStatusDetail = (stat.completion_rate || 0) > 0 ? "active" : "inactive";
+  else if (gapDays >= INACTIVE_DAYS) derivedStatusDetail = "inactive";
+  else if (gapDays >= AT_RISK_DAYS) derivedStatusDetail = "at_risk";
+  else derivedStatusDetail = "active";
+
+  const statusToReturn = stat.status && ["paused", "inactive", "completed"].includes(stat.status)
+    ? stat.status
+    : derivedStatusDetail;
+
   return {
     id: String(user._id),
     name: user?.profile?.fullname || "Chưa có tên",
     email: user?.email || "",
     avatar: user?.profile?.avatar || "",
-    status:
-      stat.completion_rate >= 100
-        ? "completed"
-        : stat.completion_rate > 0
-        ? "active"
-        : "inactive",
+    status: statusToReturn,
     enrollDate:
       user?.created_at instanceof Date ? user.created_at.toISOString() : "",
     lastActive:
-      user?.updated_at instanceof Date ? user.updated_at.toISOString() : "",
+      stat?.last_study_date instanceof Date
+        ? stat.last_study_date.toISOString()
+        : user?.updated_at instanceof Date
+        ? user.updated_at.toISOString()
+        : "",
     currentLevel: lp?.level || "A2",
     targetScore: stat.target_score || 600,
     currentScore: stat.current_score || 0,
