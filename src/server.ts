@@ -74,8 +74,16 @@ import { verifyAccessToken } from "./middlewares/verifyAccessToken.middleware";
 import { initSocket } from "./socket";
 import { setupSwagger } from "./swagger";
 import "./listeners";
+import startRemoveInactiveUsersJob from "./jobs/removeInactiveUsers.job";
 
 connectDB();
+
+// Start scheduled jobs (daily cleanup)
+try {
+  startRemoveInactiveUsersJob();
+} catch (err) {
+  console.error("Failed to start scheduled jobs:", err);
+}
 
 const app = express();
 
