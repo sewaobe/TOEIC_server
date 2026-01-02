@@ -6,6 +6,7 @@ import {
   generateToeicPlanController,
   generateWeeklyPlanController,
   translateController,
+  generateMindMapController,
 } from "../controllers/gemini.controller";
 
 const router = Router();
@@ -536,5 +537,62 @@ router.post("/dictation-analysis", analyzeDictationController);
  *         description: Lỗi hệ thống hoặc Gemini không phản hồi hợp lệ
  */
 router.post("/shadowing-analysis", analyzeShadowingController);
+
+/**
+ * @openapi
+ * /gemini/generate-mindmap:
+ *   post:
+ *     summary: Tạo Mind Map từ nội dung ghi chú
+ *     description: |
+ *       Phân tích nội dung ghi chú và tạo cấu trúc Mind Map phân cấp sử dụng Gemini AI.
+ *       - Tự động nhận diện chủ đề chính và các nhánh con
+ *       - Tối đa 4 cấp độ phân cấp
+ *       - Trả về JSON với cấu trúc name/details/children
+ *     tags:
+ *       - Gemini
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - content
+ *             properties:
+ *               content:
+ *                 type: string
+ *                 description: Nội dung ghi chú cần chuyển thành Mind Map
+ *             example:
+ *               content: "# Modern Frontend Development\n\n1. Core Technologies\n   - HTML5\n   - CSS3\n   - JavaScript"
+ *     responses:
+ *       200:
+ *         description: Tạo Mind Map thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 model:
+ *                   type: string
+ *                   example: "gemini-2.5-flash"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     name:
+ *                       type: string
+ *                       example: "Frontend Development"
+ *                     details:
+ *                       type: string
+ *                       example: "Lộ trình học Frontend hiện đại"
+ *                     children:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *       400:
+ *         description: Nội dung không hợp lệ hoặc quá ngắn
+ *       500:
+ *         description: Lỗi hệ thống hoặc Gemini không phản hồi
+ */
+router.post("/generate-mindmap", generateMindMapController);
 
 export default router;

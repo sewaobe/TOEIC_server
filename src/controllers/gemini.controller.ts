@@ -10,6 +10,7 @@ import {
   dictionaryLookup,
   generateToeicPlan,
   translateText,
+  generateMindMapFromText,
 } from "../services/gemini.service";
 import { ApiResponse } from "../utils/ApiResponse";
 import { Shadowing } from "../models/shadowing.model";
@@ -230,5 +231,35 @@ export const analyzeShadowingController = async (
       .json(ApiResponse.success(result, "✅ Phân tích thành công!"));
   } catch (err) {
     next(err);
+  }
+};
+
+export const generateMindMapController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { content } = req.body;
+
+    if (!content || typeof content !== "string") {
+      return res
+        .status(400)
+        .json(ApiResponse.fail("Thiếu nội dung để tạo mind map."));
+    }
+
+    if (content.trim().length < 10) {
+      return res
+        .status(400)
+        .json(ApiResponse.fail("Nội dung quá ngắn để tạo mind map."));
+    }
+
+    const result = await generateMindMapFromText(content);
+
+    return res
+      .status(200)
+      .json(ApiResponse.success(result, "Tạo mind map thành công!"));
+  } catch (error) {
+    next(error);
   }
 };

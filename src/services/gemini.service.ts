@@ -1225,3 +1225,162 @@ export async function generateIRTWeeklyPlan(input: any) {
 
   throw new Error("Tất cả model đều quá tải hoặc lỗi.");
 }
+
+// ========== MIND MAP GENERATION ==========
+
+export const MindMapNodeSchema: any = {
+  type: Type.OBJECT,
+  properties: {
+    name: { type: Type.STRING },
+    details: { type: Type.STRING },
+    children: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          name: { type: Type.STRING },
+          details: { type: Type.STRING },
+          children: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                name: { type: Type.STRING },
+                details: { type: Type.STRING },
+                children: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      name: { type: Type.STRING },
+                      details: { type: Type.STRING },
+                    },
+                    propertyOrdering: ["name", "details"],
+                  },
+                },
+              },
+              propertyOrdering: ["name", "details", "children"],
+            },
+          },
+        },
+        propertyOrdering: ["name", "details", "children"],
+      },
+    },
+  },
+  propertyOrdering: ["name", "details", "children"],
+};
+
+export async function generateMindMapFromText(text: string) {
+  if (!text || text.trim().length < 10) {
+    throw new Error("Nội dung quá ngắn để tạo mind map.");
+  }
+
+  const prompt = `
+Bạn là chuyên gia phân tích và tổ chức thông tin thành Mind Map. 
+
+**⚠️ QUY TẮC QUAN TRỌNG NHẤT:**
+- BẮT BUỘC phải xử lý TOÀN BỘ 100% nội dung được cung cấp, KHÔNG ĐƯỢC bỏ sót bất kỳ phần nào
+- Nếu nội dung có nhiều section (A, B, 1, 2,...) → TẤT CẢ đều phải xuất hiện trong mind map
+- Kiểm tra lại trước khi trả về: đã cover hết nội dung chưa?
+
+**QUY TẮC CHỈ MỤC:**
+- Cấp 1 (Root): Không cần chỉ mục - chỉ tên chủ đề tổng
+- Cấp 2: Số La Mã hoa: I., II., III., IV., V.
+- Cấp 3: Số thường: 1., 2., 3., 4., 5.
+- Cấp 4: Chữ cái thường: a., b., c., d., e.
+- Cấp 5: Số La Mã thường: i., ii., iii., iv., v.
+
+**XỬ LÝ CÁC LOẠI INPUT:**
+
+📋 **Loại 1: Nội dung CÓ CẤU TRÚC** (có bullet points, số thứ tự, heading)
+- Giữ nguyên cấu trúc phân cấp của nội dung gốc
+- Chuẩn hóa lại chỉ mục theo quy tắc trên
+- Nếu có nhiều section độc lập (A, B hoặc Part 1, Part 2) → tạo children riêng cho mỗi section
+
+📝 **Loại 2: Nội dung KHÔNG CÓ CẤU TRÚC** (đoạn văn liền, 4-10 dòng)
+- Phân tích ngữ nghĩa để tìm các ý chính
+- Tự tạo cấu trúc phân cấp hợp lý
+- Nhóm các ý liên quan thành nhánh con
+
+**ĐỊNH DẠNG OUTPUT:**
+- "name": Ngắn gọn 3-7 từ, format "[Chỉ mục] [Tiêu đề]"
+- "details": Thông tin bổ sung nếu cần (tùy chọn)
+- "children": Mảng các node con
+
+**VÍ DỤ OUTPUT MONG ĐỢI:**
+{
+  "name": "TOEIC Study Guide",
+  "children": [
+    {
+      "name": "I. Listening Comprehension",
+      "children": [
+        {
+          "name": "1. Part 1: Photographs",
+          "children": [
+            { "name": "a. Focus Areas", "details": "Action Verbs & Prepositions" },
+            { "name": "b. Strategy", "details": "Identify Subject + Verb + Object" }
+          ]
+        },
+        {
+          "name": "2. Part 2: Question-Response",
+          "children": [
+            { "name": "a. WH-Questions" },
+            { "name": "b. Yes/No Questions" },
+            { "name": "c. Indirect Questions" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "II. Reading Comprehension",
+      "children": [...]
+    }
+  ]
+}
+
+**⚠️ NHẮC LẠI:** Xử lý TOÀN BỘ nội dung bên dưới, không được dừng giữa chừng!
+
+**NỘI DUNG CẦN PHÂN TÍCH:**
+"""
+${text}
+"""
+
+Trả về JSON hợp lệ với đầy đủ tất cả nội dung.
+`;
+
+  for (const model of MODELS) {
+    try {
+      console.log(`🧠 MindMap: đang thử model ${model}`);
+
+      const result = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          temperature: 0.2,
+          maxOutputTokens: 16000,
+          responseMimeType: "application/json",
+          responseSchema: MindMapNodeSchema,
+        },
+      });
+
+      const jsonText = result.text?.trim();
+      if (!jsonText) throw new Error("Không nhận được dữ liệu từ Gemini");
+
+      const parsed = JSON.parse(jsonText);
+      
+      // Validate structure
+      if (!parsed.name) {
+        throw new Error("Invalid mind map structure: missing root name");
+      }
+
+      console.log(`✅ MindMap: thành công với model ${model}`);
+      return { model, data: parsed };
+    } catch (err: any) {
+      console.warn(`⚠️ MindMap Model ${model} error:`, err.message);
+      continue;
+    }
+  }
+
+  throw new Error("Không thể tạo mind map. Vui lòng thử lại.");
+}
+
