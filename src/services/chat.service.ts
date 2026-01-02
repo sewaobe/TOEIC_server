@@ -4,7 +4,7 @@ import { ChatSession, ChatType } from "../models/chat_session.model";
 import { getContextById, retrieveContext } from "../retriever/retriever";
 import { retrieveIdentity } from "../retriever/retriever_identity";
 import { retrieveProgress } from "../retriever/retriever_progress";
-import { recommendSkillPracticeService } from "./recommend_skill.service";
+import { recommendSkillPracticeService, getPartLessonsService } from "./recommend_skill.service";
 
 function getInitialBotMessage(type: ChatType): string {
     switch (type) {
@@ -101,11 +101,70 @@ export const processUserMessageService = async (
         const t = text.toLowerCase();
         if (t.includes("tôi là ai") || t.includes("who am i") || t.includes("tôi là")) return "personal_identity";
         if (t.includes("năng lực") || t.includes("năng lực như") || t.includes("tôi đang có")) return "progress_assessment";
+        
+        // Check for specific part request - more flexible patterns
+        // Match: "gợi ý 5 bài part 5", "cho tôi 3 bài của part 2", "5 bài part 3 để cải thiện", etc.
+        const hasPartMention = /(?:part|phần)\s*(\d+)/i.test(t);
+        const hasCount = /(\d+)\s*(?:bài|lesson|quiz)/i.test(t);
+        const hasRequestKeyword = /(cho|gợi ý|đề xuất|recommend|give|show|lấy|xem|muốn|cần|hãy|tìm|kiếm|list|danh sách)/i.test(t);
+        const hasLessonKeyword = /(bài|lesson|quiz|dictation|shadowing|vocab|từ vựng|học|luyện|practice)/i.test(t);
+        
+        if (hasPartMention && (hasCount || hasRequestKeyword) && hasLessonKeyword) {
+            return "specific_part_request";
+        }
+        
         if (t.includes("tôi cần") || t.includes("cần làm gì") || t.includes("phải làm gì") || t.includes("gợi ý") || t.includes("lộ trình") || t.includes("tiếp theo")) return "next_steps";
         // fallback: if contains keywords like 'why', 'đáp án', or a question id provided -> question_help
         if (questionId) return "question_help";
         if (t.includes("đáp án") || t.includes("tại sao") || t.includes("giải thích") || t.endsWith("?")) return "question_help";
         return "general";
+    }
+
+    // Helper: parse part request from text - more flexible
+    function parsePartRequest(text: string): { count: number; part: number; type?: string } | null {
+        const t = text.toLowerCase();
+        
+        // Extract part number (required)
+        const partMatch = t.match(/(?:part|phần)\s*(\d+)/i);
+        if (!partMatch) return null;
+        
+        const part = parseInt(partMatch[1]);
+        if (part < 1 || part > 7) return null;
+        
+        // Extract count (optional, default 5)
+        let count = 5;
+        const countPatterns = [
+            /(\d+)\s*(?:bài|lesson|quiz|dictation|shadowing)/i,
+            /(?:cho|gợi ý|lấy|xem|tìm|hãy)\s*(?:tôi|mình|em)?\s*(\d+)/i,
+        ];
+        for (const pattern of countPatterns) {
+            const match = t.match(pattern);
+            if (match) {
+                const num = parseInt(match[1]);
+                if (num >= 1 && num <= 20) {
+                    count = num;
+                    break;
+                }
+            }
+        }
+        
+        // Extract type (optional)
+        let type: string | undefined;
+        const typePatterns: [RegExp, string][] = [
+            [/\b(lesson|bài học)\b/i, 'lesson'],
+            [/\b(quiz)\b/i, 'quiz'],
+            [/\b(dictation)\b/i, 'dictation'],
+            [/\b(shadowing)\b/i, 'shadowing'],
+            [/\b(vocab|từ vựng|vocabulary)\b/i, 'vocab'],
+        ];
+        for (const [pattern, typeName] of typePatterns) {
+            if (pattern.test(t)) {
+                type = typeName;
+                break;
+            }
+        }
+        
+        return { count, part, type };
     }
 
     // Retrieval + aggregation
@@ -130,6 +189,65 @@ export const processUserMessageService = async (
 
     const intent = detectIntent(userText);
 
+    // Handle specific part request: "cho tôi 5 bài part 3"
+    if (intent === "specific_part_request" && authenticatedUserId) {
+        try {
+            const partRequest = parsePartRequest(userText);
+            if (partRequest) {
+                const { count, part, type } = partRequest;
+                const recs = await getPartLessonsService(authenticatedUserId, part, count, type);
+
+                if (recs && recs.length > 0) {
+                    const typeLabel = type ? {
+                        'lesson': 'bài học',
+                        'quiz': 'quiz',
+                        'dictation': 'dictation', 
+                        'shadowing': 'shadowing',
+                        'vocab': 'từ vựng'
+                    }[type] || 'bài' : 'bài';
+
+                    let botText = `📚 **${recs.length} ${typeLabel} cho Part ${part}:**\n\n`;
+
+                    recs.forEach((r, idx) => {
+                        const typeEmoji = r.type === "lesson" ? "📚" 
+                            : r.type === "quiz" ? "✅" 
+                            : r.type === "dictation" ? "✍️"
+                            : r.type === "shadowing" ? "🗣️"
+                            : r.type === "vocab" ? "📖"
+                            : "🎯";
+                        
+                        const levelBadge = (r as any).levelInfo ? `[${(r as any).levelInfo}]` : "";
+                        const time = r.estimated_time ? `⏱️ ${r.estimated_time} phút` : "";
+                        const link = r.action?.route || "#";
+                        
+                        botText += `${idx + 1}. ${typeEmoji} **${r.title}** ${levelBadge}\n`;
+                        if (r.description) {
+                            botText += `   ${r.description.slice(0, 100)}${r.description.length > 100 ? "..." : ""}\n`;
+                        }
+                        botText += `   ${time} • ${r.reason}\n`;
+                        botText += `   👉 [Bắt đầu](${link})\n\n`;
+                    });
+
+                    const botMessage = await ChatMessage.create({
+                        session_id: sessionId,
+                        sender: "bot",
+                        text: botText,
+                        meta: { model: "local-recommender", intent: "specific_part_request", recommendations: recs } as any,
+                    });
+
+                    await ChatSession.findByIdAndUpdate(sessionId, {
+                        $set: { last_message_preview: botText.slice(0, 100), updated_at: new Date() },
+                        $inc: { total_messages: 2 },
+                    });
+
+                    return { botMessage };
+                }
+            }
+        } catch (err) {
+            console.warn("Failed to get part lessons:", err);
+        }
+    }
+
     // For personal / progress intents, include user-specific vectors if available
     if ((intent === "personal_identity" || intent === "progress_assessment" || intent === "general" || intent === "next_steps") && authenticatedUserId) {
         try {
@@ -150,11 +268,63 @@ export const processUserMessageService = async (
     // If next_steps intent, produce recommendations for practice items (skill-focused)
     if (intent === "next_steps" && authenticatedUserId) {
         try {
-            const recs = await recommendSkillPracticeService(authenticatedUserId, { topK: 3 });
+            const recs = await recommendSkillPracticeService(authenticatedUserId, { topK: 10 });
 
             if (recs && recs.length > 0) {
-                const lines = recs.map((r, idx) => `${idx + 1}. ${r.title} — ${r.type} — Est: ${r.estimated_time || "~"} mins. Lý do: ${r.reason}`);
-                const botText = `Mình gợi ý ${recs.length} bài luyện tập để cải thiện điểm yếu của bạn:\n\n` + lines.join("\n");
+                // Group recommendations by part for better organization
+                const byPart = new Map<number, typeof recs>();
+                for (const r of recs) {
+                    const part = r.part || 0;
+                    if (!byPart.has(part)) byPart.set(part, []);
+                    byPart.get(part)!.push(r);
+                }
+
+                let botText = `🎯 **Gợi ý ${recs.length} bài học để cải thiện điểm yếu của bạn:**\n\n`;
+                
+                // Sort parts by ability (weakest first)
+                const sortedParts = Array.from(byPart.entries()).sort((a, b) => {
+                    const aAbility = a[1][0]?.abilityPercent ?? 50;
+                    const bAbility = b[1][0]?.abilityPercent ?? 50;
+                    return aAbility - bAbility;
+                });
+
+                let itemIndex = 1;
+                for (const [part, items] of sortedParts) {
+                    const ability = (items[0] as any)?.abilityPercent ?? 50;
+                    const abilityBar = getAbilityBar(ability);
+                    
+                    botText += `\n📌 **Part ${part}** — Năng lực: ${abilityBar} ${ability}%\n`;
+                    botText += `━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+                    
+                    for (const r of items) {
+                        const typeEmoji = r.type === "lesson" ? "📚" 
+                            : r.type === "quiz" ? "✅" 
+                            : r.type === "dictation" ? "✍️"
+                            : r.type === "shadowing" ? "🗣️"
+                            : r.type === "vocab" ? "📖"
+                            : "🎯";
+                        
+                        const levelBadge = (r as any).levelInfo ? `[${(r as any).levelInfo}]` : "";
+                        const time = r.estimated_time ? `⏱️ ${r.estimated_time} phút` : "";
+                        const link = r.action?.route || "#";
+                        
+                        botText += `\n${itemIndex}. ${typeEmoji} **${r.title}** ${levelBadge}\n`;
+                        if (r.description) {
+                            botText += `   ${r.description.slice(0, 120)}${r.description.length > 120 ? "..." : ""}\n`;
+                        }
+                        botText += `   ${time} • ${r.reason}\n`;
+                        botText += `   👉 [Bắt đầu](${link})\n`;
+                        
+                        itemIndex++;
+                    }
+                }
+
+                // Helper function for ability bar
+                function getAbilityBar(percent: number): string {
+                    const filled = Math.round(percent / 10);
+                    const empty = 10 - filled;
+                    return '█'.repeat(filled) + '░'.repeat(empty);
+                }
 
                 const botMessage = await ChatMessage.create({
                     session_id: sessionId,
