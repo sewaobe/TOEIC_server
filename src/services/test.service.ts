@@ -540,7 +540,7 @@ export const submitMiniTestService = async (
   duration: number
 ) => {
   // 1) Lấy danh sách câu hỏi của mini test
-  const groups = await Group.find({ minitest_id: testId })
+  const groups = await Group.find({ test_id: testId })
     .select("_id part questions")
     .populate({
       path: "questions",

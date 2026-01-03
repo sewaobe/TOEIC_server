@@ -8,6 +8,7 @@ import {
   getFlashCardByIdService,
   getHistoryFlashCardByTopicService,
   submitFlashCardService,
+  submitFlashCardGameService,
 } from "../services/flashCard.service";
 import { ApiResponse } from "../utils/ApiResponse";
 import { completeActivityAndUnlockNext } from "../services/day_study.service";
@@ -73,6 +74,73 @@ export const submitFlashCard = async (
     res
       .status(201)
       .json(ApiResponse.success(result, "Submit Flash card thành công"));
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const submitFlashCardGame = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { topic_id, game_type, game_result } = req.body;
+    const user_id = req.user._id;
+
+    // Validate input
+    if (!topic_id || !game_type || !game_result) {
+      return res.status(400).json(ApiResponse.fail("Missing required fields"));
+    }
+
+    if (!["matching", "word_recall"].includes(game_type)) {
+      return res.status(400).json(ApiResponse.fail("Invalid game type"));
+    }
+
+    // Prepare game metadata based on game type
+    let game_metadata: any = {};
+    if (game_type === "matching") {
+      game_metadata = {
+        totalPairs: game_result.totalPairs,
+        correctPairs: game_result.correctPairs,
+        wrongAttempts: game_result.wrongAttempts,
+        score: game_result.score,
+      };
+    } else if (game_type === "word_recall") {
+      game_metadata = {
+        totalWords: game_result.totalWords,
+        correctWords: game_result.correctWords,
+        wrongWords: game_result.wrongWords,
+        totalScore: game_result.totalScore,
+        combo: game_result.combo,
+        wrongList: game_result.wrongList || [],
+      };
+    }
+
+    const result = await submitFlashCardGameService({
+      user_id: new Types.ObjectId(user_id),
+      topic_vocabulary_id: new Types.ObjectId(topic_id),
+      game_type,
+      game_metadata,
+      accuracy: game_result.accuracy || 0,
+      time_spent: game_result.timeSpent || 0,
+      started_at: game_result.started_at
+        ? new Date(game_result.started_at)
+        : new Date(),
+      finished_at: game_result.finished_at
+        ? new Date(game_result.finished_at)
+        : new Date(),
+    });
+
+    if (!result) {
+      return res
+        .status(500)
+        .json(ApiResponse.fail("Submit game result thất bại"));
+    }
+
+    res
+      .status(201)
+      .json(ApiResponse.success(result, "Submit game result thành công"));
   } catch (err) {
     next(err);
   }
