@@ -177,10 +177,10 @@ export const getTestsWithScoreAndSearch = async (
   const matchStage = search
     ? {
         title: { $regex: new RegExp(search, "i") },
-        status: TestStatus.APPROVED,
+        status: TestStatus.OPEN,
         type: TestType.FULL_TEST,
       }
-    : { status: TestStatus.APPROVED, type: TestType.FULL_TEST };
+    : { status: TestStatus.OPEN, type: TestType.FULL_TEST };
 
   // 1️⃣ Truy vấn danh sách test theo trang
   const tests = await Test.aggregate([
