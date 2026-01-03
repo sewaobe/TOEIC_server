@@ -24,6 +24,19 @@ interface Mistake {
     explanation: string;
 }
 
+interface VocabSuggestion {
+    word: string;
+    context: string;
+    alternatives: string[];
+}
+
+interface GrammarBreakdownItem {
+    structure: string;
+    example: string;
+    advice: string;
+    status: "Correct" | "Needs Improvement";
+}
+
 interface Feedback {
     pronunciationScore: number;
     fluencyScore: number;
@@ -32,6 +45,8 @@ interface Feedback {
     mistakes: Mistake[];
     improvementTip: string;
     totalScore: number;
+    vocabSuggestions: VocabSuggestion[];
+    grammarBreakdown: GrammarBreakdownItem[];
 }
 
 interface TurnResponse {
@@ -173,6 +188,17 @@ export const processSpeakingTurnController = async (req: Request, res: Response,
                     type: "grammar" | "vocabulary" | "pronunciation";
                     explanation: string;
                 }[];
+                vocab_suggestions: {
+                    word: string;
+                    context: string;
+                    alternatives: string[];
+                }[];
+                grammar_breakdown: {
+                    structure: string;
+                    example: string;
+                    advice: string;
+                    status: "Correct" | "Needs Improvement";
+                }[];
             };
             bot_text: string;
             bot_translation: string;
@@ -204,6 +230,17 @@ export const processSpeakingTurnController = async (req: Request, res: Response,
                 totalScore: turnFromPython.feedback.total_score,
                 improvementTip: turnFromPython.feedback.improvement_tip,
                 mistakes: turnFromPython.feedback.mistakes,
+                vocabSuggestions: (turnFromPython.feedback.vocab_suggestions || []).map(v => ({
+                    word: v.word,
+                    context: v.context,
+                    alternatives: v.alternatives,
+                })),
+                grammarBreakdown: (turnFromPython.feedback.grammar_breakdown || []).map(g => ({
+                    structure: g.structure,
+                    example: g.example,
+                    advice: g.advice,
+                    status: g.status,
+                })),
             },
         };
 

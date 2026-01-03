@@ -7,6 +7,19 @@ export interface IPronunciationMistake {
     explanation: string;
 }
 
+export interface IVocabSuggestion {
+    word: string;
+    context: string;
+    alternatives: string[];
+}
+
+export interface IGrammarBreakdownItem {
+    structure: string;
+    example: string;
+    advice: string;
+    status: "Correct" | "Needs Improvement";
+}
+
 export interface IPronunciationFeedback {
     pronunciationScore?: number;
     fluencyScore?: number;
@@ -15,6 +28,9 @@ export interface IPronunciationFeedback {
     mistakes?: IPronunciationMistake[];
     improvementTip?: string;
     totalScore?: number;
+    // New fields for vocabulary and grammar suggestions
+    vocabSuggestions?: IVocabSuggestion[];
+    grammarBreakdown?: IGrammarBreakdownItem[];
 }
 
 export interface IChatMessageMeta {
@@ -67,6 +83,25 @@ const ChatMessageSchema = new Schema<IChatMessage>({
             ],
             improvementTip: String,
             totalScore: Number,
+            // New fields for vocabulary and grammar suggestions
+            vocabSuggestions: [
+                {
+                    word: String,
+                    context: String,
+                    alternatives: [String],
+                },
+            ],
+            grammarBreakdown: [
+                {
+                    structure: String,
+                    example: String,
+                    advice: String,
+                    status: {
+                        type: String,
+                        enum: ["Correct", "Needs Improvement"],
+                    },
+                },
+            ],
         },
         is_unintelligible: Boolean,
     },
