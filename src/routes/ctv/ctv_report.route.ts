@@ -1,5 +1,10 @@
-import Router from 'express';
-import { getCommentByCreatedTestOrLessonController } from '../../controllers/comment.controller';
+import Router from "express";
+import { getCommentByCreatedTestOrLessonController } from "../../controllers/comment.controller";
+import {
+  getCTVReports,
+  getCTVReportDetail,
+  updateCTVReport,
+} from "../../controllers/report.controller";
 
 const router = Router();
 
@@ -107,6 +112,106 @@ const router = Router();
  *                   type: string
  *                   example: "Internal server error"
  */
-router.get('/comments', getCommentByCreatedTestOrLessonController);
+router.get("/comments", getCommentByCreatedTestOrLessonController);
+
+/**
+ * @openapi
+ * /ctv/reports:
+ *   get:
+ *     tags:
+ *       - CTV Reports
+ *     summary: Lấy danh sách báo lỗi được gán cho CTV
+ *     description: Trả về danh sách các báo lỗi từ học viên của CTV (báo lỗi liên quan đến bài học, flashcard)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [lesson, flashcard]
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [pending, in_progress, resolved, rejected]
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Lấy danh sách báo lỗi thành công
+ */
+router.get("/", getCTVReports);
+
+/**
+ * @openapi
+ * /ctv/reports/{reportId}:
+ *   get:
+ *     tags:
+ *       - CTV Reports
+ *     summary: Lấy chi tiết báo lỗi
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: reportId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Lấy chi tiết báo lỗi thành công
+ *       404:
+ *         description: Không tìm thấy báo lỗi hoặc không có quyền
+ */
+router.get("/:reportId", getCTVReportDetail);
+
+/**
+ * @openapi
+ * /ctv/reports/{reportId}:
+ *   patch:
+ *     tags:
+ *       - CTV Reports
+ *     summary: Cập nhật trạng thái báo lỗi
+ *     description: CTV cập nhật trạng thái và ghi chú cho báo lỗi được gán cho mình
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: reportId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum: [pending, in_progress, resolved, rejected]
+ *               adminNote:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Cập nhật báo lỗi thành công
+ *       404:
+ *         description: Không tìm thấy báo lỗi hoặc không có quyền
+ */
+router.patch("/:reportId", updateCTVReport);
 
 export default router;
