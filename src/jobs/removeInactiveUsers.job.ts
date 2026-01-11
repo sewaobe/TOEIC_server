@@ -17,20 +17,23 @@ async function removeInactiveUsersOnce() {
       { $pull: { students: { $in: userIds } } }
     );
 
-    console.log(`removeInactiveUsers job: removed ${userIds.length} users from groups`, {
-      matched: (res as any).matchedCount ?? (res as any).n ?? null,
-      modified: (res as any).modifiedCount ?? (res as any).nModified ?? null,
-    });
+    console.log(
+      `removeInactiveUsers job: removed ${userIds.length} users from groups`,
+      {
+        matched: (res as any).matchedCount ?? (res as any).n ?? null,
+        modified: (res as any).modifiedCount ?? (res as any).nModified ?? null,
+      }
+    );
   } catch (err) {
     console.error("removeInactiveUsers job error:", err);
   }
 }
 
 export function startRemoveInactiveUsersJob() {
-  // Schedule to run every day at 06:00 server local time
-  // Cron expression: minute hour day-of-month month day-of-week
+  // Schedule to run every 10 seconds (for testing)
+  // Cron expression with seconds field: second minute hour day-of-month month day-of-week
   cron.schedule(
-    "0 6 * * *",
+    "*/10 * * * * *",
     () => {
       console.log("removeInactiveUsers job triggered");
       removeInactiveUsersOnce();
@@ -42,7 +45,9 @@ export function startRemoveInactiveUsersJob() {
   );
 
   console.log(
-    `removeInactiveUsers job scheduled: cron="0 6 * * *", timezone=${process.env.TIMEZONE || "local"}`
+    `removeInactiveUsers job scheduled: cron="*/10 * * * * *", timezone=${
+      process.env.TIMEZONE || "local"
+    }`
   );
 
   // Also expose a manual trigger (useful for testing)
