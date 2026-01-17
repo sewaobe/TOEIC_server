@@ -16,7 +16,16 @@ import mongoose, { Types } from "mongoose";
 import dotenv from "dotenv";
 dotenv.config();
 
-import { Test, Group, Question, User, UserTest, Role, IQuestion } from "../models";
+import {
+  Test,
+  Group,
+  Question,
+  User,
+  UserTest,
+  Role,
+  IQuestion,
+} from "../models";
+import { calibrateIRTRasch } from "../services/irt.service";
 
 // ============ CẤU HÌNH ============
 const TEST_IDS = [
@@ -57,7 +66,9 @@ function clamp(value: number, min: number, max: number): number {
  * - Strong: 70-90%
  * - Random: 30-90%
  */
-function getProfileAccuracy(profile: "weak" | "average" | "strong" | "random"): number {
+function getProfileAccuracy(
+  profile: "weak" | "average" | "strong" | "random"
+): number {
   switch (profile) {
     case "weak":
       return gaussianRandom(40, 10);
@@ -92,7 +103,8 @@ function selectAnswer(
     if (wrongChoices.length === 0) {
       return { selected: correctAnswer, isCorrect: true };
     }
-    const wrongAnswer = wrongChoices[Math.floor(Math.random() * wrongChoices.length)];
+    const wrongAnswer =
+      wrongChoices[Math.floor(Math.random() * wrongChoices.length)];
     return { selected: wrongAnswer, isCorrect: false };
   }
 }
@@ -145,18 +157,6 @@ function calculateToeicScore(
   };
 }
 
-/**
- * Tính theta (IRT ability estimate) dựa trên accuracy
- * Theta range: -5 (yếu) đến +5 (giỏi)
- */
-function calculateTheta(accuracy: number): number {
-  // Linear mapping: 0% -> -5, 100% -> +5
-  // Với một chút noise để tự nhiên hơn
-  const baseTheta = (accuracy / 100) * 10 - 5;
-  const noise = (Math.random() - 0.5) * 0.5;
-  return clamp(baseTheta + noise, -5, 5);
-}
-
 // ============ MAIN FUNCTIONS ============
 
 interface QuestionInfo {
@@ -187,9 +187,10 @@ async function getTestQuestions(testId: string): Promise<QuestionInfo[]> {
     const part = group.part || 0;
     for (const q of group.questions as any[]) {
       // Get choices keys (A, B, C, D)
-      const choiceKeys: string[] = q.choices instanceof Map 
-        ? Array.from(q.choices.keys()) as string[]
-        : Object.keys(q.choices || {});
+      const choiceKeys: string[] =
+        q.choices instanceof Map
+          ? (Array.from(q.choices.keys()) as string[])
+          : Object.keys(q.choices || {});
 
       questions.push({
         _id: q._id,
@@ -232,7 +233,12 @@ function generateUserTestRecord(
   questions: QuestionInfo[]
 ): any {
   // Chọn profile ngẫu nhiên cho user này
-  const profiles: ("weak" | "average" | "strong" | "random")[] = ["weak", "average", "strong", "random"];
+  const profiles: ("weak" | "average" | "strong" | "random")[] = [
+    "weak",
+    "average",
+    "strong",
+    "random",
+  ];
   const profile = profiles[Math.floor(Math.random() * profiles.length)];
 
   // Tạo accuracy cho từng part (có biến động)
@@ -240,18 +246,30 @@ function generateUserTestRecord(
   for (let p = 1; p <= 7; p++) {
     // Mỗi part có accuracy riêng với một chút biến động từ profile chính
     const baseAccuracy = getProfileAccuracy(profile);
-    partAccuracies[p] = clamp(baseAccuracy + (Math.random() - 0.5) * 20, 10, 95);
+    partAccuracies[p] = clamp(
+      baseAccuracy + (Math.random() - 0.5) * 20,
+      10,
+      95
+    );
   }
 
   // Sinh answers
-  const answers: { question_id: Types.ObjectId; selectedOption: string; isCorrect: boolean }[] = [];
+  const answers: {
+    question_id: Types.ObjectId;
+    selectedOption: string;
+    isCorrect: boolean;
+  }[] = [];
   const partStats: Record<number, { correct: number; total: number }> = {};
 
   for (const q of questions) {
     const part = q.part || 1;
     const accuracy = partAccuracies[part] || 50;
 
-    const { selected, isCorrect } = selectAnswer(q.correctAnswer, q.choices, accuracy);
+    const { selected, isCorrect } = selectAnswer(
+      q.correctAnswer,
+      q.choices,
+      accuracy
+    );
 
     answers.push({
       question_id: q._id,
@@ -272,7 +290,8 @@ function generateUserTestRecord(
   // Tính parts accuracy
   const parts = Object.entries(partStats).map(([part, stats]) => ({
     part_name: `Part ${part}`,
-    accuracy: stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0,
+    accuracy:
+      stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0,
   }));
 
   // Tính điểm TOEIC
@@ -302,20 +321,10 @@ function generateUserTestRecord(
     readingTotal || 1
   );
 
-  // Tính theta
-  const overallAccuracy =
-    answers.length > 0 ? (answers.filter((a) => a.isCorrect).length / answers.length) * 100 : 50;
-
-  const theta_overall = calculateTheta(overallAccuracy);
-
-  const theta_parts: Record<number, number> = {};
-  for (const [part, stats] of Object.entries(partStats)) {
-    const partAccuracy = stats.total > 0 ? (stats.correct / stats.total) * 100 : 50;
-    theta_parts[parseInt(part)] = calculateTheta(partAccuracy);
-  }
-
   // Completed parts
-  const completedPartsSet = new Set(questions.map((q) => q.part).filter((p) => p > 0));
+  const completedPartsSet = new Set(
+    questions.map((q) => q.part).filter((p) => p > 0)
+  );
   const completedPart = Array.from(completedPartsSet)
     .sort((a, b) => a - b)
     .map((p) => `Part ${p}`)
@@ -330,8 +339,6 @@ function generateUserTestRecord(
     completedPart: completedPart,
     duration: generateDuration(),
     submit_at: generateSubmitDate(),
-    theta_overall: Math.round(theta_overall * 1000) / 1000,
-    theta_parts: theta_parts,
   };
 }
 
@@ -339,7 +346,8 @@ function generateUserTestRecord(
  * Chạy seed cho tất cả tests
  */
 async function seedUserTests() {
-  const MONGO = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/toeic_local";
+  const MONGO =
+    process.env.MONGO_URI || "mongodb://127.0.0.1:27017/toeic_local";
 
   console.log("🔗 Connecting to MongoDB...");
   await mongoose.connect(MONGO);
@@ -385,11 +393,17 @@ async function seedUserTests() {
       // Sinh records
       const records: any[] = [];
       for (let i = 0; i < RECORDS_PER_TEST; i++) {
-        const record = generateUserTestRecord(userId, new Types.ObjectId(testId), questions);
+        const record = generateUserTestRecord(
+          userId,
+          new Types.ObjectId(testId),
+          questions
+        );
         records.push(record);
 
         if ((i + 1) % 200 === 0) {
-          console.log(`   ⏳ Generated ${i + 1}/${RECORDS_PER_TEST} records...`);
+          console.log(
+            `   ⏳ Generated ${i + 1}/${RECORDS_PER_TEST} records...`
+          );
         }
       }
 
@@ -401,7 +415,9 @@ async function seedUserTests() {
 
       // Hiển thị thống kê mẫu
       const sampleScores = records.slice(0, 10).map((r) => r.score);
-      const avgScore = Math.round(records.reduce((sum, r) => sum + r.score, 0) / records.length);
+      const avgScore = Math.round(
+        records.reduce((sum, r) => sum + r.score, 0) / records.length
+      );
       console.log(`   📈 Sample scores: [${sampleScores.join(", ")}]`);
       console.log(`   📈 Average score: ${avgScore}`);
     }
@@ -411,9 +427,18 @@ async function seedUserTests() {
     // Verify
     console.log("\n🔍 Verification:");
     for (const testId of TEST_IDS) {
-      const count = await UserTest.countDocuments({ test_id: new Types.ObjectId(testId) });
+      const count = await UserTest.countDocuments({
+        test_id: new Types.ObjectId(testId),
+      });
       console.log(`   Test ${testId}: ${count} records`);
     }
+
+    // ⚙️ TỰ ĐỘNG CHẠY CALIBRATION
+    console.log(
+      "\n⚙️ Bắt đầu chạy IRT Rasch Calibration dựa trên dữ liệu vừa seed..."
+    );
+    await calibrateIRTRasch();
+    console.log("✅ Calibration hoàn tất chuẩn xác!");
   } catch (error) {
     console.error("❌ Error:", error);
     throw error;

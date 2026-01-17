@@ -17,6 +17,7 @@ import {
   deleteGroupWithRelations,
 } from "./group.service";
 import { TestType } from "../models/enums/TestType";
+import { updateIRTAbilities } from "./irt.service";
 
 export const getFullTest = async (testId: string): Promise<any | null> => {
   const test = await Test.findById(testId)
@@ -99,6 +100,8 @@ export const submitTest = async (
 
   const detailedAnswers = answers.map((a) => {
     let correct = false;
+    let partNum = 0;
+    let difficulty = 0;
 
     // ✅ duyệt qua object bằng Object.entries thay vì .entries()
     for (const [partName, partData] of Object.entries(
@@ -112,6 +115,8 @@ export const submitTest = async (
 
           if (question._id!.toString() === a.question_id) {
             correct = question.correctAnswer === a.selectedOption[0];
+            partNum = group.part || 0;
+            difficulty = (question as any).irt_difficulty || 0;
 
             // Cập nhật stats cho part
             if (!partStats[partName])
@@ -131,6 +136,8 @@ export const submitTest = async (
       question_id: new Types.ObjectId(a.question_id),
       selectedOption: a.selectedOption[0],
       isCorrect: correct,
+      part: partNum,
+      irt_difficulty: difficulty,
     };
   });
 
@@ -157,6 +164,21 @@ export const submitTest = async (
   });
 
   await userTest.save();
+
+  // Cập nhật IRT abilities (Theta) cho User
+  try {
+    await updateIRTAbilities(
+      userId,
+      userTest._id.toString(),
+      detailedAnswers.map((a) => ({
+        irt_difficulty: a.irt_difficulty,
+        isCorrect: a.isCorrect,
+        part: a.part,
+      }))
+    );
+  } catch (err) {
+    console.warn("⚠️ Failed to update IRT abilities after Full Test:", err);
+  }
 
   // Cập nhật thống kê cho test
   await Test.findByIdAndUpdate(testId, {

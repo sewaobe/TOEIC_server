@@ -26,11 +26,274 @@ import { autoUnlockAfterComplete } from "./auto_unlock.service";
 import { emitToUser } from "../socket/emitToUser.socket";
 
 /************************************************************
- * 2PL MODEL (a, b)
+ * ==================== IRT MODELS ====================
+ ************************************************************/
+
+/************************************************************
+ * RASCH MODEL (1PL) - P(θ) = 1 / (1 + exp(-(θ - b)))
+ * Chỉ có 1 parameter: b (difficulty)
+ * Giả định tất cả câu hỏi có discrimination (a) = 1
+ ************************************************************/
+function PRasch(theta: number, b: number) {
+  return 1 / (1 + Math.exp(-(theta - b)));
+}
+
+/************************************************************
+ * 2PL MODEL (a, b) - P(θ) = 1 / (1 + exp(-a*(θ - b)))
  ************************************************************/
 function P2PL(theta: number, a: number, b: number) {
   return 1 / (1 + Math.exp(-a * (theta - b)));
 }
+
+/************************************************************
+ * ==================== RASCH 1PL MLE ====================
+ ************************************************************/
+
+/************************************************************
+ * ESTIMATE THETA using Rasch 1PL (MLE với Newton-Raphson)
+ * Thay vì duyệt từ -5 đến +5, MLE tìm theta tối ưu trực tiếp
+ *
+ * @param items - Mảng {b: difficulty, correct: 0|1}
+ * @returns theta ước lượng
+ ************************************************************/
+export function estimateThetaRasch(
+  items: { b: number; correct: number }[]
+): number {
+  if (!items.length) return 0;
+
+  // Xử lý trường hợp đặc biệt: tất cả đúng hoặc tất cả sai
+  const totalCorrect = items.reduce((sum, item) => sum + item.correct, 0);
+  if (totalCorrect === 0) return -4; // Tất cả sai → theta thấp nhất
+  if (totalCorrect === items.length) return 4; // Tất cả đúng → theta cao nhất
+
+  // Newton-Raphson MLE
+  let theta = 0; // Khởi tạo theta = 0 (trung bình)
+  const maxIter = 30;
+  const tolerance = 0.0001;
+
+  for (let iter = 0; iter < maxIter; iter++) {
+    let L1 = 0; // First derivative (Score function)
+    let L2 = 0; // Second derivative (Fisher Information, negative)
+
+    for (const item of items) {
+      const p = PRasch(theta, item.b);
+      const q = 1 - p;
+
+      // Score function: Σ(u_i - P_i)
+      L1 += item.correct - p;
+      // Fisher Information: -Σ(P_i * Q_i)
+      L2 += -p * q;
+    }
+
+    // Tránh chia cho 0
+    if (Math.abs(L2) < 1e-10) break;
+
+    // Newton-Raphson update: θ_new = θ_old - L'/L''
+    const delta = L1 / L2;
+    theta -= delta;
+
+    // Kiểm tra hội tụ
+    if (Math.abs(delta) < tolerance) {
+      console.log(`🎯 Rasch MLE converged at iteration ${iter + 1}`);
+      break;
+    }
+
+    // Giới hạn theta trong khoảng hợp lý
+    theta = Math.max(-4, Math.min(4, theta));
+  }
+
+  return theta;
+}
+
+/************************************************************
+ * CALIBRATE DIFFICULTY (b) using Rasch 1PL MLE
+ * Ước lượng độ khó của 1 câu hỏi dựa trên responses
+ *
+ * @param responses - Mảng {theta: năng lực user, correct: 0|1}
+ * @returns b (difficulty) ước lượng
+ ************************************************************/
+export function calibrateDifficultyRasch(
+  responses: { theta: number; correct: number }[]
+): number {
+  if (!responses.length) return 0;
+
+  // Xử lý trường hợp đặc biệt
+  const totalCorrect = responses.reduce((sum, r) => sum + r.correct, 0);
+  if (totalCorrect === 0) return 4; // Không ai đúng → câu rất khó
+  if (totalCorrect === responses.length) return -4; // Tất cả đúng → câu rất dễ
+
+  // Khởi tạo b bằng logit của tỷ lệ đúng (ước lượng nhanh)
+  const pCorrect = totalCorrect / responses.length;
+  let b = -Math.log(pCorrect / (1 - pCorrect));
+  b = Math.max(-4, Math.min(4, b)); // Clamp
+
+  // Newton-Raphson MLE để tinh chỉnh
+  const maxIter = 30;
+  const tolerance = 0.0001;
+
+  for (let iter = 0; iter < maxIter; iter++) {
+    let L1 = 0; // Derivative w.r.t b
+    let L2 = 0; // Second derivative (Fisher Information)
+
+    for (const r of responses) {
+      const p = PRasch(r.theta, b);
+      const q = 1 - p;
+
+      // Derivative của log-likelihood theo b: Σ(P_i - u_i)
+      L1 += p - r.correct;
+      // Fisher Information: Σ(P_i * Q_i)
+      L2 += p * q;
+    }
+
+    if (L2 < 1e-10) break;
+
+    // Newton-Raphson update
+    const delta = L1 / L2;
+    b += delta;
+
+    if (Math.abs(delta) < tolerance) {
+      console.log(
+        `🎯 Rasch difficulty calibration converged at iteration ${iter + 1}`
+      );
+      break;
+    }
+
+    b = Math.max(-4, Math.min(4, b));
+  }
+
+  return b;
+}
+
+/************************************************************
+ * CALIBRATE ALL QUESTIONS using Rasch 1PL
+ * Chuẩn hóa độ khó cho toàn bộ câu hỏi trong DB
+ ************************************************************/
+export async function calibrateIRTRasch() {
+  console.log("🔧 Bắt đầu hiệu chỉnh IRT Rasch (1PL) cho toàn bộ câu hỏi…");
+
+  const questions = await Question.find({});
+  let calibratedCount = 0;
+
+  for (const q of questions) {
+    const tests = await UserTest.find({
+      "answers.question_id": q._id,
+    });
+
+    // Cần tối thiểu 30 lượt làm để calibrate
+    if (!tests || tests.length < 30) {
+      continue;
+    }
+
+    const responses: { theta: number; correct: number }[] = [];
+
+    for (const t of tests) {
+      // Dùng theta đã lưu hoặc ước lượng từ score
+      const theta = t.theta_overall ?? scoreToTheta(t.score, t.answers.length);
+
+      for (const ans of t.answers) {
+        if (ans.question_id.toString() === q._id.toString()) {
+          responses.push({
+            theta,
+            correct: ans.isCorrect ? 1 : 0,
+          });
+        }
+      }
+    }
+
+    if (responses.length < 20) continue;
+
+    // Calibrate difficulty bằng Rasch MLE
+    const b = calibrateDifficultyRasch(responses);
+
+    console.log(`✓ Rasch calibrated ${q._id}: b=${b.toFixed(3)}`);
+
+    await Question.updateOne(
+      { _id: q._id },
+      {
+        irt_discrimination: 1.0, // Rasch giả định a = 1
+        irt_difficulty: b,
+        irt_guessing: 0.25, // Cố định cho TOEIC (4 đáp án)
+        updated_at: new Date(),
+      }
+    );
+
+    calibratedCount++;
+  }
+
+  console.log(
+    `🎉 Hoàn tất hiệu chỉnh Rasch! Đã cập nhật ${calibratedCount} câu hỏi.`
+  );
+  return { calibratedCount };
+}
+
+/************************************************************
+ * ESTIMATE THETA BY PART using Rasch 1PL
+ * Tính theta cho từng Part 1-7
+ ************************************************************/
+export function calculateThetaRasch(result: {
+  responses: {
+    b: number; // difficulty
+    correct: number;
+    part: number | null;
+  }[];
+}) {
+  const overallItems: { b: number; correct: number }[] = [];
+  const itemsByPart: Record<number, { b: number; correct: number }[]> = {};
+
+  for (const r of result.responses) {
+    const item = { b: r.b, correct: r.correct };
+    overallItems.push(item);
+
+    if (r.part != null && r.part >= 1 && r.part <= 7) {
+      if (!itemsByPart[r.part]) itemsByPart[r.part] = [];
+      itemsByPart[r.part].push(item);
+    }
+  }
+
+  // Theta tổng
+  const thetaOverall = estimateThetaRasch(overallItems);
+
+  // Theta theo Part 1..7
+  const thetaByPart: Record<number, number> = {};
+  for (let part = 1; part <= 7; part++) {
+    const items = itemsByPart[part] || [];
+    thetaByPart[part] = estimateThetaRasch(items);
+  }
+
+  return {
+    thetaOverall,
+    thetaByPart,
+  };
+}
+
+/**
+ * Cập nhật theta cho User sau khi làm Full Test hoặc Mini Test
+ * Sử dụng mô hình Rasch (1PL MLE)
+ */
+export async function updateIRTAbilities(
+  userId: string,
+  userTestId: string,
+  responses: { irt_difficulty: number; isCorrect: boolean; part: number }[]
+) {
+  const result = {
+    responses: responses.map((r) => ({
+      b: r.irt_difficulty || 0,
+      correct: r.isCorrect ? 1 : 0,
+      part: r.part,
+    })),
+  };
+
+  const abilities = calculateThetaRasch(result);
+
+  // Lưu vào DB (UserTest và User)
+  await saveAbilityToDB(userId, userTestId, abilities);
+
+  return abilities;
+}
+
+/************************************************************
+ * ==================== 2PL MODEL (Original) ====================
+ ************************************************************/
 
 /************************************************************
  * Convert Score → Theta Estimate (dùng tạm)
@@ -624,8 +887,8 @@ export const generateIRTWeeklyPlanService = async (
     throw new Error("Failed to submit mini test for user " + userId);
   }
 
-  // Bước 2: Tính theta cho từng part
-  const abilities = calculateTheta2PL(result);
+  // Bước 2: Tính theta cho từng part bằng mô hình Rasch (1PL MLE)
+  const abilities = calculateThetaRasch(result);
 
   // Emit abilities immediately after theta calculation (step 2)
   try {
@@ -633,7 +896,10 @@ export const generateIRTWeeklyPlanService = async (
       abilities: abilities,
     });
   } catch (err) {
-    console.warn("Failed to emit mini_test_abilities after calculateTheta2PL:", err);
+    console.warn(
+      "Failed to emit mini_test_abilities after calculateThetaRasch:",
+      err
+    );
   }
 
   if (!abilities) {
@@ -673,7 +939,7 @@ export const generateIRTWeeklyPlanService = async (
     throw new Error("Failed to normalize retrieved items for user " + userId);
   }
 
-  const minutesPerDay = (userProfile?.hours_per_day || 0);
+  const minutesPerDay = userProfile?.hours_per_day || 0;
 
   const totalWeekMinutes =
     minutesPerDay * (userProfile?.study_days_per_week || 0);
@@ -736,57 +1002,57 @@ export const generateIRTWeeklyPlanService = async (
       // Chuẩn bị sessions từ plan
       const sessions = Array.isArray(day.sessions)
         ? day.sessions.map((session: any, sessionIdx: number) => {
-          const partNum: number | null = session.part ?? null;
+            const partNum: number | null = session.part ?? null;
 
-          const isFirstSession = isFirstDay && sessionIdx === 0;
+            const isFirstSession = isFirstDay && sessionIdx === 0;
 
-          const items =
-            Array.isArray(session.items) && session.items.length > 0
-              ? session.items.map((it: any, itemIdx: number) => {
-                let mappedKind: SessionType;
+            const items =
+              Array.isArray(session.items) && session.items.length > 0
+                ? session.items.map((it: any, itemIdx: number) => {
+                    let mappedKind: SessionType;
 
-                switch (it.kind) {
-                  case "dictation":
-                    mappedKind = SessionType.DICTATION;
-                    break;
-                  case "shadowing":
-                    mappedKind = SessionType.SHADOWING;
-                    break;
-                  case "quiz":
-                    mappedKind = SessionType.QUIZ;
-                    break;
-                  case "lesson":
-                    mappedKind = SessionType.LESSON;
-                    break;
-                  case "vocab":
-                  default:
-                    mappedKind = SessionType.FLASH_CARD;
-                    break;
-                }
+                    switch (it.kind) {
+                      case "dictation":
+                        mappedKind = SessionType.DICTATION;
+                        break;
+                      case "shadowing":
+                        mappedKind = SessionType.SHADOWING;
+                        break;
+                      case "quiz":
+                        mappedKind = SessionType.QUIZ;
+                        break;
+                      case "lesson":
+                        mappedKind = SessionType.LESSON;
+                        break;
+                      case "vocab":
+                      default:
+                        mappedKind = SessionType.FLASH_CARD;
+                        break;
+                    }
 
-                const isFirstItem = isFirstSession && itemIdx === 0;
+                    const isFirstItem = isFirstSession && itemIdx === 0;
 
-                return {
-                  kind: mappedKind,
-                  activity_id: it.resource_id
-                    ? new Types.ObjectId(it.resource_id)
-                    : undefined,
-                  status: isFirstItem
-                    ? WeekStudyStatus.IN_PROGRESS
-                    : WeekStudyStatus.LOCK,
-                };
-              })
-              : [];
+                    return {
+                      kind: mappedKind,
+                      activity_id: it.resource_id
+                        ? new Types.ObjectId(it.resource_id)
+                        : undefined,
+                      status: isFirstItem
+                        ? WeekStudyStatus.IN_PROGRESS
+                        : WeekStudyStatus.LOCK,
+                    };
+                  })
+                : [];
 
-          return {
-            session_no: session.session_no,
-            status: isFirstSession
-              ? WeekStudyStatus.IN_PROGRESS
-              : WeekStudyStatus.LOCK,
-            part_type: partNum,
-            items,
-          };
-        })
+            return {
+              session_no: session.session_no,
+              status: isFirstSession
+                ? WeekStudyStatus.IN_PROGRESS
+                : WeekStudyStatus.LOCK,
+              part_type: partNum,
+              items,
+            };
+          })
         : [];
 
       // Bổ sung mini test vào session cuối của ngày cuối cùng
