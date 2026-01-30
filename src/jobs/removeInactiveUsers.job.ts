@@ -30,10 +30,10 @@ async function removeInactiveUsersOnce() {
 }
 
 export function startRemoveInactiveUsersJob() {
-  // Schedule to run every 10 seconds (for testing)
+  // Schedule to run every 6:00 AM on day (for production)
   // Cron expression with seconds field: second minute hour day-of-month month day-of-week
   cron.schedule(
-    "*/10 * * * * *",
+    "0 0 6 * * *",
     () => {
       console.log("removeInactiveUsers job triggered");
       removeInactiveUsersOnce();
@@ -45,8 +45,7 @@ export function startRemoveInactiveUsersJob() {
   );
 
   console.log(
-    `removeInactiveUsers job scheduled: cron="*/10 * * * * *", timezone=${
-      process.env.TIMEZONE || "local"
+    `removeInactiveUsers job scheduled: cron="0 0 6 * * *", timezone=${process.env.TIMEZONE || "local"
     }`
   );
 
