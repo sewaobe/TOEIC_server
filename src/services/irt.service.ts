@@ -17,7 +17,6 @@ import { Dictation } from "../models/dictation.model";
 import { Shadowing } from "../models/shadowing.model";
 import { submitMiniTestService } from "./test.service";
 import { generateNextWeekMiniTest } from "../utils/mini_test.util";
-import { retrieveLearning } from "../retriever/retriever_learning";
 import { generateIRTWeeklyPlan } from "./gemini.service";
 import { saveDebugFile } from "./demo.service";
 import { updatedThetaInUserTestService } from "./user_test.service";
@@ -794,6 +793,104 @@ export function normalizeRetrieved(raw: any) {
   return result;
 }
 
+/************************************************************
+ * NORMALIZE CANDIDATE ITEMS from getCandidateLearningItems
+ * Chuyển đổi dữ liệu từ getCandidateLearningItems sang format
+ * phù hợp với generateIRTWeeklyPlan
+ ************************************************************/
+export function normalizeCandidateItems(raw: Record<number, any>) {
+  const result: Record<number, any[]> = {};
+
+  for (let part = 1; part <= 7; part++) {
+    const block = raw[part];
+    if (!block) {
+      result[part] = [];
+      continue;
+    }
+
+    const items: any[] = [];
+
+    // Lessons
+    if (Array.isArray(block.lessons)) {
+      for (const item of block.lessons) {
+        items.push({
+          part: item.part_type ?? part,
+          kind: "lesson",
+          resource_id: item._id?.toString(),
+          level: item.level,
+          weight: item.weight ?? 0,
+          title: item.title ?? "",
+          estimated_time: item.planned_completion_time ?? estimateStudyTime("lesson"),
+        });
+      }
+    }
+
+    // Dictations
+    if (Array.isArray(block.dictations)) {
+      for (const item of block.dictations) {
+        items.push({
+          part: part,
+          kind: "dictation",
+          resource_id: item._id?.toString(),
+          level: item.level,
+          weight: item.weight ?? 0,
+          title: item.title ?? "",
+          estimated_time: item.duration ?? estimateStudyTime("dictation"),
+        });
+      }
+    }
+
+    // Shadowings
+    if (Array.isArray(block.shadowings)) {
+      for (const item of block.shadowings) {
+        items.push({
+          part: part,
+          kind: "shadowing",
+          resource_id: item._id?.toString(),
+          level: item.level,
+          weight: item.weight ?? 0,
+          title: item.title ?? "",
+          estimated_time: item.duration ?? estimateStudyTime("shadowing"),
+        });
+      }
+    }
+
+    // Quizzes
+    if (Array.isArray(block.quizzes)) {
+      for (const item of block.quizzes) {
+        items.push({
+          part: part,
+          kind: "quiz",
+          resource_id: item._id?.toString(),
+          level: item.level,
+          weight: item.weight ?? 0,
+          title: item.title ?? "",
+          estimated_time: item.planned_completion_time ?? estimateStudyTime("quiz"),
+        });
+      }
+    }
+
+    // Vocabulary
+    if (Array.isArray(block.vocab)) {
+      for (const item of block.vocab) {
+        items.push({
+          part: part,
+          kind: "vocab",
+          resource_id: item._id?.toString(),
+          level: item.level,
+          weight: 0,
+          title: item.title ?? item.description ?? "",
+          estimated_time: estimateStudyTime("vocab"),
+        });
+      }
+    }
+
+    result[part] = items;
+  }
+
+  return result;
+}
+
 function extractTitle(doc: string) {
   const m = doc.match(/TITLE:\s*(.+)/);
   return m ? m[1].trim() : "";
@@ -918,22 +1015,15 @@ export const generateIRTWeeklyPlanService = async (
     );
   }
 
-  // Bước 4: Retrieve các bài học theo theta part
-  let retrieved: any = {};
-  for (let part = 1; part <= 7; part++) {
-    retrieved[part] = await retrieveLearning(
-      `Retrieve learning items for TOEIC Part ${part} based on weight & level & part_type`,
-      50,
-      part
-    );
+  // Bước 4: Lấy các bài học phù hợp với năng lực người dùng (theo theta từng part)
+  const candidateItems = await getCandidateLearningItems(abilities.thetaByPart);
+
+  if (!candidateItems) {
+    throw new Error("Failed to get candidate learning items for user " + userId);
   }
 
-  if (!retrieved) {
-    throw new Error("Failed to retrieve learning items for user " + userId);
-  }
-
-  // Bước 5: Chuẩn hóa dữ liệu
-  const normalized = normalizeRetrieved(retrieved);
+  // Bước 5: Chuẩn hóa dữ liệu sang format phù hợp với generateIRTWeeklyPlan
+  const normalized = normalizeCandidateItems(candidateItems);
 
   if (!normalized) {
     throw new Error("Failed to normalize retrieved items for user " + userId);
