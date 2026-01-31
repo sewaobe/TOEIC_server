@@ -266,36 +266,36 @@ interface SchedulerMetrics {
 ╠══════════════════════════════════════════════════════════════╣
 ║ ⏱️  TIME ALLOCATION                                          ║
 ╠──────────────────────────────────────────────────────────────╣
-║  Weak Parts:   630/651 min  (target: 65%)                    ║
-║  Medium Parts: 240/250 min  (target: 25%)                    ║
-║  Strong Parts: 105/100 min  (target: 10%)                    ║
+║  Weak Parts:   570/558 min  (target: 65%)                    ║
+║  Medium Parts: 225/215 min  (target: 25%)                    ║
+║  Strong Parts: 105/86 min  (target: 10%)                    ║
 ╠══════════════════════════════════════════════════════════════╣
 ║ 📅 DAILY BREAKDOWN                                           ║
 ╠──────────────────────────────────────────────────────────────╣
-║  Day 1 [weak  ]: 210/143 min | Parts: [4,7,5]
-║    └─ shadowing:30m, dictation:30m, lesson:60m, vocab:60m, quiz:30m
-║  Day 2 [weak  ]: 210/143 min | Parts: [4,7,5]
-║    └─ shadowing:30m, dictation:30m, lesson:60m, vocab:60m, quiz:30m
-║  Day 3 [weak  ]: 210/143 min | Parts: [4,7,5]
-║    └─ shadowing:30m, dictation:20m, lesson:60m, quiz:40m, vocab:60m
-║  Day 4 [medium]: 120/143 min | Parts: [6,1]
-║    └─ lesson:40m, vocab:60m, quiz:20m
-║  Day 5 [medium]: 120/143 min | Parts: [6,1]
-║    └─ lesson:40m, vocab:60m, quiz:20m
-║  Day 6 [strong]: 105/143 min | Parts: [2,3]
-║    └─ dictation:50m, shadowing:45m, quiz:10m
+║  Day 1 [weak  ]: 155/143 min | Parts: [5,7,4]
+║    └─ vocab:60m, quiz:10m, lesson:60m, shadowing:15m, dictation:10m
+║  Day 2 [weak  ]: 155/143 min | Parts: [5,7,4]
+║    └─ vocab:60m, quiz:10m, lesson:60m, shadowing:15m, dictation:10m
+║  Day 3 [weak  ]: 155/143 min | Parts: [5,7,4]
+║    └─ vocab:60m, quiz:10m, lesson:60m, shadowing:15m, dictation:10m
+║  Day 4 [medium]: 145/143 min | Parts: [5,7,4,1,2]
+║    └─ vocab:90m, quiz:10m, lesson:20m, shadowing:15m, dictation:10m
+║  Day 5 [medium]: 130/143 min | Parts: [1,2]
+║    └─ vocab:30m, quiz:30m, dictation:40m, shadowing:30m
+║  Day 6 [strong]: 160/143 min | Parts: [1,2,3,6]
+║    └─ vocab:60m, dictation:30m, shadowing:30m, lesson:40m
 ║  Day 7 [test  ]:   0/143 min | Parts: [-]
 ║    └─ mini-test only
 ╠══════════════════════════════════════════════════════════════╣
 ║ 📈 PART COVERAGE                                             ║
 ╠──────────────────────────────────────────────────────────────╣
-║  Part 4 [weak  ]: 240 min | 3 sessions
-║  Part 7 [weak  ]: 240 min | 3 sessions
-║  Part 5 [weak  ]: 150 min | 3 sessions
-║  Part 6 [medium]: 140 min | 2 sessions
-║  Part 1 [medium]: 100 min | 2 sessions
-║  Part 2 [strong]:  55 min | 1 sessions
-║  Part 3 [strong]:  50 min | 1 sessions
+║  Part 5 [weak  ]: 160 min | 4 sessions
+║  Part 7 [weak  ]: 260 min | 4 sessions
+║  Part 4 [weak  ]: 150 min | 4 sessions
+║  Part 1 [medium]: 110 min | 3 sessions
+║  Part 2 [medium]: 115 min | 3 sessions
+║  Part 3 [strong]:  55 min | 1 sessions
+║  Part 6 [strong]:  50 min | 1 sessions
 ╠══════════════════════════════════════════════════════════════╣
 ║ ✅ CONSTRAINTS: ALL SATISFIED ✓                              ║
 ╚══════════════════════════════════════════════════════════════╝
@@ -303,9 +303,9 @@ interface SchedulerMetrics {
 
 **Giải thích**:
 - Week 6 với 143 phút/ngày × 6 ngày thực = 858 phút tổng
-- Weak actual (630) ≈ 96% target (651) ✓
-- Medium actual (240) ≈ 96% target (250) ✓
-- Strong actual (105) ≈ 105% target (100) ✓
+- Weak actual (570) ≈ 102% target (558) ✓
+- Medium actual (225) ≈ 103% target (âằ) ✓
+- Strong actual (105) ≈ 110% target (86) ✓
 - Tất cả Parts đều có coverage → Constraints Satisfied
 
 ---
@@ -475,14 +475,6 @@ Strong actual:  86/ 86 min (100% ✓)
    - Đảm bảo mỗi ngày trong khoảng [target-20, target+20]
    - Dư giờ: bỏ Quiz/Vocab priority thấp
    - Thiếu giờ: thêm Lesson/Skills priority cao
-
----
-
-## 🔗 Files liên quan
-
-- `irt.service.ts` - Main implementation
-- `models/enums/SessionType.ts` - Session type enums
-- `models/enums/WeekStudyStatus.ts` - Status enums
 
 ---
 
