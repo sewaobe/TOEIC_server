@@ -5,6 +5,11 @@ import {
   getDayStudyByIdController,
   completeActivityController,
 } from "../controllers/day_study.controller";
+import {
+  createFeedbackController,
+  getFeedbackForDayController,
+  deleteFeedbackController,
+} from "../controllers/lesson_feedback.controller";
 
 const router = Router();
 
@@ -196,5 +201,167 @@ router.post(
   verifyAccessToken,
   completeActivityController
 );
+
+/**
+ * @swagger
+ * /day-study/{dayId}/feedback:
+ *   post:
+ *     tags:
+ *       - Day Study
+ *     summary: Gửi feedback cho buổi học
+ *     description: |
+ *       Cho phép user gửi đánh giá về buổi học.
+ *       - Rating từ 1-5 sao
+ *       - Lý do đánh giá (tùy chọn)
+ *       - Comment chi tiết (tùy chọn)
+ *       - Nếu đã có feedback cho ngày này sẽ tự động cập nhật
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: dayId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID của day study
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - rating
+ *             properties:
+ *               rating:
+ *                 type: number
+ *                 minimum: 1
+ *                 maximum: 5
+ *                 description: Điểm đánh giá từ 1-5
+ *                 example: 4
+ *               reasons:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Danh sách lý do đánh giá
+ *                 example: ["Nội dung thực tế", "Giải thích chi tiết"]
+ *               comment:
+ *                 type: string
+ *                 maxLength: 500
+ *                 description: Nhận xét chi tiết
+ *                 example: "Bài học rất hữu ích, giải thích dễ hiểu"
+ *     responses:
+ *       201:
+ *         description: Gửi feedback thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Gửi đánh giá thành công!"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     day_study_id:
+ *                       type: string
+ *                     rating:
+ *                       type: number
+ *                     reasons:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                     comment:
+ *                       type: string
+ *                     is_positive:
+ *                       type: boolean
+ *                     created_at:
+ *                       type: string
+ *                       format: date-time
+ *       400:
+ *         description: Dữ liệu không hợp lệ
+ *       404:
+ *         description: Không tìm thấy ngày học hoặc lộ trình
+ */
+router.post("/:dayId/feedback", verifyAccessToken, createFeedbackController);
+
+/**
+ * @swagger
+ * /day-study/{dayId}/feedback:
+ *   get:
+ *     tags:
+ *       - Day Study
+ *     summary: Lấy feedback của user cho ngày học
+ *     description: Lấy feedback mà user đã gửi cho ngày học cụ thể
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: dayId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID của day study
+ *     responses:
+ *       200:
+ *         description: Lấy feedback thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   nullable: true
+ *                   properties:
+ *                     day_study_id:
+ *                       type: string
+ *                     rating:
+ *                       type: number
+ *                     reasons:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                     comment:
+ *                       type: string
+ *                     is_positive:
+ *                       type: boolean
+ *                     created_at:
+ *                       type: string
+ *                       format: date-time
+ */
+router.get("/:dayId/feedback", verifyAccessToken, getFeedbackForDayController);
+
+/**
+ * @swagger
+ * /day-study/{dayId}/feedback:
+ *   delete:
+ *     tags:
+ *       - Day Study
+ *     summary: Xóa feedback của user cho ngày học
+ *     description: Xóa feedback mà user đã gửi cho ngày học cụ thể
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: dayId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID của day study
+ *     responses:
+ *       200:
+ *         description: Xóa feedback thành công
+ *       404:
+ *         description: Không tìm thấy feedback
+ */
+router.delete("/:dayId/feedback", verifyAccessToken, deleteFeedbackController);
 
 export default router;

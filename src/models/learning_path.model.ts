@@ -1,6 +1,18 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
 import { CERFLevel } from "./topic_vocabulary.model";
 
+/**
+ * Interface cho Feedback của buổi học
+ */
+export interface ILessonFeedback {
+  day_study_id: Types.ObjectId;
+  rating: number; // 1-5
+  reasons: string[];
+  comment?: string;
+  is_positive: boolean; // true nếu rating >= 4
+  created_at: Date;
+}
+
 export interface ILearningPath extends Document {
   title: string;
   description: string;
@@ -13,11 +25,48 @@ export interface ILearningPath extends Document {
   current_week?: number;
   week_study_ids?: Types.ObjectId[];
   additional_week_studies?: Types.ObjectId[];
+  feedbacks?: ILessonFeedback[];
   isActive: boolean;
   created_at: Date;
   updated_at: Date;
   created_by: Types.ObjectId;
 }
+
+/**
+ * Sub-schema cho Feedback
+ */
+const LessonFeedbackSchema = new Schema<ILessonFeedback>(
+  {
+    day_study_id: {
+      type: Schema.Types.ObjectId,
+      ref: "DayStudy",
+      required: true,
+    },
+    rating: {
+      type: Number,
+      required: true,
+      min: 1,
+      max: 5,
+    },
+    reasons: {
+      type: [String],
+      default: [],
+    },
+    comment: {
+      type: String,
+      maxlength: 500,
+    },
+    is_positive: {
+      type: Boolean,
+      required: true,
+    },
+    created_at: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  { _id: true }
+);
 
 const LearningPathSchema = new Schema<ILearningPath>({
   title: { type: String, required: true },
@@ -35,6 +84,10 @@ const LearningPathSchema = new Schema<ILearningPath>({
   additional_week_studies: [
     { type: Schema.Types.ObjectId, ref: "WeekStudy", default: [] },
   ],
+  feedbacks: {
+    type: [LessonFeedbackSchema],
+    default: [],
+  },
   isActive: { type: Boolean, default: false },
   created_at: { type: Date, default: Date.now },
   updated_at: { type: Date, default: Date.now },
