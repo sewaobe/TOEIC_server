@@ -11,6 +11,12 @@ import { Role } from "../models/enums/Role";
 
 export const getAllTopicOfCollaborator = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 6;
     const userId = req.user._id;
@@ -42,6 +48,12 @@ export const getTopicExploresController = async (req: Request, res: Response, ne
 
 export const createTopicOfCollaborator = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const userId = req.user._id;
     const roleName = req.user.roleName as Role;
     const topic = await createTopicService(req.body, userId, roleName);
@@ -55,6 +67,12 @@ export const createTopicOfCollaborator = async (req: Request, res: Response, nex
 
 export const updateTopicOfCollaborator = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const { id } = req.params;
     const userId = req.user._id;
     const roleName = req.user.roleName as Role;
@@ -77,6 +95,12 @@ export const updateTopicOfCollaborator = async (req: Request, res: Response, nex
 
 export const deleteTopicOfCollaborator = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const { id } = req.params;
     const userId = req.user._id;
     const deleted = await deleteTopicService(id, userId);

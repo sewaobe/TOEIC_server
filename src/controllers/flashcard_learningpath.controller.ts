@@ -50,6 +50,12 @@ export const submitFlashCardController = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const { id: rawId } = req.params;
     const userId = new Types.ObjectId(req.user._id);
     const { learned_words, time_spent, day_study_id, results } = req.body;
@@ -66,10 +72,10 @@ export const submitFlashCardController = async (
     // Parse results array nếu có
     const resultsArray = Array.isArray(results)
       ? results.map((r: any) => ({
-          vocabulary_id: new Types.ObjectId(r.vocabulary_id),
-          eval_type: r.eval_type,
-          response_time: Number(r.response_time || 0),
-        }))
+        vocabulary_id: new Types.ObjectId(r.vocabulary_id),
+        eval_type: r.eval_type,
+        response_time: Number(r.response_time || 0),
+      }))
       : [];
 
     // 1. T?o FlashCardAttempt (luu metadata id)

@@ -1,14 +1,21 @@
 import { Request, Response } from "express";
 import { addSubscription, listUserSubscriptions, removeSubscriptionByEndpoint } from "../services/push.service";
+import { ApiResponse } from "../utils/ApiResponse";
 
 export async function registerSubscription(req: Request, res: Response) {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const userId = req.user._id;
     const subscription = req.body.subscription;
     const userAgent = req.get("user-agent") || req.body.userAgent;
 
     if (!userId || !subscription?.endpoint || !subscription?.keys) {
-      return res.status(400).json({ success: false, message: "Invalid payload" });
+      return res.status(400).json(ApiResponse.fail("Invalid payload"));
     }
 
     const sub = await addSubscription(userId, subscription, userAgent);
@@ -22,6 +29,12 @@ export async function registerSubscription(req: Request, res: Response) {
 
 export async function getMySubscriptions(req: Request, res: Response) {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const userId = req.user._id;
     if (!userId) return res.status(400).json({ success: false, message: "Missing userId" });
 

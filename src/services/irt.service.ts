@@ -17,8 +17,6 @@ import { Dictation } from "../models/dictation.model";
 import { Shadowing } from "../models/shadowing.model";
 import { submitMiniTestService } from "./test.service";
 import { generateNextWeekMiniTest } from "../utils/mini_test.util";
-import { retrieveLearning } from "../retriever/retriever_learning";
-import { generateIRTWeeklyPlan } from "./gemini.service";
 import { saveDebugFile } from "./demo.service";
 import { updatedThetaInUserTestService } from "./user_test.service";
 import { updateUserStreak } from "./streak.service";
@@ -26,11 +24,274 @@ import { autoUnlockAfterComplete } from "./auto_unlock.service";
 import { emitToUser } from "../socket/emitToUser.socket";
 
 /************************************************************
- * 2PL MODEL (a, b)
+ * ==================== IRT MODELS ====================
+ ************************************************************/
+
+/************************************************************
+ * RASCH MODEL (1PL) - P(θ) = 1 / (1 + exp(-(θ - b)))
+ * Chỉ có 1 parameter: b (difficulty)
+ * Giả định tất cả câu hỏi có discrimination (a) = 1
+ ************************************************************/
+function PRasch(theta: number, b: number) {
+  return 1 / (1 + Math.exp(-(theta - b)));
+}
+
+/************************************************************
+ * 2PL MODEL (a, b) - P(θ) = 1 / (1 + exp(-a*(θ - b)))
  ************************************************************/
 function P2PL(theta: number, a: number, b: number) {
   return 1 / (1 + Math.exp(-a * (theta - b)));
 }
+
+/************************************************************
+ * ==================== RASCH 1PL MLE ====================
+ ************************************************************/
+
+/************************************************************
+ * ESTIMATE THETA using Rasch 1PL (MLE với Newton-Raphson)
+ * Thay vì duyệt từ -5 đến +5, MLE tìm theta tối ưu trực tiếp
+ *
+ * @param items - Mảng {b: difficulty, correct: 0|1}
+ * @returns theta ước lượng
+ ************************************************************/
+export function estimateThetaRasch(
+  items: { b: number; correct: number }[]
+): number {
+  if (!items.length) return 0;
+
+  // Xử lý trường hợp đặc biệt: tất cả đúng hoặc tất cả sai
+  const totalCorrect = items.reduce((sum, item) => sum + item.correct, 0);
+  if (totalCorrect === 0) return -4; // Tất cả sai → theta thấp nhất
+  if (totalCorrect === items.length) return 4; // Tất cả đúng → theta cao nhất
+
+  // Newton-Raphson MLE
+  let theta = 0; // Khởi tạo theta = 0 (trung bình)
+  const maxIter = 30;
+  const tolerance = 0.0001;
+
+  for (let iter = 0; iter < maxIter; iter++) {
+    let L1 = 0; // First derivative (Score function)
+    let L2 = 0; // Second derivative (Fisher Information, negative)
+
+    for (const item of items) {
+      const p = PRasch(theta, item.b);
+      const q = 1 - p;
+
+      // Score function: Σ(u_i - P_i)
+      L1 += item.correct - p;
+      // Fisher Information: -Σ(P_i * Q_i)
+      L2 += -p * q;
+    }
+
+    // Tránh chia cho 0
+    if (Math.abs(L2) < 1e-10) break;
+
+    // Newton-Raphson update: θ_new = θ_old - L'/L''
+    const delta = L1 / L2;
+    theta -= delta;
+
+    // Kiểm tra hội tụ
+    if (Math.abs(delta) < tolerance) {
+      console.log(`🎯 Rasch MLE converged at iteration ${iter + 1}`);
+      break;
+    }
+
+    // Giới hạn theta trong khoảng hợp lý
+    theta = Math.max(-4, Math.min(4, theta));
+  }
+
+  return theta;
+}
+
+/************************************************************
+ * CALIBRATE DIFFICULTY (b) using Rasch 1PL MLE
+ * Ước lượng độ khó của 1 câu hỏi dựa trên responses
+ *
+ * @param responses - Mảng {theta: năng lực user, correct: 0|1}
+ * @returns b (difficulty) ước lượng
+ ************************************************************/
+export function calibrateDifficultyRasch(
+  responses: { theta: number; correct: number }[]
+): number {
+  if (!responses.length) return 0;
+
+  // Xử lý trường hợp đặc biệt
+  const totalCorrect = responses.reduce((sum, r) => sum + r.correct, 0);
+  if (totalCorrect === 0) return 4; // Không ai đúng → câu rất khó
+  if (totalCorrect === responses.length) return -4; // Tất cả đúng → câu rất dễ
+
+  // Khởi tạo b bằng logit của tỷ lệ đúng (ước lượng nhanh)
+  const pCorrect = totalCorrect / responses.length;
+  let b = -Math.log(pCorrect / (1 - pCorrect));
+  b = Math.max(-4, Math.min(4, b)); // Clamp
+
+  // Newton-Raphson MLE để tinh chỉnh
+  const maxIter = 30;
+  const tolerance = 0.0001;
+
+  for (let iter = 0; iter < maxIter; iter++) {
+    let L1 = 0; // Derivative w.r.t b
+    let L2 = 0; // Second derivative (Fisher Information)
+
+    for (const r of responses) {
+      const p = PRasch(r.theta, b);
+      const q = 1 - p;
+
+      // Derivative của log-likelihood theo b: Σ(P_i - u_i)
+      L1 += p - r.correct;
+      // Fisher Information: Σ(P_i * Q_i)
+      L2 += p * q;
+    }
+
+    if (L2 < 1e-10) break;
+
+    // Newton-Raphson update
+    const delta = L1 / L2;
+    b += delta;
+
+    if (Math.abs(delta) < tolerance) {
+      console.log(
+        `🎯 Rasch difficulty calibration converged at iteration ${iter + 1}`
+      );
+      break;
+    }
+
+    b = Math.max(-4, Math.min(4, b));
+  }
+
+  return b;
+}
+
+/************************************************************
+ * CALIBRATE ALL QUESTIONS using Rasch 1PL
+ * Chuẩn hóa độ khó cho toàn bộ câu hỏi trong DB
+ ************************************************************/
+export async function calibrateIRTRasch() {
+  console.log("🔧 Bắt đầu hiệu chỉnh IRT Rasch (1PL) cho toàn bộ câu hỏi…");
+
+  const questions = await Question.find({});
+  let calibratedCount = 0;
+
+  for (const q of questions) {
+    const tests = await UserTest.find({
+      "answers.question_id": q._id,
+    });
+
+    // Cần tối thiểu 30 lượt làm để calibrate
+    if (!tests || tests.length < 30) {
+      continue;
+    }
+
+    const responses: { theta: number; correct: number }[] = [];
+
+    for (const t of tests) {
+      // Dùng theta đã lưu hoặc ước lượng từ score
+      const theta = t.theta_overall ?? scoreToTheta(t.score, t.answers.length);
+
+      for (const ans of t.answers) {
+        if (ans.question_id.toString() === q._id.toString()) {
+          responses.push({
+            theta,
+            correct: ans.isCorrect ? 1 : 0,
+          });
+        }
+      }
+    }
+
+    if (responses.length < 20) continue;
+
+    // Calibrate difficulty bằng Rasch MLE
+    const b = calibrateDifficultyRasch(responses);
+
+    console.log(`✓ Rasch calibrated ${q._id}: b=${b.toFixed(3)}`);
+
+    await Question.updateOne(
+      { _id: q._id },
+      {
+        irt_discrimination: 1.0, // Rasch giả định a = 1
+        irt_difficulty: b,
+        irt_guessing: 0.25, // Cố định cho TOEIC (4 đáp án)
+        updated_at: new Date(),
+      }
+    );
+
+    calibratedCount++;
+  }
+
+  console.log(
+    `🎉 Hoàn tất hiệu chỉnh Rasch! Đã cập nhật ${calibratedCount} câu hỏi.`
+  );
+  return { calibratedCount };
+}
+
+/************************************************************
+ * ESTIMATE THETA BY PART using Rasch 1PL
+ * Tính theta cho từng Part 1-7
+ ************************************************************/
+export function calculateThetaRasch(result: {
+  responses: {
+    b: number; // difficulty
+    correct: number;
+    part: number | null;
+  }[];
+}) {
+  const overallItems: { b: number; correct: number }[] = [];
+  const itemsByPart: Record<number, { b: number; correct: number }[]> = {};
+
+  for (const r of result.responses) {
+    const item = { b: r.b, correct: r.correct };
+    overallItems.push(item);
+
+    if (r.part != null && r.part >= 1 && r.part <= 7) {
+      if (!itemsByPart[r.part]) itemsByPart[r.part] = [];
+      itemsByPart[r.part].push(item);
+    }
+  }
+
+  // Theta tổng
+  const thetaOverall = estimateThetaRasch(overallItems);
+
+  // Theta theo Part 1..7
+  const thetaByPart: Record<number, number> = {};
+  for (let part = 1; part <= 7; part++) {
+    const items = itemsByPart[part] || [];
+    thetaByPart[part] = estimateThetaRasch(items);
+  }
+
+  return {
+    thetaOverall,
+    thetaByPart,
+  };
+}
+
+/**
+ * Cập nhật theta cho User sau khi làm Full Test hoặc Mini Test
+ * Sử dụng mô hình Rasch (1PL MLE)
+ */
+export async function updateIRTAbilities(
+  userId: string,
+  userTestId: string,
+  responses: { irt_difficulty: number; isCorrect: boolean; part: number }[]
+) {
+  const result = {
+    responses: responses.map((r) => ({
+      b: r.irt_difficulty || 0,
+      correct: r.isCorrect ? 1 : 0,
+      part: r.part,
+    })),
+  };
+
+  const abilities = calculateThetaRasch(result);
+
+  // Lưu vào DB (UserTest và User)
+  await saveAbilityToDB(userId, userTestId, abilities);
+
+  return abilities;
+}
+
+/************************************************************
+ * ==================== 2PL MODEL (Original) ====================
+ ************************************************************/
 
 /************************************************************
  * Convert Score → Theta Estimate (dùng tạm)
@@ -385,16 +646,73 @@ function thetaToWeightRange(theta: number) {
 }
 
 /************************************************************
- * CORE TYPES BY PART
+ * PART ACTIVITY CONFIGURATION
+ * Tỷ lệ % các loại activity phù hợp với đặc điểm từng Part
+ * 
+ * LISTENING (Part 1-4):
+ *   - Part 1: Mô tả hình ảnh → Vocab + Dictation (nghe từ vựng mô tả)
+ *   - Part 2: Hỏi đáp ngắn → Dictation + Shadowing (nghe câu hỏi ngắn)
+ *   - Part 3: Hội thoại → Shadowing + Dictation + Lesson
+ *   - Part 4: Bài nói độc thoại → Shadowing + Dictation + Lesson
+ * 
+ * READING (Part 5-7):
+ *   - Part 5: Điền câu → Vocab + Lesson (ngữ pháp + từ vựng)
+ *   - Part 6: Điền đoạn → Lesson + Vocab (đọc hiểu ngữ cảnh)
+ *   - Part 7: Đọc hiểu dài → Lesson + Vocab
  ************************************************************/
+const PART_ACTIVITY_CONFIG: Record<number, Record<string, number>> = {
+  // Part 1: Listening - Mô tả hình ảnh → Vocab + Dictation
+  1: { vocab: 0.40, dictation: 0.40, quiz: 0.20 },
+
+  // Part 2: Listening - Hỏi đáp → Dictation + Shadowing
+  2: { dictation: 0.50, shadowing: 0.30, quiz: 0.20 },
+
+  // Part 3: Listening - Hội thoại → Shadowing + Dictation + Lesson
+  3: { shadowing: 0.35, dictation: 0.30, lesson: 0.20, quiz: 0.15 },
+
+  // Part 4: Listening - Bài nói → Shadowing + Dictation + Lesson
+  4: { shadowing: 0.35, dictation: 0.30, lesson: 0.20, quiz: 0.15 },
+
+  // Part 5: Reading - Điền câu → Vocab + Lesson (Grammar)
+  5: { vocab: 0.40, lesson: 0.40, quiz: 0.20 },
+
+  // Part 6: Reading - Điền đoạn → Lesson + Vocab
+  6: { lesson: 0.50, vocab: 0.30, quiz: 0.20 },
+
+  // Part 7: Reading - Đọc hiểu → Lesson + Vocab
+  7: { lesson: 0.50, vocab: 0.30, quiz: 0.20 },
+};
+
+// Helper để lấy allowed types từ config
 const CORE_TYPES_BY_PART: Record<number, string[]> = {
-  1: ["lesson", "dictation", "shadowing", "quiz", "vocab"],
-  2: ["lesson", "dictation", "shadowing", "quiz", "vocab"],
-  3: ["lesson", "dictation", "shadowing", "quiz", "vocab"],
-  4: ["lesson", "dictation", "shadowing", "quiz", "vocab"],
-  5: ["lesson", "quiz", "vocab"],
-  6: ["lesson", "quiz", "vocab"],
-  7: ["lesson", "quiz", "vocab"],
+  1: Object.keys(PART_ACTIVITY_CONFIG[1]),
+  2: Object.keys(PART_ACTIVITY_CONFIG[2]),
+  3: Object.keys(PART_ACTIVITY_CONFIG[3]),
+  4: Object.keys(PART_ACTIVITY_CONFIG[4]),
+  5: Object.keys(PART_ACTIVITY_CONFIG[5]),
+  6: Object.keys(PART_ACTIVITY_CONFIG[6]),
+  7: Object.keys(PART_ACTIVITY_CONFIG[7]),
+};
+
+/************************************************************
+ * WEEK SCHEDULE CONFIGURATION
+ * Cấu hình phân bổ ngày học trong tuần
+ ************************************************************/
+const WEEK_SCHEDULE_CONFIG = {
+  // Ngày 1-3: Weak parts (tập trung vào điểm yếu)
+  weak_days: [1, 2, 3],
+  weak_time_ratio: 0.65, // 65% thời gian tuần
+
+  // Ngày 4-5: Medium parts
+  medium_days: [4, 5],
+  medium_time_ratio: 0.25, // 25% thời gian tuần
+
+  // Ngày 6: Strong parts (ôn lại điểm mạnh)
+  strong_days: [6],
+  strong_time_ratio: 0.10, // 10% thời gian tuần
+
+  // Ngày 7: Mini test only
+  test_day: 7,
 };
 
 /************************************************************
@@ -531,6 +849,104 @@ export function normalizeRetrieved(raw: any) {
   return result;
 }
 
+/************************************************************
+ * NORMALIZE CANDIDATE ITEMS from getCandidateLearningItems
+ * Chuyển đổi dữ liệu từ getCandidateLearningItems sang format
+ * phù hợp với generateIRTWeeklyPlan
+ ************************************************************/
+export function normalizeCandidateItems(raw: Record<number, any>) {
+  const result: Record<number, any[]> = {};
+
+  for (let part = 1; part <= 7; part++) {
+    const block = raw[part];
+    if (!block) {
+      result[part] = [];
+      continue;
+    }
+
+    const items: any[] = [];
+
+    // Lessons
+    if (Array.isArray(block.lessons)) {
+      for (const item of block.lessons) {
+        items.push({
+          part: item.part_type ?? part,
+          kind: "lesson",
+          resource_id: item._id?.toString(),
+          level: item.level,
+          weight: item.weight ?? 0,
+          title: item.title ?? "",
+          estimated_time: estimateStudyTime("lesson"),
+        });
+      }
+    }
+
+    // Dictations
+    if (Array.isArray(block.dictations)) {
+      for (const item of block.dictations) {
+        items.push({
+          part: part,
+          kind: "dictation",
+          resource_id: item._id?.toString(),
+          level: item.level,
+          weight: item.weight ?? 0,
+          title: item.title ?? "",
+          estimated_time: estimateStudyTime("dictation"), // 10 phút
+        });
+      }
+    }
+
+    // Shadowings
+    if (Array.isArray(block.shadowings)) {
+      for (const item of block.shadowings) {
+        items.push({
+          part: part,
+          kind: "shadowing",
+          resource_id: item._id?.toString(),
+          level: item.level,
+          weight: item.weight ?? 0,
+          title: item.title ?? "",
+          estimated_time: estimateStudyTime("shadowing"), // 15 phút
+        });
+      }
+    }
+
+    // Quizzes
+    if (Array.isArray(block.quizzes)) {
+      for (const item of block.quizzes) {
+        items.push({
+          part: part,
+          kind: "quiz",
+          resource_id: item._id?.toString(),
+          level: item.level,
+          weight: item.weight ?? 0,
+          title: item.title ?? "",
+          estimated_time: estimateStudyTime("quiz"),
+        });
+      }
+    }
+
+    // Vocabulary
+    if (Array.isArray(block.vocab)) {
+      for (const item of block.vocab) {
+        items.push({
+          part: part,
+          kind: "vocab",
+          resource_id: item._id?.toString(),
+          level: item.level,
+          weight: 0,
+          title: item.title ?? item.description ?? "",
+          estimated_time: estimateStudyTime("vocab"),
+        });
+      }
+    }
+
+    result[part] = items;
+  }
+
+  return result;
+}
+
 function extractTitle(doc: string) {
   const m = doc.match(/TITLE:\s*(.+)/);
   return m ? m[1].trim() : "";
@@ -572,6 +988,852 @@ function classifyPartsByTheta(thetaByPart: Record<number, number>) {
     strong_parts: strong,
     sorted_list: entries, // để debug
   };
+}
+
+/************************************************************
+ * ==================== GREEDY SCHEDULER ====================
+ * Thuật toán sắp xếp bài học vào tuần học - Không dùng LLM
+ * 
+ * DESIGN PRINCIPLES:
+ * 1. Minh bạch: Mọi quyết định đều có metric
+ * 2. Deterministic: Cùng input → cùng output
+ * 3. Configurable: Dễ điều chỉnh tỷ lệ
+ ************************************************************/
+
+interface LearningItem {
+  part: number;
+  kind: string;
+  resource_id: string;
+  level: string;
+  weight: number;
+  estimated_time: number;
+  title?: string;
+}
+
+interface SessionItem {
+  kind: string;
+  resource_id: string;
+  estimated_time: number;
+}
+
+interface Session {
+  session_no: number;
+  part: number;
+  items: SessionItem[];
+  total_minutes: number;
+}
+
+interface DayPlan {
+  day_index: number;
+  day_type: "weak" | "medium" | "strong" | "test";
+  parts_to_study: number[];
+  sessions: Session[];
+  total_minutes: number;
+}
+
+interface SchedulerMetrics {
+  time_allocation: {
+    weak_target: number;
+    weak_actual: number;
+    medium_target: number;
+    medium_actual: number;
+    strong_target: number;
+    strong_actual: number;
+  };
+  daily_breakdown: {
+    day_index: number;
+    day_type: string;
+    target_minutes: number;
+    actual_minutes: number;
+    parts_covered: number[];
+    activities: Record<string, number>;
+  }[];
+  part_coverage: {
+    part: number;
+    group: string;
+    total_minutes: number;
+    sessions_count: number;
+  }[];
+  constraints_satisfied: boolean;
+}
+
+interface WeeklyPlanOutput {
+  week_number: number;
+  focus_parts: number[];
+  days: DayPlan[];
+  mini_test: {
+    test_id: string;
+    day_index: number;
+    estimated_time: number;
+  };
+  metrics: SchedulerMetrics;
+  debug_log: string;
+}
+
+interface ClassifiedParts {
+  weak_parts: number[];
+  medium_parts: number[];
+  strong_parts: number[];
+}
+
+interface TimeConstraints {
+  totalWeekMinutes: number;
+  minutesPerDay: number;
+  minutesPerDayMin: number;
+  minutesPerDayMax: number;
+}
+
+/************************************************************
+ * HELPER: Lấy items từ pool theo Part và Activity type
+ ************************************************************/
+function getItemsFromPool(
+  pool: Record<number, LearningItem[]>,
+  part: number,
+  kind: string,
+  usedIds: Set<string>
+): LearningItem[] {
+  const partItems = pool[part] || [];
+  return partItems.filter(
+    (item) => item.kind === kind && !usedIds.has(item.resource_id)
+  );
+}
+
+/************************************************************
+ * HELPER: Chọn items cho 1 Part theo tỷ lệ activity config
+ ************************************************************/
+function selectItemsForPart(
+  pool: Record<number, LearningItem[]>,
+  part: number,
+  targetMinutes: number,
+  usedIds: Set<string>
+): { items: LearningItem[]; actualMinutes: number } {
+  const config = PART_ACTIVITY_CONFIG[part];
+  if (!config) {
+    return { items: [], actualMinutes: 0 };
+  }
+
+  const selectedItems: LearningItem[] = [];
+  let totalMinutes = 0;
+
+  // Sắp xếp activities theo tỷ lệ giảm dần (ưu tiên activity chính)
+  const sortedActivities = Object.entries(config).sort((a, b) => b[1] - a[1]);
+
+  for (const [activityKind, ratio] of sortedActivities) {
+    const targetForActivity = Math.round(targetMinutes * ratio);
+    let minutesForActivity = 0;
+
+    const availableItems = getItemsFromPool(pool, part, activityKind, usedIds);
+
+    // Sắp xếp theo weight giảm dần (ưu tiên items quan trọng)
+    availableItems.sort((a, b) => (b.weight || 0) - (a.weight || 0));
+
+    for (const item of availableItems) {
+      if (minutesForActivity >= targetForActivity) break;
+      if (totalMinutes >= targetMinutes) break;
+
+      selectedItems.push(item);
+      usedIds.add(item.resource_id);
+      minutesForActivity += item.estimated_time;
+      totalMinutes += item.estimated_time;
+    }
+  }
+
+  return { items: selectedItems, actualMinutes: totalMinutes };
+}
+
+/************************************************************
+ * HELPER: Sắp xếp items trong session để đảm bảo đa dạng
+ * Pattern: A-B-A hoặc A-B-C (không có A-A-A, A-A-B)
+ ************************************************************/
+function interleaveItems(items: LearningItem[]): LearningItem[] {
+  if (items.length <= 2) return items;
+
+  // Nhóm theo kind
+  const byKind: Record<string, LearningItem[]> = {};
+  for (const item of items) {
+    if (!byKind[item.kind]) byKind[item.kind] = [];
+    byKind[item.kind].push(item);
+  }
+
+  const result: LearningItem[] = [];
+  const kinds = Object.keys(byKind);
+  let lastKind = "";
+  let lastLastKind = "";
+
+  while (Object.values(byKind).some((arr) => arr.length > 0)) {
+    // Tìm kind khác với 2 kind trước đó
+    let selectedKind = kinds.find(
+      (k) => k !== lastKind && k !== lastLastKind && byKind[k].length > 0
+    );
+
+    // Fallback: khác lastKind
+    if (!selectedKind) {
+      selectedKind = kinds.find((k) => k !== lastKind && byKind[k].length > 0);
+    }
+
+    // Fallback cuối: bất kỳ kind nào còn
+    if (!selectedKind) {
+      selectedKind = kinds.find((k) => byKind[k].length > 0);
+    }
+
+    if (!selectedKind) break;
+
+    result.push(byKind[selectedKind].shift()!);
+    lastLastKind = lastKind;
+    lastKind = selectedKind;
+  }
+
+  return result;
+}
+
+/************************************************************
+ * HELPER: Tính độ ưu tiên của Item (Sư phạm)
+ * Cao → Thấp: Lesson > Dictation/Shadowing > Vocab > Quiz
+ * Cộng thêm điểm Weight
+ ************************************************************/
+function getItemPriority(item: LearningItem): number {
+  let typeScore = 0;
+  switch (item.kind) {
+    case "lesson":
+      typeScore = 5;
+      break; // Lý thuyết là quan trọng nhất
+    case "dictation":
+    case "shadowing":
+      typeScore = 4;
+      break; // Kỹ năng thực hành
+    case "vocab":
+      typeScore = 3;
+      break; // Từ vựng nền tảng
+    case "quiz":
+      typeScore = 2;
+      break; // Kiểm tra (có thể giảm bớt nếu thiếu giờ)
+    default:
+      typeScore = 1;
+  }
+  // Weight (0.1 -> 1.0) * 10 => 1 -> 10 điểm
+  // Tổng score ~ 2 -> 15
+  return typeScore + (item.weight || 0) * 10;
+}
+
+/************************************************************
+ * Tạo kế hoạch học cho 1 ngày (có tối ưu thời gian loop)
+ ************************************************************/
+function createDayPlan(
+  pool: Record<number, LearningItem[]>,
+  dayIndex: number,
+  dayType: "weak" | "medium" | "strong" | "test",
+  partsToStudy: number[],
+  targetMinutes: number,
+  usedIds: Set<string>
+): DayPlan {
+  if (dayType === "test") {
+    return {
+      day_index: dayIndex,
+      day_type: dayType,
+      parts_to_study: [],
+      sessions: [],
+      total_minutes: 0,
+    };
+  }
+
+  // Phân bổ sơ bộ ban đầu
+  let dayItems: { part: number; item: LearningItem }[] = [];
+  const minutesPerPart = Math.floor(
+    targetMinutes / Math.max(partsToStudy.length, 1)
+  );
+
+  for (const part of partsToStudy) {
+    // Fill to approx minutesPerPart
+    const { items } = selectItemsForPart(pool, part, minutesPerPart, usedIds);
+    items.forEach((item) => dayItems.push({ part, item }));
+  }
+
+  // === OPTIMIZATION LOOP (+- 20 mins) ===
+  const minTarget = targetMinutes - 20;
+  const maxTarget = targetMinutes + 20;
+  let currentTotal = dayItems.reduce(
+    (sum, x) => sum + x.item.estimated_time,
+    0
+  );
+  let iteration = 0;
+  const MAX_ITER = 15;
+
+  while (
+    (currentTotal < minTarget || currentTotal > maxTarget) &&
+    iteration < MAX_ITER
+  ) {
+    iteration++;
+
+    if (currentTotal > maxTarget) {
+      // Case: DƯ THỜI GIAN -> Cắt giảm bài
+      // Chiến thuật: Bỏ bài có priority thấp nhất (Quiz, Vocab weight thấp...)
+      dayItems.sort(
+        (a, b) => getItemPriority(a.item) - getItemPriority(b.item)
+      ); // Tăng dần (thấp xếp trước)
+
+      const removed = dayItems.shift(); // Lấy thằng thấp nhất ra
+      if (removed) {
+        usedIds.delete(removed.item.resource_id); // Trả lại pool (cho phép dùng ở ngày khác nếu cần)
+        currentTotal -= removed.item.estimated_time;
+      } else {
+        break; // Hết bài để xóa
+      }
+    } else if (currentTotal < minTarget) {
+      // Case: THIẾU THỜI GIAN -> Thêm bài
+      // Chiến thuật: Tìm trong pool của các Parts cần học hôm nay, lấy bài Priority cao nhất chưa học
+      let candidates: { part: number; item: LearningItem }[] = [];
+
+      for (const part of partsToStudy) {
+        const partPool = pool[part] || [];
+        partPool.forEach((pItem) => {
+          if (!usedIds.has(pItem.resource_id)) {
+            candidates.push({ part, item: pItem });
+          }
+        });
+      }
+
+      // Sắp xếp giảm dần priority (cao xếp trước)
+      candidates.sort(
+        (a, b) => getItemPriority(b.item) - getItemPriority(a.item)
+      );
+
+      // Tìm ứng viên phù hợp (không làm tràn time quá mức)
+      // Cho phép tràn nhẹ (maxTarget) nhưng ko quá lố
+      let bestCandidate = null;
+      for (const cand of candidates) {
+        if (currentTotal + cand.item.estimated_time <= maxTarget + 10) {
+          bestCandidate = cand;
+          break;
+        }
+      }
+
+      if (bestCandidate) {
+        dayItems.push(bestCandidate);
+        usedIds.add(bestCandidate.item.resource_id);
+        currentTotal += bestCandidate.item.estimated_time;
+      } else {
+        break; // Không còn bài nào vừa vặn
+      }
+    }
+  }
+
+  // === RECONSTRUCT SESSIONS ===
+  // Group lại theo Part để hiển thị đúng cấu trúc
+  const sessions: Session[] = [];
+  const itemsByPart: Record<number, LearningItem[]> = {};
+
+  for (const entry of dayItems) {
+    if (!itemsByPart[entry.part]) itemsByPart[entry.part] = [];
+    itemsByPart[entry.part].push(entry.item);
+  }
+
+  let sessionNo = 1;
+  // Duyệt theo thứ tự ưu tiên partsToStudy
+  for (const part of partsToStudy) {
+    const items = itemsByPart[part] || [];
+    if (items.length === 0) continue;
+
+    const orderedItems = interleaveItems(items);
+    sessions.push({
+      session_no: sessionNo++,
+      part,
+      items: orderedItems.map((item) => ({
+        kind: item.kind,
+        resource_id: item.resource_id,
+        estimated_time: item.estimated_time,
+      })),
+      total_minutes: items.reduce((s, i) => s + i.estimated_time, 0),
+    });
+  }
+
+  return {
+    day_index: dayIndex,
+    day_type: dayType,
+    parts_to_study: partsToStudy,
+    sessions,
+    total_minutes: currentTotal,
+  };
+}
+
+/************************************************************
+ * Tính metrics cho kế hoạch
+ ************************************************************/
+function calculateSchedulerMetrics(
+  days: DayPlan[],
+  classifiedParts: ClassifiedParts,
+  totalWeekMinutes: number,
+  minutesPerDay: number
+): SchedulerMetrics {
+  const { weak_parts, medium_parts, strong_parts } = classifiedParts;
+
+  // Tính thời gian theo group
+  let weakActual = 0;
+  let mediumActual = 0;
+  let strongActual = 0;
+
+  const partMinutes: Record<number, number> = {};
+  const partSessions: Record<number, number> = {};
+
+  for (const day of days) {
+    for (const session of day.sessions) {
+      const part = session.part;
+      const minutes = session.total_minutes;
+
+      // Cộng vào part
+      partMinutes[part] = (partMinutes[part] || 0) + minutes;
+      partSessions[part] = (partSessions[part] || 0) + 1;
+
+      // Cộng vào group
+      if (weak_parts.includes(part)) weakActual += minutes;
+      else if (medium_parts.includes(part)) mediumActual += minutes;
+      else if (strong_parts.includes(part)) strongActual += minutes;
+    }
+  }
+
+  // Tính targets
+  const weakTarget = Math.round(totalWeekMinutes * WEEK_SCHEDULE_CONFIG.weak_time_ratio);
+  const mediumTarget = Math.round(totalWeekMinutes * WEEK_SCHEDULE_CONFIG.medium_time_ratio);
+  const strongTarget = Math.round(totalWeekMinutes * WEEK_SCHEDULE_CONFIG.strong_time_ratio);
+
+  // Daily breakdown
+  const dailyBreakdown = days.map((day) => {
+    const activities: Record<string, number> = {};
+    for (const session of day.sessions) {
+      for (const item of session.items) {
+        activities[item.kind] = (activities[item.kind] || 0) + item.estimated_time;
+      }
+    }
+
+    return {
+      day_index: day.day_index,
+      day_type: day.day_type,
+      target_minutes: minutesPerDay,
+      actual_minutes: day.total_minutes,
+      parts_covered: day.parts_to_study,
+      activities,
+    };
+  });
+
+  // Part coverage
+  const allParts = [...weak_parts, ...medium_parts, ...strong_parts];
+  const partCoverage = allParts.map((part) => ({
+    part,
+    group: weak_parts.includes(part)
+      ? "weak"
+      : medium_parts.includes(part)
+        ? "medium"
+        : "strong",
+    total_minutes: partMinutes[part] || 0,
+    sessions_count: partSessions[part] || 0,
+  }));
+
+  // Constraints check
+  const constraintsSatisfied =
+    weakActual >= weakTarget * 0.8 && // Cho phép sai số 20%
+    allParts.every((p) => (partMinutes[p] || 0) > 0); // Tất cả parts đều có
+
+  return {
+    time_allocation: {
+      weak_target: weakTarget,
+      weak_actual: weakActual,
+      medium_target: mediumTarget,
+      medium_actual: mediumActual,
+      strong_target: strongTarget,
+      strong_actual: strongActual,
+    },
+    daily_breakdown: dailyBreakdown,
+    part_coverage: partCoverage,
+    constraints_satisfied: constraintsSatisfied,
+  };
+}
+
+/************************************************************
+ * Format metrics report (debug)
+ ************************************************************/
+function formatMetricsReport(metrics: SchedulerMetrics, weekNumber: number): string {
+  const { time_allocation, daily_breakdown, part_coverage, constraints_satisfied } = metrics;
+
+  let report = `
+╔══════════════════════════════════════════════════════════════╗
+║     📊 WEEK ${weekNumber} - GREEDY SCHEDULER METRICS REPORT          ║
+╠══════════════════════════════════════════════════════════════╣
+║ ⏱️  TIME ALLOCATION                                          ║
+╠──────────────────────────────────────────────────────────────╣
+║  Weak Parts:   ${String(time_allocation.weak_actual).padStart(3)}/${String(time_allocation.weak_target).padStart(3)} min  (target: 65%)           ║
+║  Medium Parts: ${String(time_allocation.medium_actual).padStart(3)}/${String(time_allocation.medium_target).padStart(3)} min  (target: 25%)           ║
+║  Strong Parts: ${String(time_allocation.strong_actual).padStart(3)}/${String(time_allocation.strong_target).padStart(3)} min  (target: 10%)           ║
+╠══════════════════════════════════════════════════════════════╣
+║ 📅 DAILY BREAKDOWN                                           ║
+╠──────────────────────────────────────────────────────────────╣`;
+
+  for (const day of daily_breakdown) {
+    const actStr = Object.entries(day.activities)
+      .map(([k, v]) => `${k}:${v}m`)
+      .join(", ") || "mini-test only";
+    report += `
+║  Day ${day.day_index} [${day.day_type.padEnd(6)}]: ${String(day.actual_minutes).padStart(3)}/${String(day.target_minutes).padStart(3)} min | Parts: [${day.parts_covered.join(",") || "-"}]
+║    └─ ${actStr}`;
+  }
+
+  report += `
+╠══════════════════════════════════════════════════════════════╣
+║ 📈 PART COVERAGE                                             ║
+╠──────────────────────────────────────────────────────────────╣`;
+
+  for (const pc of part_coverage) {
+    report += `
+║  Part ${pc.part} [${pc.group.padEnd(6)}]: ${String(pc.total_minutes).padStart(3)} min | ${pc.sessions_count} sessions`;
+  }
+
+  report += `
+╠══════════════════════════════════════════════════════════════╣
+║ ✅ CONSTRAINTS: ${constraints_satisfied ? "ALL SATISFIED ✓" : "SOME VIOLATED ✗"}                        ║
+╚══════════════════════════════════════════════════════════════╝`;
+
+  return report;
+}
+
+/************************************************************
+ * 🎯 MAIN FUNCTION: Tạo kế hoạch tuần học bằng Greedy Algorithm
+ * 
+ * LOGIC MỚI (Continuous Fill):
+ * - Tổng thời gian tuần = (study_days - 1) * minutesPerDay (trừ ngày test)
+ * - Weak time = tổng * 65%, Medium = 25%, Strong = 10%
+ * - Fill liên tục: Weak → Medium → Strong
+ * - 1 ngày có thể học 2 nhóm nếu hết thời gian nhóm trước
+ ************************************************************/
+function generateWeeklyPlanGreedy(input: {
+  userProfile: {
+    current_week: number;
+    study_days_per_week: number;
+  };
+  candidateItems: Record<number, LearningItem[]>;
+  miniTest: { _id: any; estimated_time?: number };
+  classifiedParts: ClassifiedParts;
+  timeConstraints: TimeConstraints;
+}): WeeklyPlanOutput {
+  const {
+    userProfile,
+    candidateItems,
+    miniTest,
+    classifiedParts,
+    timeConstraints,
+  } = input;
+
+  const { weak_parts, medium_parts, strong_parts } = classifiedParts;
+  const { minutesPerDay } = timeConstraints;
+  const studyDays = userProfile.study_days_per_week || 7;
+
+  // Track used items (mỗi item chỉ dùng 1 lần/tuần)
+  const usedIds = new Set<string>();
+
+  // Deep clone pool để không ảnh hưởng input
+  const pool: Record<number, LearningItem[]> = {};
+  for (const part of Object.keys(candidateItems)) {
+    pool[Number(part)] = [...(candidateItems[Number(part)] || [])];
+  }
+
+  // === TÍNH THỜI GIAN THEO LOGIC MỚI ===
+  // Ngày cuối (test_day) chỉ làm mini test, không tính vào thời gian học
+  const actualStudyDays = studyDays - 1; // 6 ngày học thực
+  const totalWeekMinutes = actualStudyDays * minutesPerDay;
+
+  // Phân bổ thời gian theo tỷ lệ
+  const weakTotalMinutes = Math.round(totalWeekMinutes * WEEK_SCHEDULE_CONFIG.weak_time_ratio);
+  const mediumTotalMinutes = Math.round(totalWeekMinutes * WEEK_SCHEDULE_CONFIG.medium_time_ratio);
+  const strongTotalMinutes = Math.round(totalWeekMinutes * WEEK_SCHEDULE_CONFIG.strong_time_ratio);
+
+  console.log("🎯 Time Budget (Continuous Fill Logic):", {
+    totalWeekMinutes,
+    weakBudget: weakTotalMinutes,
+    mediumBudget: mediumTotalMinutes,
+    strongBudget: strongTotalMinutes,
+    minutesPerDay,
+    actualStudyDays,
+  });
+
+  // === CHUẨN BỊ QUEUE CÁC NHÓM ===
+  // Mỗi nhóm có: parts, remainingMinutes, type
+  const groupQueue: {
+    type: "weak" | "medium" | "strong";
+    parts: number[];
+    remainingMinutes: number;
+  }[] = [
+    { type: "weak", parts: weak_parts, remainingMinutes: weakTotalMinutes },
+    { type: "medium", parts: medium_parts, remainingMinutes: mediumTotalMinutes },
+    { type: "strong", parts: strong_parts, remainingMinutes: strongTotalMinutes },
+  ];
+
+  const days: DayPlan[] = [];
+  let currentGroupIndex = 0;
+
+  // === FILL TỪNG NGÀY (1 → actualStudyDays) ===
+  for (let dayIndex = 1; dayIndex <= actualStudyDays; dayIndex++) {
+    const daySessions: Session[] = [];
+    let dayTotalMinutes = 0;
+    const dayTarget = minutesPerDay;
+    const minTarget = dayTarget - 20;
+    const maxTarget = dayTarget + 20;
+
+    const partsStudiedToday: number[] = [];
+    let dayType: "weak" | "medium" | "strong" = "weak";
+
+    // Fill ngày này đến khi đủ ~minutesPerDay
+    while (dayTotalMinutes < minTarget && currentGroupIndex < groupQueue.length) {
+      const currentGroup = groupQueue[currentGroupIndex];
+      dayType = currentGroup.type; // Ngày sẽ mang type của group chính
+
+      // Tính thời gian còn có thể fill cho group này trong ngày này
+      const remainingDayBudget = dayTarget - dayTotalMinutes;
+      const groupBudgetForToday = Math.min(
+        currentGroup.remainingMinutes,
+        remainingDayBudget
+      );
+
+      if (groupBudgetForToday <= 0) {
+        // Hết budget cho group này, chuyển sang group tiếp theo
+        currentGroupIndex++;
+        continue;
+      }
+
+      // === CHỌN ITEMS TỪ PARTS CỦA GROUP NÀY ===
+      const partsForGroup = currentGroup.parts;
+      const minutesPerPart = Math.floor(
+        groupBudgetForToday / Math.max(partsForGroup.length, 1)
+      );
+
+      let groupMinutesUsed = 0;
+
+      for (const part of partsForGroup) {
+        if (groupMinutesUsed >= groupBudgetForToday) break;
+        if (dayTotalMinutes >= maxTarget) break;
+
+        const partBudget = Math.min(
+          minutesPerPart,
+          groupBudgetForToday - groupMinutesUsed,
+          maxTarget - dayTotalMinutes
+        );
+
+        const { items, actualMinutes } = selectItemsForPart(
+          pool,
+          part,
+          partBudget,
+          usedIds
+        );
+
+        if (items.length > 0) {
+          const orderedItems = interleaveItems(items);
+
+          // Tìm session đã có cho part này trong ngày (nếu có)
+          let existingSession = daySessions.find((s) => s.part === part);
+          if (existingSession) {
+            // Thêm vào session đã có
+            existingSession.items.push(
+              ...orderedItems.map((item) => ({
+                kind: item.kind,
+                resource_id: item.resource_id,
+                estimated_time: item.estimated_time,
+              }))
+            );
+            existingSession.total_minutes += actualMinutes;
+          } else {
+            // Tạo session mới
+            daySessions.push({
+              session_no: daySessions.length + 1,
+              part,
+              items: orderedItems.map((item) => ({
+                kind: item.kind,
+                resource_id: item.resource_id,
+                estimated_time: item.estimated_time,
+              })),
+              total_minutes: actualMinutes,
+            });
+          }
+
+          if (!partsStudiedToday.includes(part)) {
+            partsStudiedToday.push(part);
+          }
+
+          groupMinutesUsed += actualMinutes;
+          dayTotalMinutes += actualMinutes;
+        }
+      }
+
+      // Trừ thời gian đã dùng khỏi budget của group
+      currentGroup.remainingMinutes -= groupMinutesUsed;
+
+      // Nếu group hết budget, chuyển sang group tiếp theo
+      if (currentGroup.remainingMinutes <= 0) {
+        currentGroupIndex++;
+      }
+    }
+
+    // === OPTIMIZATION LOOP: Điều chỉnh +-20 phút ===
+    let iteration = 0;
+    const MAX_ITER = 10;
+
+    while (
+      (dayTotalMinutes < minTarget || dayTotalMinutes > maxTarget) &&
+      iteration < MAX_ITER
+    ) {
+      iteration++;
+
+      if (dayTotalMinutes > maxTarget) {
+        // Dư giờ -> Bỏ bài priority thấp nhất
+        let allItems: { sessionIdx: number; itemIdx: number; item: SessionItem; priority: number }[] = [];
+
+        daySessions.forEach((session, sIdx) => {
+          session.items.forEach((item, iIdx) => {
+            allItems.push({
+              sessionIdx: sIdx,
+              itemIdx: iIdx,
+              item,
+              priority: getItemPriorityByKind(item.kind),
+            });
+          });
+        });
+
+        // Sắp xếp tăng dần priority (thấp nhất trước)
+        allItems.sort((a, b) => a.priority - b.priority);
+
+        if (allItems.length > 0) {
+          const toRemove = allItems[0];
+          const session = daySessions[toRemove.sessionIdx];
+          session.items.splice(toRemove.itemIdx, 1);
+          session.total_minutes -= toRemove.item.estimated_time;
+          dayTotalMinutes -= toRemove.item.estimated_time;
+
+          // Trả lại item cho pool (để có thể dùng ngày khác)
+          usedIds.delete(toRemove.item.resource_id);
+
+          // Xóa session rỗng
+          if (session.items.length === 0) {
+            daySessions.splice(toRemove.sessionIdx, 1);
+          }
+        } else {
+          break;
+        }
+      } else if (dayTotalMinutes < minTarget) {
+        // Thiếu giờ -> Thêm bài
+        let bestCandidate: { part: number; item: LearningItem } | null = null;
+        let bestPriority = -1;
+
+        // Tìm trong các parts đã học hôm nay
+        for (const part of partsStudiedToday) {
+          const partPool = pool[part] || [];
+          for (const pItem of partPool) {
+            if (!usedIds.has(pItem.resource_id)) {
+              const priority = getItemPriority(pItem);
+              if (
+                priority > bestPriority &&
+                dayTotalMinutes + pItem.estimated_time <= maxTarget + 10
+              ) {
+                bestCandidate = { part, item: pItem };
+                bestPriority = priority;
+              }
+            }
+          }
+        }
+
+        if (bestCandidate) {
+          usedIds.add(bestCandidate.item.resource_id);
+          dayTotalMinutes += bestCandidate.item.estimated_time;
+
+          // Thêm vào session của part tương ứng
+          let session = daySessions.find((s) => s.part === bestCandidate!.part);
+          if (session) {
+            session.items.push({
+              kind: bestCandidate.item.kind,
+              resource_id: bestCandidate.item.resource_id,
+              estimated_time: bestCandidate.item.estimated_time,
+            });
+            session.total_minutes += bestCandidate.item.estimated_time;
+          }
+        } else {
+          break;
+        }
+      }
+    }
+
+    // Đánh lại session_no
+    daySessions.forEach((s, idx) => {
+      s.session_no = idx + 1;
+    });
+
+    // Xác định day_type dựa trên phần lớn thời gian học
+    const timeByType: Record<string, number> = { weak: 0, medium: 0, strong: 0 };
+    for (const session of daySessions) {
+      const part = session.part;
+      if (weak_parts.includes(part)) timeByType.weak += session.total_minutes;
+      else if (medium_parts.includes(part)) timeByType.medium += session.total_minutes;
+      else if (strong_parts.includes(part)) timeByType.strong += session.total_minutes;
+    }
+    const dominantType = (Object.entries(timeByType).sort((a, b) => b[1] - a[1])[0]?.[0] || "weak") as "weak" | "medium" | "strong";
+
+    days.push({
+      day_index: dayIndex,
+      day_type: dominantType,
+      parts_to_study: partsStudiedToday,
+      sessions: daySessions,
+      total_minutes: dayTotalMinutes,
+    });
+  }
+
+  // === NGÀY CUỐI: MINI TEST ONLY ===
+  days.push({
+    day_index: studyDays,
+    day_type: "test",
+    parts_to_study: [],
+    sessions: [],
+    total_minutes: 0,
+  });
+
+  // === TÍNH METRICS ===
+  const metrics = calculateSchedulerMetrics(
+    days,
+    classifiedParts,
+    totalWeekMinutes,
+    minutesPerDay
+  );
+
+  const weekNumber = userProfile.current_week + 1;
+  const debugLog = formatMetricsReport(metrics, weekNumber);
+
+  // Log metrics to console
+  console.log(debugLog);
+
+  // ===== BUILD OUTPUT =====
+  return {
+    week_number: weekNumber,
+    focus_parts: weak_parts,
+    days,
+    mini_test: {
+      test_id: miniTest._id?.toString() || "",
+      day_index: studyDays,
+      estimated_time: miniTest.estimated_time || 30,
+    },
+    metrics,
+    debug_log: debugLog,
+  };
+}
+
+/************************************************************
+ * HELPER: Tính priority chỉ từ kind (dùng cho SessionItem)
+ ************************************************************/
+function getItemPriorityByKind(kind: string): number {
+  switch (kind) {
+    case "lesson":
+      return 5;
+    case "dictation":
+    case "shadowing":
+      return 4;
+    case "vocab":
+      return 3;
+    case "quiz":
+      return 2;
+    default:
+      return 1;
+  }
 }
 
 export const generateIRTWeeklyPlanService = async (
@@ -624,8 +1886,8 @@ export const generateIRTWeeklyPlanService = async (
     throw new Error("Failed to submit mini test for user " + userId);
   }
 
-  // Bước 2: Tính theta cho từng part
-  const abilities = calculateTheta2PL(result);
+  // Bước 2: Tính theta cho từng part bằng mô hình Rasch (1PL MLE)
+  const abilities = calculateThetaRasch(result);
 
   // Emit abilities immediately after theta calculation (step 2)
   try {
@@ -633,7 +1895,10 @@ export const generateIRTWeeklyPlanService = async (
       abilities: abilities,
     });
   } catch (err) {
-    console.warn("Failed to emit mini_test_abilities after calculateTheta2PL:", err);
+    console.warn(
+      "Failed to emit mini_test_abilities after calculateThetaRasch:",
+      err
+    );
   }
 
   if (!abilities) {
@@ -652,49 +1917,39 @@ export const generateIRTWeeklyPlanService = async (
     );
   }
 
-  // Bước 4: Retrieve các bài học theo theta part
-  let retrieved: any = {};
-  for (let part = 1; part <= 7; part++) {
-    retrieved[part] = await retrieveLearning(
-      `Retrieve learning items for TOEIC Part ${part} based on weight & level & part_type`,
-      50,
-      part
-    );
+  // Bước 4: Lấy các bài học phù hợp với năng lực người dùng (theo theta từng part)
+  const candidateItems = await getCandidateLearningItems(abilities.thetaByPart);
+
+  if (!candidateItems) {
+    throw new Error("Failed to get candidate learning items for user " + userId);
   }
 
-  if (!retrieved) {
-    throw new Error("Failed to retrieve learning items for user " + userId);
-  }
-
-  // Bước 5: Chuẩn hóa dữ liệu
-  const normalized = normalizeRetrieved(retrieved);
+  // Bước 5: Chuẩn hóa dữ liệu sang format phù hợp với generateIRTWeeklyPlan
+  const normalized = normalizeCandidateItems(candidateItems);
 
   if (!normalized) {
     throw new Error("Failed to normalize retrieved items for user " + userId);
   }
 
-  const minutesPerDay = (userProfile?.hours_per_day || 0);
+  const minutesPerDay = userProfile?.hours_per_day || 0;
 
   const totalWeekMinutes =
     minutesPerDay * (userProfile?.study_days_per_week || 0);
 
-  const weakMinutes = Math.round(totalWeekMinutes * 0.65);
-  const mediumMinutes = Math.round(totalWeekMinutes * 0.25);
-  const strongMinutes = Math.round(totalWeekMinutes * 0.1);
-
-  // Bước 6: Tạo plan cho tuần kế tiếp
-  const weeklyNextPlan = await generateIRTWeeklyPlan({
-    userProfile,
-    candidateItems: normalized,
+  // Bước 6: Tạo plan cho tuần kế tiếp bằng GREEDY ALGORITHM (không dùng LLM)
+  const weeklyNextPlan = generateWeeklyPlanGreedy({
+    userProfile: {
+      current_week: userProfile.current_week || 0,
+      study_days_per_week: userProfile.study_days_per_week || 7,
+    },
+    candidateItems: normalized as Record<number, LearningItem[]>,
     miniTest: miniTestNew,
     classifiedParts: classifyPartsByTheta(abilities.thetaByPart),
     timeConstraints: {
       totalWeekMinutes,
-      weakMinutes,
-      mediumMinutes,
-      strongMinutes,
+      minutesPerDay,
       minutesPerDayMin: minutesPerDay - 10,
-      minutesPerDayMax: minutesPerDay,
+      minutesPerDayMax: minutesPerDay + 10,
     },
   });
 
@@ -704,7 +1959,8 @@ export const generateIRTWeeklyPlanService = async (
 
   saveDebugFile(`irt_weekly_raw_plan_user_${userId}.json`, weeklyNextPlan);
 
-  const weekly_data = weeklyNextPlan.json;
+  // weekly_data giờ là output từ Greedy (không cần .json)
+  const weekly_data = weeklyNextPlan;
 
   // Bước 7: Map weekly_data -> WeekStudy & DayStudy
 

@@ -12,6 +12,7 @@ export interface IReport extends Document {
   admin_note?: string;
   handled_by?: Types.ObjectId | null;
   handled_at?: Date | null;
+  assigned_to?: Types.ObjectId | null; // CTV được gán xử lý (null = Admin xử lý)
   created_at: Date;
   updated_at: Date;
 }
@@ -35,6 +36,7 @@ const ReportSchema = new Schema<IReport>(
     admin_note: { type: String, default: "" },
     handled_by: { type: Schema.Types.ObjectId, ref: "User", default: null },
     handled_at: { type: Date, default: null },
+    assigned_to: { type: Schema.Types.ObjectId, ref: "User", default: null }, // CTV xử lý báo lỗi bài học
   },
   {
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
@@ -43,5 +45,6 @@ const ReportSchema = new Schema<IReport>(
 
 ReportSchema.index({ user_id: 1, created_at: -1 });
 ReportSchema.index({ status: 1, type: 1, created_at: -1 });
+ReportSchema.index({ assigned_to: 1, status: 1, created_at: -1 }); // Index cho CTV query
 
 export const Report = mongoose.model<IReport>("Report", ReportSchema);

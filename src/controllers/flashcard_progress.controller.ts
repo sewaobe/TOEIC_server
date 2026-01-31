@@ -4,6 +4,12 @@ import { ApiResponse } from "../utils/ApiResponse";
 
 export const createSessionFlashcardController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const userId = req.user._id;
         const { topic_vocabulary_id, order_queue } = req.body;
 
@@ -26,6 +32,12 @@ export const createSessionFlashcardController = async (req: Request, res: Respon
 
 export const updateSessionFlashcardController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const userId = req.user._id;
         const { session_id, order_queue, current_index, logs_delta } = req.body;
 
@@ -50,6 +62,12 @@ export const updateSessionFlashcardController = async (req: Request, res: Respon
 
 export const getFlashcardProgressController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const userId = req.user._id;
         const { session_id } = req.params;
 
@@ -67,6 +85,12 @@ export const getFlashcardProgressController = async (req: Request, res: Response
 
 export const getAllActiveSessionsController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const userId = req.user._id;
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 9;
@@ -87,6 +111,12 @@ export const getAllActiveSessionsController = async (req: Request, res: Response
 
 export const finalizeFlashcardSessionController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const userId = req.user._id;
         const { session_id, accuracy, avg_time, total, logs, started_at, finished_at } = req.body;
 
@@ -113,6 +143,12 @@ export const finalizeFlashcardSessionController = async (req: Request, res: Resp
 
 export const removeFlashcardSessionController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const userId = req.user._id;
         const { session_id } = req.params;
 

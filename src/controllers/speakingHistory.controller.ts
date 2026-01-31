@@ -6,6 +6,12 @@ import { ChatMessage } from "../models/chat_message.model";
 // Get list of speaking_conversation sessions for current user
 export const getSpeakingSessionsController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const userId = req.user._id;
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 10;

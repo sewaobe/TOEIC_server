@@ -3,3 +3,4 @@ node_modules
 logs
 dist/
 src/configs/serviceAccountKey.json
+debug_output/

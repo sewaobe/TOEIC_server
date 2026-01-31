@@ -16,6 +16,12 @@ export async function checkUnlock(
   next: NextFunction
 ) {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const userId = new Types.ObjectId(req.user._id);
     const activityId = new Types.ObjectId(req.params.id);
 

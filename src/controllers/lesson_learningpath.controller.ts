@@ -35,6 +35,12 @@ export const completeLessonController = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const { id: lessonId } = req.params;
     const userId = new Types.ObjectId(req.user._id);
     const { time_spent, day_study_id } = req.body;

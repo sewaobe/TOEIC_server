@@ -1206,7 +1206,7 @@ export async function generateIRTWeeklyPlan(input: any) {
           responseMimeType: "application/json",
           responseSchema: IrtWeeklyPlannerSchema,
           thinkingConfig: {
-            thinkingBudget: -1
+            thinkingBudget: 1024
           },
         },
       });

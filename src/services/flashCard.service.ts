@@ -58,6 +58,37 @@ export const submitFlashCardService = async (
   }
 };
 
+export const submitFlashCardGameService = async (data: {
+  user_id: mongoose.Types.ObjectId;
+  topic_vocabulary_id: mongoose.Types.ObjectId;
+  game_type: "matching" | "word_recall";
+  game_metadata: any;
+  accuracy: number;
+  time_spent: number;
+  started_at: Date;
+  finished_at?: Date;
+  submit_type?: SubmissionType;
+}): Promise<IFlashCardAttempt | null> => {
+  try {
+    const newAttempt = await FlashCardAttempt.create({
+      user_id: data.user_id,
+      topic_vocabulary_id: data.topic_vocabulary_id,
+      game_type: data.game_type,
+      game_metadata: data.game_metadata,
+      accuracy: data.accuracy,
+      time_spent: data.time_spent,
+      started_at: data.started_at,
+      finished_at: data.finished_at || new Date(),
+      submit_type: data.submit_type || SubmissionType.PRACTICE,
+      results: [] as any, // Game không cần results chi tiết từng vocab
+    });
+    return newAttempt;
+  } catch (err) {
+    console.error("Submit FlashCard Game error:", err);
+    return null;
+  }
+};
+
 export const getHistoryFlashCardByTopicService = async (
   topicId: string,
   userId: string
