@@ -17,6 +17,12 @@ export const getStreakController = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const userId = new Types.ObjectId(req.user._id);
     const streakInfo = await getStreakInfo(userId);
 
@@ -37,6 +43,12 @@ export const getStudyHistoryController = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const userId = new Types.ObjectId(req.user._id);
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
@@ -61,6 +73,12 @@ export const getUserStatsController = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const userId = new Types.ObjectId(req.user._id);
     const stats = await getUserStats(userId);
 

@@ -5,6 +5,12 @@ import { createChatSessionService } from "../services/chat.service";
 
 export const createChatSessionController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const userId = req.user._id;
         const { title, type } = req.body;
 
@@ -26,6 +32,12 @@ export const createChatSessionController = async (req: Request, res: Response, n
 
 export const getChatSessionByUserIdController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const userId = req.user._id;
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 10;
@@ -82,6 +94,12 @@ export const processUserMessageController = async (req: Request, res: Response, 
 
 export const deleteChatSessionController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const userId = req.user._id;
         const { sessionId } = req.params;
 

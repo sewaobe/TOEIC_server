@@ -73,6 +73,12 @@ export const getAllLessonManagerController = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const userId = req.user._id;
@@ -99,6 +105,12 @@ export const getLessonManagerByIdController = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const lessonManagerId = req.params.id;
     const userId = req.user._id;
     const lessonManager = await getLessonManagerByIdService(
@@ -124,6 +136,12 @@ export const createLessonManagerController = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const userId = req.user._id;
     const payload = req.body;
     const result = await createLessonManagerService(payload, userId);
@@ -141,6 +159,12 @@ export const updateLessonManagerController = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const userId = req.user._id;
     const lessonManagerId = req.params.id;
     const payload = req.body;
@@ -164,6 +188,12 @@ export const deleteLessonManagerController = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const lessonManagerId = req.params.id;
     const userId = req.user._id;
 
@@ -183,6 +213,12 @@ export const updateStatusLessonManagerController = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const lessonManagerId = req.params.id;
     const { status } = req.body;
     const userId = req.user._id;

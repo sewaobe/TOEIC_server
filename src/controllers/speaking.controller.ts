@@ -62,6 +62,12 @@ interface TurnResponse {
 // 1. Create speaking conversation session
 export const createSpeakingSessionController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const userId = req.user._id;
         const { title, config } = req.body as { title: string; config: UserConfig };
 
@@ -273,6 +279,12 @@ export const processSpeakingTurnController = async (req: Request, res: Response,
 // 3. End speaking conversation session
 export const endSpeakingSessionController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const userId = req.user._id;
         const { sessionId, actualDurationSeconds } = req.body as {
             sessionId: string;

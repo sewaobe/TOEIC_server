@@ -41,6 +41,12 @@ export const submitFlashCard = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const { flashCardAttempt, logs, dayStudyId, activityId } = req.body;
     const user_id = req.user._id;
 
@@ -85,6 +91,12 @@ export const submitFlashCardGame = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const { topic_id, game_type, game_result } = req.body;
     const user_id = req.user._id;
 
@@ -152,6 +164,12 @@ export const getHistoryFlashCardByTopic = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const { topicId } = req.params;
     const userId = req.user._id;
     if (!topicId) {

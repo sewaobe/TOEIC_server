@@ -8,6 +8,12 @@ export const generateIrtWeeklyPlanController = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const userId = req.user._id;
     const { testId, answers, duration, day_study_id } = req.body;
 

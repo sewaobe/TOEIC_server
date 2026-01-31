@@ -17,6 +17,12 @@ import { PracticeType, SessionStatus } from "../models/practice_session.model";
  */
 export const startOrResumeSessionController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const userId = req.user._id;
         const { practice_type, topic_id, total_items } = req.body;
 
@@ -41,8 +47,8 @@ export const startOrResumeSessionController = async (req: Request, res: Response
                     isResume: result.isResume,
                     existingAttempts
                 },
-                result.isResume 
-                    ? "Resume phiên luyện tập thành công." 
+                result.isResume
+                    ? "Resume phiên luyện tập thành công."
                     : "Tạo phiên luyện tập mới thành công."
             )
         );
@@ -103,6 +109,12 @@ export const completeSessionController = async (req: Request, res: Response, nex
  */
 export const getSessionByTopicController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const userId = req.user._id;
         const { topicId } = req.params;
         const { practice_type } = req.query;
@@ -114,8 +126,8 @@ export const getSessionByTopicController = async (req: Request, res: Response, n
         }
 
         const session = await getSessionByTopicService(
-            userId, 
-            practice_type as PracticeType, 
+            userId,
+            practice_type as PracticeType,
             topicId
         );
 
@@ -132,6 +144,12 @@ export const getSessionByTopicController = async (req: Request, res: Response, n
  */
 export const getUserSessionsController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const userId = req.user._id;
         const { practice_type, status, page, limit } = req.query;
 
@@ -156,6 +174,12 @@ export const getUserSessionsController = async (req: Request, res: Response, nex
  */
 export const getSessionAttemptsController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const userId = req.user._id;
         const { sessionId } = req.params;
 
@@ -174,6 +198,12 @@ export const getSessionAttemptsController = async (req: Request, res: Response, 
  */
 export const saveAttemptController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const userId = req.user._id;
         const { sessionId } = req.params;
         const attempt = req.body;

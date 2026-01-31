@@ -9,6 +9,12 @@ export const createLessonController = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     // ✅ Ép kiểu đúng để tránh TS2345
     const userId = new mongoose.Types.ObjectId(req.user._id);
 
@@ -27,6 +33,12 @@ export const getLessonsController = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     // 🧍‍♂️ Lấy user ID từ middleware verifyAccessToken
     const userId = new mongoose.Types.ObjectId(req.user._id);
 

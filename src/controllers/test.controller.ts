@@ -101,7 +101,7 @@ export const getTestsWithScoreAndSearch = async (
   next: NextFunction
 ) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user?._id;
     if (!userId) {
       return res
         .status(401)
@@ -245,7 +245,7 @@ export const createTestController = async (
   try {
     const payload: Partial<ITest> = req.body;
 
-    if (!req.user._id) {
+    if (!req.user?._id) {
       return res
         .status(401)
         .json(ApiResponse.fail("Người dùng chưa đăng nhập!"));
@@ -328,7 +328,11 @@ export const updateTestStatusController = async (req: Request, res: Response, ne
   try {
     const { testId } = req.params;
     const { status } = req.body;
-    const userId = req.user._id;
+    const userId = req.user?._id;
+    if (!userId) {
+      res.status(401).json(ApiResponse.fail("Unauthorized"));
+      return;
+    }
     if (!Types.ObjectId.isValid(testId)) {
       res.status(400).json(ApiResponse.fail("ID không hợp lệ"));
       return;
