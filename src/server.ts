@@ -91,7 +91,7 @@ const app = express();
 
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://localhost:5174"],
+    origin: ["http://localhost:5173", "http://localhost:5174", "http://72.18.215.242", "https://toeic-smart.io.vn"],
     credentials: true,
   })
 );
@@ -106,6 +106,10 @@ app.use("/static", express.static(path.resolve(__dirname, "../../static")));
 
 setupSwagger(app);
 // Router API
+app.use("/api/healthy", (req, res) => {
+  res.status(200).json({ message: "Server is healthy" });
+});
+
 app.use("/api/auth", authRouter);
 app.use("/api/users", userRouter);
 app.use("/api/tests", testRouter);
