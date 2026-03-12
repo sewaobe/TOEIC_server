@@ -107,7 +107,7 @@ app.use("/static", express.static(path.resolve(__dirname, "../../static")));
 setupSwagger(app);
 // Router API
 app.use("/api/healthy", (req, res) => {
-  res.status(200).json({ message: "Server is healthy" });
+  res.status(200).json({ message: "Server is healthy test" });
 });
 
 app.use("/api/auth", authRouter);
