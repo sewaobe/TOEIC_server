@@ -6,6 +6,7 @@ on:
       - master
 
 jobs:
+
   build:
     runs-on: ubuntu-latest
 
@@ -22,7 +23,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build & Push Image
+      - name: Build & Push Server Image
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -43,13 +44,55 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+
           script: |
 
-            echo "Pull new image"
-            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/toeic-server:latest
-
-            echo "Restart container"
             cd /root/app
 
-            docker compose pull
-            docker compose up -d
+            echo "Pull latest image"
+            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/toeic-server:latest
+
+            echo "Detect active backend"
+
+            ACTIVE=$(grep -o 'localhost:500[12]' /etc/nginx/sites-available/toeic)
+
+            echo "Active backend: $ACTIVE"
+
+            if [[ "$ACTIVE" == "localhost:5001" ]]; then
+                NEW_COLOR="green"
+                NEW_PORT="5002"
+                OLD_COLOR="blue"
+                OLD_PORT="5001"
+            else
+                NEW_COLOR="blue"
+                NEW_PORT="5001"
+                OLD_COLOR="green"
+                OLD_PORT="5002"
+            fi
+
+            echo "Deploy new backend: $NEW_COLOR"
+
+            docker compose up -d backend_$NEW_COLOR
+
+            echo "Health check..."
+
+            for i in {1..10}; do
+                if curl -fs http://localhost:$NEW_PORT/api/healthy; then
+                    echo "Health check OK"
+                    break
+                fi
+                echo "Waiting service..."
+                sleep 3
+            done
+
+            echo "Switch nginx upstream"
+
+            sed -i "s/localhost:$OLD_PORT/localhost:$NEW_PORT/g" /etc/nginx/sites-available/toeic
+
+            nginx -s reload
+
+            echo "Stop old backend"
+
+            docker compose stop backend_$OLD_COLOR
+
+            docker image prune -f
