@@ -10,10 +10,14 @@ import { registerMeetHandlers } from "./meet.socket";
 export const onlineUsers = new Map<string, string>(); // userId → socketId
 export let io: Server;
 
+const allowOrigins = process.env.ALLOW_ORIGINS
+  ? process.env.ALLOW_ORIGINS.split(",")
+  : [];
+
 export function initSocket(server: any) {
   io = new Server(server, {
     cors: {
-      origin: ["http://localhost:5173", "http://localhost:5174"],
+      origin: allowOrigins,
       credentials: true,
     },
   });
