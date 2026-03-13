@@ -89,9 +89,13 @@ try {
 
 const app = express();
 
+const allowOrigins = process.env.ALLOW_ORIGINS
+  ? process.env.ALLOW_ORIGINS.split(",")
+  : [];
+
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://localhost:5174", "http://72.18.215.242", "https://toeic-smart.io.vn"],
+    origin: allowOrigins,
     credentials: true,
   })
 );
