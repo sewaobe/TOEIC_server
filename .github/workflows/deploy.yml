@@ -6,7 +6,6 @@ on:
       - master
 
 jobs:
-
   build:
     runs-on: ubuntu-latest
 
@@ -32,6 +31,8 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/toeic-server:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/toeic-server:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   deploy:
     needs: build
@@ -70,20 +71,28 @@ jobs:
                 OLD_PORT="5002"
             fi
 
-            echo "Deploy new backend: $NEW_COLOR"
+            echo "Deploy new backend: $NEW_COLOR on port $NEW_PORT"
 
             docker compose up -d backend_$NEW_COLOR
 
             echo "Health check..."
-
+            HEALTHY=false
             for i in {1..10}; do
                 if curl -fs http://localhost:$NEW_PORT/api/healthy; then
                     echo "Health check OK"
+                    HEALTHY=true
                     break
                 fi
                 echo "Waiting service..."
                 sleep 3
             done
+
+            # Cơ chế bảo vệ nếu service mới không healthy thì sẽ không chuyển nginx upstream
+            if [ "$HEALTHY" = false ]; then
+                echo "New service is not healthy. Aborting deployment."
+                docker compose stop backend_$NEW_COLOR
+                exit 1
+            fi
 
             echo "Switch nginx upstream"
 
