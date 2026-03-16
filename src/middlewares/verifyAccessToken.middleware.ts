@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction, RequestHandler } from 'express';
 import jwt, { JwtPayload } from 'jsonwebtoken';
+import * as Sentry from '@sentry/node';
 
 
 // Tùy chỉnh JwtPayload
@@ -25,6 +26,14 @@ export const verifyAccessToken: RequestHandler = (
   try {
     const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET as string) as JwtUserPayload;
     req.user = decoded; // gán payload đã decode vào req.user
+
+    // Cấu hình Sentry user context
+    Sentry.setUser({
+      id: req.user._id,
+      email: req.user.email,
+      username: req.user.username,
+    });
+
     next();
   } catch (err) {
     next(err);

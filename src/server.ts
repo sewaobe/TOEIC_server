@@ -1,11 +1,26 @@
 /// <reference path="./types/express/index.d.ts" />
+import dotenv from "dotenv";
+dotenv.config();
+
+import * as Sentry from '@sentry/node'; // Sentry
+import { nodeProfilingIntegration } from '@sentry/profiling-node'; // Sentry
+
+// === KHỞI TẠO SENTRY ===
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  integrations: [
+    // Bật tính năng theo dõi hiệu suất (Profiling)
+    nodeProfilingIntegration(),
+  ],
+  // TracesSampleRate: 1.0 nghĩa là gửi 100% dữ liệu về Sentry (Dùng lúc dev/test)
+  tracesSampleRate: 1.0,
+  profilesSampleRate: 1.0,
+})
+
 import express, { Request, Response } from "express";
 import path from "path";
 import cors from "cors";
-import dotenv from "dotenv";
 import http from "http";
-
-dotenv.config();
 
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
@@ -97,6 +112,7 @@ app.use(
   cors({
     origin: allowOrigins,
     credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'sentry-trace', 'baggage', 'sentry-sample-rate'], // Thêm các header của Sentry
   })
 );
 
@@ -112,6 +128,10 @@ setupSwagger(app);
 // Router API
 app.use("/api/healthy", (req, res) => {
   res.status(200).json({ message: "Server is healthy test" });
+});
+
+app.use("/api/debug-sentry", (req, res) => {
+  throw new Error("This is a test error for Sentry!");
 });
 
 app.use("/api/auth", authRouter);
@@ -201,18 +221,26 @@ app.use("/api/chat-feedback", verifyAccessToken, chatFeedbackRouter);
 // Mount Azure AI routes without auth for local/dev testing. Re-enable verifyAccessToken in production.
 app.use("/api/azure-ai", azureAIRouter);
 
+// Middleware của Sentry để ghi lại lỗi (phải đặt sau tất cả route)
+Sentry.setupExpressErrorHandler(app);
+
 app.use(errorLogger);
 
 // Middleware xử lý lỗi cuối cùng (error-handling middleware MUST have 4 args)
-app.use((err: any, req: Request, res: Response) => {
+app.use((err: any, req: Request, res: Response, next: any) => {
   const statusCode = err.status || 500;
+
+  const sentryId = (res as any).sentry || '';
 
   const response = ApiResponse.fail(
     err.message || "Internal Server Error",
     process.env.NODE_ENV === "development" ? err.stack : undefined
   );
 
-  res.status(statusCode).json(response);
+  res.status(statusCode).json({
+    ...response,
+    errorId: sentryId, // Trả về ID lỗi của Sentry để dễ dàng tra cứu
+  });
 });
 
 // === TẠO SERVER HTTP ===
