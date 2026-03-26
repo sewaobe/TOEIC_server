@@ -55,7 +55,7 @@ jobs:
 
             echo "Detect active backend"
 
-            ACTIVE=$(grep -o 'localhost:500[12]' /etc/nginx/sites-available/toeic)
+            ACTIVE=$(grep -o 'localhost:500[12]' /etc/nginx/sites-available/toeic-api)
 
             echo "Active backend: $ACTIVE"
 
@@ -96,7 +96,7 @@ jobs:
 
             echo "Switch nginx upstream"
 
-            sed -i "s/localhost:$OLD_PORT/localhost:$NEW_PORT/g" /etc/nginx/sites-available/toeic
+            sed -i "s/localhost:$OLD_PORT/localhost:$NEW_PORT/g" /etc/nginx/sites-available/toeic-api
 
             nginx -s reload
 
