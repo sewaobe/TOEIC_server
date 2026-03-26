@@ -55,11 +55,11 @@ jobs:
 
             echo "Detect active backend"
 
-            ACTIVE=$(grep -o 'localhost:500[12]' /etc/nginx/sites-available/toeic-api)
+            ACTIVE=$(grep -o '127.0.0.1:500[12]' /etc/nginx/sites-available/toeic-api)
 
             echo "Active backend: $ACTIVE"
 
-            if [[ "$ACTIVE" == "localhost:5001" ]]; then
+            if [[ "$ACTIVE" == "127.0.0.1:5001" ]]; then
                 NEW_COLOR="green"
                 NEW_PORT="5002"
                 OLD_COLOR="blue"
@@ -78,7 +78,7 @@ jobs:
             echo "Health check..."
             HEALTHY=false
             for i in {1..10}; do
-                if curl -fs http://localhost:$NEW_PORT/api/healthy; then
+                if curl -fs http://127.0.0.1:$NEW_PORT/api/healthy; then
                     echo "Health check OK"
                     HEALTHY=true
                     break
@@ -96,7 +96,7 @@ jobs:
 
             echo "Switch nginx upstream"
 
-            sed -i "s/localhost:$OLD_PORT/localhost:$NEW_PORT/g" /etc/nginx/sites-available/toeic-api
+            sed -i "s/127.0.0.1:$OLD_PORT/127.0.0.1:$NEW_PORT/g" /etc/nginx/sites-available/toeic-api
 
             nginx -s reload
 
