@@ -24,14 +24,14 @@ export const loginController = async (
 
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
-      secure: false, // đổi true nếu deploy HTTPS
+      secure: true, // đổi true nếu deploy HTTPS
       sameSite: "lax",
       ...(isRemember ? { maxAge: 7 * 24 * 60 * 60 * 1000 } : {}), // 7 ngày nếu nhớ đăng nhập
     });
 
     res.cookie("accessToken", accessToken, {
       httpOnly: true,
-      secure: false,
+      secure: true,
       sameSite: "lax",
       ...(isRemember ? { maxAge: 15 * 60 * 1000 } : {}), // 15 phút nếu nhớ đăng nhập
     });
@@ -101,7 +101,7 @@ export const refreshTokenController = async (
 
         res.cookie("accessToken", accessToken, {
           httpOnly: true,
-          secure: false,
+          secure: true,
           sameSite: "lax",
           maxAge: 15 * 60 * 1000, // 15 phút
         });
@@ -125,13 +125,13 @@ export const logoutController = async (
     // Xóa cookie accessToken và refreshToken
     res.clearCookie("accessToken", {
       httpOnly: true,
-      secure: false, // set true nếu bạn dùng HTTPS
+      secure: true, // set true nếu bạn dùng HTTPS
       sameSite: "lax",
     });
 
     res.clearCookie("refreshToken", {
       httpOnly: true,
-      secure: false, // set true nếu bạn dùng HTTPS
+      secure: true, // set true nếu bạn dùng HTTPS
       sameSite: "lax",
     });
 
@@ -157,14 +157,14 @@ export const loginWithGoogleController = async (
       await loginWithGoogleService(idToken);
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
-      secure: false, // đổi true nếu deploy HTTPS
+      secure: true, // đổi true nếu deploy HTTPS
       sameSite: "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
     });
 
     res.cookie("accessToken", accessToken, {
       httpOnly: true,
-      secure: false,
+      secure: true,
       sameSite: "lax",
       maxAge: 15 * 60 * 1000, // 15 phút
     });
