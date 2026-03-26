@@ -51,7 +51,7 @@ jobs:
             cd /root/app
 
             echo "Pull latest image"
-            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/toeic-server:latest
+            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/toeic-server:${{ github.sha }}
 
             echo "Detect active backend"
 
