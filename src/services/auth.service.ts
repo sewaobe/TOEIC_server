@@ -3,6 +3,7 @@ import { comparePassword, hashPassword } from "../utils/hash";
 import { generateAccessToken, generateRefreshToken } from "../utils/jwt";
 import { Role } from "../models/role.model";
 import admin from "../utils/firebase";
+import { UserSessionEntity, UserSessionModel } from "../models/user_sessions.model";
 
 interface LoginRequest {
   username: string;
@@ -38,8 +39,8 @@ export const loginService = async ({
   if (user.status === "banned" || user.status === "banned_permanent") {
     const bannedByName = user.banned_by
       ? (user.banned_by as any).profile?.fullname ||
-        (user.banned_by as any).username ||
-        "Quản trị viên"
+      (user.banned_by as any).username ||
+      "Quản trị viên"
       : "Quản trị viên";
 
     const error: any = new Error("Account is banned");
@@ -156,8 +157,8 @@ export const loginWithGoogleService = async (
   if (user.status === "banned" || user.status === "banned_permanent") {
     const bannedByName = user.banned_by
       ? (user.banned_by as any).profile?.fullname ||
-        (user.banned_by as any).username ||
-        "Quản trị viên"
+      (user.banned_by as any).username ||
+      "Quản trị viên"
       : "Quản trị viên";
 
     const error: any = new Error("Account is banned");
@@ -182,3 +183,25 @@ export const loginWithGoogleService = async (
     user_id: user._id.toString(),
   };
 };
+
+export const saveUserSession = async (payload: UserSessionEntity): Promise<void> => {
+  const session = new UserSessionModel(payload);
+  await session.save();
+}
+
+export const getUserSession = async (refreshToken: string): Promise<UserSessionEntity | null> => {
+  const session = await UserSessionModel.findOne({ refreshToken }).lean();
+  if (!session) return null;
+
+  return {
+    userId: session.userId,
+    refreshToken: session.refreshToken,
+    device_info: session.device_info,
+    ip_address: session.ip_address,
+    expires_at: session.expires_at,
+  };
+}
+
+export const deleteRefreshToken = async (refreshToken: string): Promise<void> => {
+  await UserSessionModel.deleteOne({ refreshToken });
+}
