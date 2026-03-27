@@ -68,6 +68,7 @@ import ctvPracticeTopicVocabularyRouter from "./routes/ctv/ctv_practice_topic_vo
 import practice_definition_router from "./routes/practice_definition.route";
 import irtRouter from "./routes/irt.route";
 import adjustmentRequestRouter from "./routes/adjustment_request.route";
+import hlrRouter from "./routes/hlr.route";
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
 import { verifyAccessToken } from "./middlewares/verifyAccessToken.middleware";
@@ -91,7 +92,7 @@ app.use(
   cors({
     origin: ["http://localhost:5173", "http://localhost:5174"],
     credentials: true,
-  })
+  }),
 );
 
 app.use(express.json({ limit: "50mb" }));
@@ -124,19 +125,19 @@ app.use("/api/shadowings", verifyAccessToken, shadowingUserRouter);
 app.use(
   "/api/progress/statistic-result",
   verifyAccessToken,
-  progressUserRouter
+  progressUserRouter,
 );
 app.use(
   "/api/vocabulary-definition-attempts",
   verifyAccessToken,
-  vocabulary_definition_attempt_router
+  vocabulary_definition_attempt_router,
 );
 app.use("/api/practice-sessions", verifyAccessToken, practice_session_router);
 app.use("/api/user-notes", verifyAccessToken, userNoteRouter);
 app.use(
   "/api/practice-definition",
   verifyAccessToken,
-  practice_definition_router
+  practice_definition_router,
 );
 
 // 🆕 Learning Path routes (activities in learning path flow)
@@ -147,6 +148,7 @@ app.use("/api/flashcards-learningpath", flashcardLearningPathRouter);
 app.use("/api/shadowing-learningpath", shadowingLearningPathRouter);
 app.use("/api/adjustment-requests", adjustmentRequestRouter);
 app.use("/api/irt", verifyAccessToken, irtRouter);
+app.use("/api/hlr", verifyAccessToken, hlrRouter);
 
 // User study general routes
 app.use("/api/history", historyRouter);
@@ -170,7 +172,7 @@ app.use("/api/ctv/vocabulary-words", verifyAccessToken, vocabularyWordRouter);
 app.use(
   "/api/ctv/practice-topics",
   verifyAccessToken,
-  ctvPracticeTopicVocabularyRouter
+  ctvPracticeTopicVocabularyRouter,
 );
 // Admin user management routes (list/detail/ban/unban)
 app.use("/api/admin/users", verifyAccessToken, adminUsersRouter);
@@ -198,7 +200,7 @@ app.use((err: any, req: Request, res: Response) => {
 
   const response = ApiResponse.fail(
     err.message || "Internal Server Error",
-    process.env.NODE_ENV === "development" ? err.stack : undefined
+    process.env.NODE_ENV === "development" ? err.stack : undefined,
   );
 
   res.status(statusCode).json(response);
