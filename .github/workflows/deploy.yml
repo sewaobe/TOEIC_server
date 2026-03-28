@@ -73,7 +73,7 @@ jobs:
 
             echo "Deploy new backend: $NEW_COLOR on port $NEW_PORT"
 
-            docker compose up -d backend_$NEW_COLOR
+            IMAGE_TAG=${{ github.sha }} docker compose up -d backend_$NEW_COLOR
 
             echo "Health check..."
             HEALTHY=false
