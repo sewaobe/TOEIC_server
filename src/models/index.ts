@@ -38,3 +38,4 @@ export * from "./group_user.model";
 export * from "./quiz.model";
 export * from "./lesson_manager.model";
 export * from "./report.model";
+export * from "./user_sessions.model";
