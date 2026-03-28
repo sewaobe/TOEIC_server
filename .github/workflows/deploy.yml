@@ -104,4 +104,6 @@ jobs:
 
             docker compose stop backend_$OLD_COLOR
 
+            docker compose rm -f backend_$OLD_COLOR
+
             docker image prune -f
