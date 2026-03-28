@@ -5,6 +5,12 @@ import { getTotalScoreTestInMonth, getTotalUserTestInMonth, getSkillsOverview, g
 
 export const getTotalScoreTestInMonthController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const userId = req.user._id;
 
         const overview = await getTotalScoreTestInMonth(userId);
@@ -19,6 +25,12 @@ export const getTotalScoreTestInMonthController = async (req: Request, res: Resp
 
 export const getTotalUserTestInMonthController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const userId = req.user._id;
         const year = req.query.year ? Number(req.query.year) : undefined;
         const month = req.query.month ? (req.query.month === "all" ? "all" : Number(req.query.month)) : undefined;
@@ -36,6 +48,12 @@ export const getTotalUserTestInMonthController = async (req: Request, res: Respo
 // 🎯 Controller: Lấy tổng quan progress 4 kỹ năng
 export const getSkillsOverviewController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const userId = req.user._id;
         const skillsProgress = await getSkillsOverview(userId);
 
@@ -50,6 +68,12 @@ export const getSkillsOverviewController = async (req: Request, res: Response, n
 // 📋 Controller: Lấy chi tiết activities của 1 skill
 export const getSkillActivitiesController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const userId = req.user._id;
         const { skillType } = req.params as { skillType: "listening" | "reading" | "vocabulary" | "speaking" };
 
@@ -74,6 +98,12 @@ export const getSkillActivitiesController = async (req: Request, res: Response, 
 // 📊 Controller: Lấy độ chính xác từng Part
 export const getPartAccuracyStatsController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const userId = req.user._id;
         const year = req.query.year ? Number(req.query.year) : undefined;
         const month = req.query.month ? (req.query.month === "all" ? "all" : Number(req.query.month)) : undefined;

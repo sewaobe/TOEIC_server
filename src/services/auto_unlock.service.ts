@@ -114,6 +114,7 @@ export async function autoUnlockAfterComplete(
       session_completed: false,
       day_completed: false,
       week_completed: false,
+      day_id: finalDayStudyId.toString(),
     };
 
     // 5a. Unlock item tiếp theo

@@ -82,6 +82,12 @@ export const sendNotification = async (
     next: NextFunction
 ) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const senderId = req.user._id;
         const { recipientId, message, type } = req.body;
 

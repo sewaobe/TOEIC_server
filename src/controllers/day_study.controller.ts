@@ -44,6 +44,12 @@ export const completeActivityController = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const { dayId } = req.params;
     const { session_no, item_index, activity_type, attempt_id } = req.body;
     const userId = new Types.ObjectId(req.user._id);

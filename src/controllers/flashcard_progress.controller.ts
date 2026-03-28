@@ -10,14 +10,16 @@ import {
 import { ApiResponse } from "../utils/ApiResponse";
 import { updateHLRFromFlashcardLogs } from "../services/hlr_integration.service";
 
-export const createSessionFlashcardController = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  try {
-    const userId = req.user._id;
-    const { topic_vocabulary_id, order_queue } = req.body;
+export const createSessionFlashcardController = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
+        const userId = req.user._id;
+        const { topic_vocabulary_id, order_queue } = req.body;
 
     const { sessionId, newSession } = await createFlashcardSessionService(
       userId,
@@ -39,15 +41,17 @@ export const createSessionFlashcardController = async (
   }
 };
 
-export const updateSessionFlashcardController = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  try {
-    const userId = req.user._id;
-    const { session_id, order_queue, current_index, logs_delta } = req.body;
 
+export const updateSessionFlashcardController = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
+        const userId = req.user._id;
+        const { session_id, order_queue, current_index, logs_delta } = req.body;
     const updatedProgress = await updateFlashcardProgressService(
       session_id,
       userId,
@@ -69,131 +73,244 @@ export const updateSessionFlashcardController = async (
   }
 };
 
-export const getFlashcardProgressController = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  try {
-    const userId = req.user._id;
-    const { session_id } = req.params;
+// export const getFlashcardProgressController = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction,
+// ) => {
+//   try {
+//     const userId = req.user._id;
+//     const { session_id } = req.params;
 
-    const progress = await getSession(session_id, userId);
+//     const progress = await getSession(session_id, userId);
 
-    res.status(200).json(
-      ApiResponse.success(
-        {
-          progress,
-        },
-        "Flashcard progress retrieved successfully",
-      ),
-    );
-  } catch (err) {
-    next(err);
-  }
-};
+//     res.status(200).json(
+//       ApiResponse.success(
+//         {
+//           progress,
+//         },
+//         "Flashcard progress retrieved successfully",
+//       ),
+//     );
+//   } catch (err) {
+//     next(err);
+//   }
+// };
 
-export const getAllActiveSessionsController = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  try {
-    const userId = req.user._id;
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 9;
+// export const getAllActiveSessionsController = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction,
+// ) => {
+//   try {
+//     const userId = req.user._id;
+//     const page = parseInt(req.query.page as string) || 1;
+//     const limit = parseInt(req.query.limit as string) || 9;
 
-    const activeSessions = await getAllSessionActiveByUserService(
-      userId,
-      page,
-      limit,
-    );
+//     const activeSessions = await getAllSessionActiveByUserService(
+//       userId,
+//       page,
+//       limit,
+//     );
 
-    res
-      .status(200)
-      .json(
-        ApiResponse.success(
-          activeSessions,
-          "Active flashcard sessions retrieved successfully",
-        ),
-      );
-  } catch (err) {
-    next(err);
-  }
-};
+//     res
+//       .status(200)
+//       .json(
+//         ApiResponse.success(
+//           activeSessions,
+//           "Active flashcard sessions retrieved successfully",
+//         ),
+//       );
+//   } catch (err) {
+//     next(err);
+//   }
+// };
 
-export const finalizeFlashcardSessionController = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  try {
-    const userId = req.user._id;
-    const {
-      session_id,
-      accuracy,
-      avg_time,
-      total,
-      logs,
-      started_at,
-      finished_at,
-    } = req.body;
+// export const finalizeFlashcardSessionController = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction,
+// ) => {
+//   try {
+//     const userId = req.user._id;
+//     const {
+//       session_id,
+//       accuracy,
+//       avg_time,
+//       total,
+//       logs,
+//       started_at,
+//       finished_at,
+//     } = req.body;
 
-    const finalizedSession = await finalizeFlashcardSessionService(
-      userId,
-      session_id,
-      accuracy,
-      avg_time,
-      total,
-      logs,
-      started_at,
-      finished_at,
-    );
+//     const finalizedSession = await finalizeFlashcardSessionService(
+//       userId,
+//       session_id,
+//       accuracy,
+//       avg_time,
+//       total,
+//       logs,
+//       started_at,
+//       finished_at,
+//     );
 
-    // ★ Tích hợp HLR: Cập nhật spaced repetition data
-    // Chạy async, không block response, không ảnh hưởng logic cũ
-    if (logs && logs.length > 0) {
-      updateHLRFromFlashcardLogs(userId.toString(), logs).catch((err) => {
-        console.error("[HLR] Error in finalize session:", err.message);
-      });
+//     // ★ Tích hợp HLR: Cập nhật spaced repetition data
+//     // Chạy async, không block response, không ảnh hưởng logic cũ
+//     if (logs && logs.length > 0) {
+//       updateHLRFromFlashcardLogs(userId.toString(), logs).catch((err) => {
+//         console.error("[HLR] Error in finalize session:", err.message);
+//       });
+//     }
+
+//     res.status(200).json(
+//       ApiResponse.success(
+//         {
+//           finalizedSession,
+//         },
+//         "Flashcard session finalized successfully",
+//       ),
+//     );
+//   } catch (err) {
+//     next(err);
+//   }
+// };
+// export const updateSessionFlashcardController = async (req: Request, res: Response, next: NextFunction) => {
+//     try {
+//         if (!req.user?._id) {
+//             return res
+//                 .status(401)
+//                 .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+//         }
+
+//         const userId = req.user._id;
+//         const { session_id, order_queue, current_index, logs_delta } = req.body;
+
+// export const removeFlashcardSessionController = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction,
+// ) => {
+//   try {
+//     const userId = req.user._id;
+//     const { session_id } = req.params;
+
+//     const removedSession = await removeFlashcardSessionService(
+//       session_id,
+//       userId,
+//     );
+
+//     res.status(200).json(
+//       ApiResponse.success(
+//         {
+//           removedSession,
+//         },
+//         "Flashcard session removed successfully",
+//       ),
+//     );
+//   } catch (err) {
+//     next(err);
+//   }
+// };
+export const getFlashcardProgressController = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
+        const userId = req.user._id;
+        const { session_id } = req.params;
+
+        const progress = await getSession(session_id, userId);
+
+        res.status(200).json(
+            ApiResponse.success({
+                progress,
+            }, "Flashcard progress retrieved successfully")
+        );
+    } catch (err) {
+        next(err);
     }
+}
 
-    res.status(200).json(
-      ApiResponse.success(
-        {
-          finalizedSession,
-        },
-        "Flashcard session finalized successfully",
-      ),
-    );
-  } catch (err) {
-    next(err);
-  }
-};
+export const getAllActiveSessionsController = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
 
-export const removeFlashcardSessionController = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  try {
-    const userId = req.user._id;
-    const { session_id } = req.params;
+        const userId = req.user._id;
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 9;
 
-    const removedSession = await removeFlashcardSessionService(
-      session_id,
-      userId,
-    );
+        const activeSessions = await getAllSessionActiveByUserService(userId, page, limit);
 
-    res.status(200).json(
-      ApiResponse.success(
-        {
-          removedSession,
-        },
-        "Flashcard session removed successfully",
-      ),
-    );
-  } catch (err) {
-    next(err);
-  }
-};
+        res.status(200).json(
+            ApiResponse.success(
+                activeSessions,
+                "Active flashcard sessions retrieved successfully"
+            )
+        );
+    }
+    catch (err) {
+        next(err);
+    }
+}
+
+export const finalizeFlashcardSessionController = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
+        const userId = req.user._id;
+        const { session_id, accuracy, avg_time, total, logs, started_at, finished_at } = req.body;
+
+        const finalizedSession = await finalizeFlashcardSessionService(
+            userId,
+            session_id,
+            accuracy,
+            avg_time,
+            total,
+            logs,
+            started_at,
+            finished_at
+        );
+
+        res.status(200).json(
+            ApiResponse.success({
+                finalizedSession,
+            }, "Flashcard session finalized successfully")
+        );
+    } catch (err) {
+        next(err);
+    }
+}
+
+export const removeFlashcardSessionController = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
+        const userId = req.user._id;
+        const { session_id } = req.params;
+
+        const removedSession = await removeFlashcardSessionService(session_id, userId);
+
+        res.status(200).json(
+            ApiResponse.success({
+                removedSession,
+            }, "Flashcard session removed successfully")
+        );
+    } catch (err) {
+        next(err);
+    }
+}

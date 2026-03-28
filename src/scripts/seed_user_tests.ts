@@ -19,13 +19,10 @@ dotenv.config();
 import {
   Test,
   Group,
-  Question,
   User,
   UserTest,
   Role,
-  IQuestion,
 } from "../models";
-import { calibrateIRTRasch } from "../services/irt.service";
 
 // ============ CẤU HÌNH ============
 const TEST_IDS = [
@@ -347,7 +344,7 @@ function generateUserTestRecord(
  */
 async function seedUserTests() {
   const MONGO =
-    process.env.MONGO_URI || "mongodb://127.0.0.1:27017/toeic_local";
+    process.env.MONGO_URI || "mongodb://127.0.0.1:27017/toeic-db";
 
   console.log("🔗 Connecting to MongoDB...");
   await mongoose.connect(MONGO);
@@ -433,11 +430,11 @@ async function seedUserTests() {
       console.log(`   Test ${testId}: ${count} records`);
     }
 
-    // ⚙️ TỰ ĐỘNG CHẠY CALIBRATION
-    console.log(
-      "\n⚙️ Bắt đầu chạy IRT Rasch Calibration dựa trên dữ liệu vừa seed..."
-    );
-    await calibrateIRTRasch();
+    // // ⚙️ TỰ ĐỘNG CHẠY CALIBRATION
+    // console.log(
+    //   "\n⚙️ Bắt đầu chạy IRT Rasch Calibration dựa trên dữ liệu vừa seed..."
+    // );
+    // await calibrateIRTRasch();
     console.log("✅ Calibration hoàn tất chuẩn xác!");
   } catch (error) {
     console.error("❌ Error:", error);

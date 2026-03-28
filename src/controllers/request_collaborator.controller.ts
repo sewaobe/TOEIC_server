@@ -30,6 +30,12 @@ export const getAllRequestCollaboratorsController = async (req: Request, res: Re
 
 export const getRequestCollaboratorByUserIdController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const user_id = req.user._id;
         const result = await getRequestByUserId(user_id);
         res.status(200).json(

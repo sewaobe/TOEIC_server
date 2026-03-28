@@ -49,6 +49,12 @@ export const submitShadowingController = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const { id: rawId } = req.params;
     const userId = new Types.ObjectId(req.user._id);
     const { data, day_study_id } = req.body;
@@ -65,8 +71,8 @@ export const submitShadowingController = async (
         typeof item?.accuracy === "number"
           ? Number(item.accuracy)
           : typeof item?.similarity_score === "number"
-          ? Number(item.similarity_score)
-          : 0;
+            ? Number(item.similarity_score)
+            : 0;
 
       return {
         ...item,

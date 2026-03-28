@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import * as testService from "../../services/test.service";
 import { TestStatus } from "../../models/enums/TestStatus";
 import { pushNotification } from "../../utils/pushNotification";
+import { ApiResponse } from "../../utils/ApiResponse";
 
 const isAdminPayload = (payload: any) => {
   if (!payload) return false;
@@ -68,6 +69,12 @@ export const approveTestController = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const userId = req.user._id;
     const payload: any = req.user;
     if (!isAdminPayload(payload))
@@ -88,7 +95,7 @@ export const approveTestController = async (
         type: "test"
       });
     }
-    
+
     return res.status(200).json({ data: updated });
   } catch (err) {
     next(err);
@@ -101,6 +108,12 @@ export const rejectTestController = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const userId = req.user._id;
     const payload: any = req.user;
     if (!isAdminPayload(payload))
@@ -122,7 +135,7 @@ export const rejectTestController = async (
         type: "test"
       });
     }
-    
+
     return res.status(200).json({ data: updated });
   } catch (err) {
     next(err);
@@ -135,6 +148,12 @@ export const softDeleteTestController = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const userId = req.user._id;
     const payload: any = req.user;
     if (!isAdminPayload(payload))

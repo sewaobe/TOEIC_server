@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import * as userService from "../services/user.service";
 import { ProfileDto } from "../dto/profile.dto";
+import { ApiResponse } from "../utils/ApiResponse";
 
 export const getCurrentUser = async (
   req: Request,
@@ -8,6 +9,12 @@ export const getCurrentUser = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     // payload gán từ verifyAccessToken
     const payload: any = req.user;
     const userId = payload?._id;
@@ -15,7 +22,7 @@ export const getCurrentUser = async (
 
     const user = await userService.getUserById(userId);
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json(ApiResponse.fail("User not found"));
     }
 
     // Gói dữ liệu trong "data" để FE dùng res.data

@@ -9,6 +9,10 @@
     "rootDir": "src",
     "outDir": "dist",
     "skipLibCheck": true,
-    "typeRoots": ["./src/types", "./node_modules/@types"]
-  }
+    "typeRoots": ["./src/types", "./node_modules/@types"],
+    "verbatimModuleSyntax": false,
+    "types": ["node", "jest"]
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "tests"]
 }

@@ -93,6 +93,12 @@ export const approveLessonController = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const userId = req.user._id;
     const payload: any = req.user;
     if (!isAdminPayload(payload))
@@ -125,6 +131,12 @@ export const rejectLessonController = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user?._id) {
+      return res
+        .status(401)
+        .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+    }
+
     const userId = req.user._id;
     const payload: any = req.user;
     if (!isAdminPayload(payload))

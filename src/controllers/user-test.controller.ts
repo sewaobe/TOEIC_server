@@ -13,7 +13,12 @@ export const getRecentUserTests = async (
 ): Promise<void> => {
     try {
         const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 3;
-        const userId = req.user._id;
+        const userId = req.user?._id;
+        
+        if (!userId) {
+            res.status(401).json(ApiResponse.fail("Unauthorized"));
+            return;
+        }
 
         const recentTests: IUserRecentTest[] = await getRecentUserTestsService(userId, limit);
 
@@ -34,10 +39,15 @@ export const getUserTestHistory = async (
     next: NextFunction
 ): Promise<void> => {
     try {
-        const userId = req.user._id.toString();
+        const userId = req.user?._id?.toString();
         const { testId } = req.params;
         const page = Number(req.query.page ?? 1);
         const limit = Number(req.query.limit ?? 4);
+
+        if (!userId) {
+            res.status(401).json(ApiResponse.fail("Unauthorized"));
+            return;
+        }
 
         if (!testId) {
             res.status(404).json(ApiResponse.fail("Không tìm thấy lịch sử bài kiểm tra!"));

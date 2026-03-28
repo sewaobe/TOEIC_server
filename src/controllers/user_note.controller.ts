@@ -4,6 +4,12 @@ import { ApiResponse } from "../utils/ApiResponse";
 
 export const getNotesByUserIdController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const user_id = req.user._id;
 
         const notes = await getNotesByUserIdService(user_id);
@@ -18,6 +24,12 @@ export const getNotesByUserIdController = async (req: Request, res: Response, ne
 
 export const createNoteController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const user_id = req.user._id;
         const note_data = req.body;
 
@@ -33,6 +45,12 @@ export const createNoteController = async (req: Request, res: Response, next: Ne
 
 export const updateNoteController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const user_id = req.user._id;
         const note_id = req.params.note_id;
         const note_data = req.body;
@@ -49,6 +67,12 @@ export const updateNoteController = async (req: Request, res: Response, next: Ne
 
 export const deleteNoteController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const user_id = req.user._id;
         const note_id = req.params.note_id;
 
@@ -64,6 +88,12 @@ export const deleteNoteController = async (req: Request, res: Response, next: Ne
 
 export const getNoteByRelatedIdController = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
+        }
+
         const user_id = req.user._id;
         const related_id = req.params.related_id;
         const note = await getNoteByRelatedIdService(user_id, related_id);
