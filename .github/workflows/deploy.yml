@@ -73,7 +73,7 @@ jobs:
 
             echo "Deploy new backend: $NEW_COLOR on port $NEW_PORT"
 
-            docker compose up -d backend_$NEW_COLOR
+            IMAGE_TAG=${{ github.sha }} docker compose up -d backend_$NEW_COLOR
 
             echo "Health check..."
             HEALTHY=false
@@ -103,5 +103,7 @@ jobs:
             echo "Stop old backend"
 
             docker compose stop backend_$OLD_COLOR
+
+            docker compose rm -f backend_$OLD_COLOR
 
             docker image prune -f

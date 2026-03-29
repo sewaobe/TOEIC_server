@@ -41,3 +41,4 @@ export * from "./report.model";
 
 // HLR (Half-Life Regression) - Spaced Repetition
 export * from "./user_vocabulary_progress.model";
+export * from "./user_sessions.model";
