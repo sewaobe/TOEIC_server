@@ -90,7 +90,7 @@ export const submitTest = async (
   testId: string,
   answers: { question_id: string; selectedOption: string }[],
   duration: number,
-  completedPart?: string
+  completedPart?: string,
 ) => {
   const test = await getFullTest(testId);
   if (!test) throw new Error("Test not found");
@@ -105,7 +105,7 @@ export const submitTest = async (
 
     // ✅ duyệt qua object bằng Object.entries thay vì .entries()
     for (const [partName, partData] of Object.entries(
-      test.questions as Record<string, { groups: IGroup[] }>
+      test.questions as Record<string, { groups: IGroup[] }>,
     )) {
       if (!partData.groups) continue;
 
@@ -174,7 +174,7 @@ export const submitTest = async (
         irt_difficulty: a.irt_difficulty,
         isCorrect: a.isCorrect,
         part: a.part,
-      }))
+      })),
     );
   } catch (err) {
     console.warn("⚠️ Failed to update IRT abilities after Full Test:", err);
@@ -192,17 +192,37 @@ export const getTestsWithScoreAndSearch = async (
   userId: string,
   page: number,
   limit: number,
-  search?: string
+  filters?: { search?: string; keywords?: string; year?: string },
 ) => {
-  const skip = (page - 1) * limit;
+  const safeLimit = Number.isFinite(limit) && limit > 0 ? limit : 6;
+  const safePage = Number.isFinite(page) && page > 0 ? page : 1;
+  const skip = (safePage - 1) * safeLimit;
 
-  const matchStage = search
-    ? {
-        title: { $regex: new RegExp(search, "i") },
-        status: TestStatus.OPEN,
-        type: TestType.FULL_TEST,
-      }
-    : { status: TestStatus.OPEN, type: TestType.FULL_TEST };
+  const escapeRegex = (value: string) =>
+    value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  const keywords = filters?.keywords?.trim() || filters?.search?.trim() || "";
+  const year = filters?.year?.trim() || "";
+
+  const andConditions: Record<string, any>[] = [
+    { status: TestStatus.OPEN },
+    { type: TestType.FULL_TEST },
+  ];
+
+  if (keywords) {
+    andConditions.push({
+      title: { $regex: new RegExp(escapeRegex(keywords), "i") },
+    });
+  }
+
+  if (year) {
+    andConditions.push({
+      title: { $regex: new RegExp(escapeRegex(year), "i") },
+    });
+  }
+
+  const matchStage =
+    andConditions.length === 1 ? andConditions[0] : { $and: andConditions };
 
   // 1️⃣ Truy vấn danh sách test theo trang
   const tests = await Test.aggregate([
@@ -231,7 +251,7 @@ export const getTestsWithScoreAndSearch = async (
     },
     { $sort: { created_at: -1, _id: 1 } },
     { $skip: skip },
-    { $limit: limit },
+    { $limit: safeLimit },
     {
       $project: {
         _id: 0,
@@ -268,15 +288,15 @@ export const getTestsWithScoreAndSearch = async (
       submitCounts.map(async (s) => {
         await Test.updateOne(
           { _id: s._id },
-          { $set: { countSubmit: s.total } }
+          { $set: { countSubmit: s.total } },
         );
-      })
+      }),
     );
   }
 
   // 3️⃣ Phân trang tổng số
   const totalTests = await Test.countDocuments(matchStage);
-  const totalPages = Math.ceil(totalTests / limit);
+  const totalPages = Math.max(1, Math.ceil(totalTests / safeLimit));
 
   return { tests, totalTests, totalPages };
 };
@@ -329,7 +349,7 @@ export const getAllTests = async (
   search?: string,
   status?: string,
   topic?: string,
-  type?: string // ✅ thêm tham số filter loại test
+  type?: string, // ✅ thêm tham số filter loại test
 ): Promise<{ items: Partial<ITest>[]; total: number; pageCount: number }> => {
   const skip = (page - 1) * limit;
 
@@ -431,7 +451,7 @@ export const deleteTest = async (id: string): Promise<boolean> => {
 async function syncGroups(
   testId: Types.ObjectId,
   testObjectId: Types.ObjectId,
-  data: Partial<ITest>
+  data: Partial<ITest>,
 ): Promise<Types.ObjectId[]> {
   const newGroupIds: Types.ObjectId[] = [];
 
@@ -441,7 +461,7 @@ async function syncGroups(
       const updatedGroup = await updateGroupWithRelations(
         g._id,
         g as any,
-        data.created_by
+        data.created_by,
       );
       if (updatedGroup) newGroupIds.push(updatedGroup._id);
     } else {
@@ -461,7 +481,7 @@ async function syncGroups(
 
 async function finalizeTestWithGroups(
   test: ITest,
-  newGroupIds: Types.ObjectId[]
+  newGroupIds: Types.ObjectId[],
 ): Promise<ITest> {
   // Gán lại groups
   test.groups = newGroupIds;
@@ -487,7 +507,7 @@ async function finalizeTestWithGroups(
  */
 export const updateTest = async (
   id: string,
-  data: Partial<ITest>
+  data: Partial<ITest>,
 ): Promise<ITest | null> => {
   const testId = new Types.ObjectId(id);
 
@@ -500,7 +520,7 @@ export const updateTest = async (
       status: data.status,
       updated_at: new Date(),
     },
-    { new: true }
+    { new: true },
   );
 
   if (!test) return null;
@@ -515,7 +535,7 @@ export const updateTest = async (
     const oldGroup = existingGroups[i];
 
     const stillExists = newGroupIds.find(
-      (id) => id.toString() === oldGroup._id.toString()
+      (id) => id.toString() === oldGroup._id.toString(),
     );
 
     if (!stillExists) {
@@ -530,12 +550,12 @@ export const updateTest = async (
 export const updateStatusTest = async (
   testId: string,
   status: TestStatus,
-  userId: string
+  userId: string,
 ) => {
   const test = await Test.findByIdAndUpdate(
     testId,
     { status, updated_at: new Date() },
-    { new: true }
+    { new: true },
   );
   if (!test) {
     throw new Error("Test not found");
@@ -559,7 +579,7 @@ export const submitMiniTestService = async (
     question_id: string;
     selectedOption: string;
   }[],
-  duration: number
+  duration: number,
 ) => {
   // 1) Lấy danh sách câu hỏi của mini test
   const groups = await Group.find({ test_id: testId })
@@ -580,7 +600,7 @@ export const submitMiniTestService = async (
     (g.questions || []).map((q: any) => ({
       ...q,
       part: g.part, // Gắn part từ group vào question
-    }))
+    })),
   );
 
   // 2) Tính điểm (số câu đúng) + build responses
@@ -674,7 +694,7 @@ export const submitMiniTestService = async (
     const accuracy =
       stat.total > 0 ? ((stat.correct / stat.total) * 100).toFixed(1) : "0.0";
     console.log(
-      `${partName}: ${stat.correct}/${stat.total} câu đúng (${accuracy}%)`
+      `${partName}: ${stat.correct}/${stat.total} câu đúng (${accuracy}%)`,
     );
   });
 

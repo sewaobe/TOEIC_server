@@ -1,9 +1,18 @@
 import { Router } from "express";
 
-import { getRecentUserTests, getUserTestHistory } from "../controllers/user-test.controller";
+import {
+  getRecentUserTests,
+  getUserTestHistory,
+} from "../controllers/user-test.controller";
 
 import { verifyAccessToken } from "../middlewares/verifyAccessToken.middleware";
-import { getLatestTests, getTest, getTestDetail, getTestsWithScoreAndSearch, submitTest } from "../controllers/test.controller";
+import {
+  getLatestTests,
+  getTest,
+  getTestDetail,
+  getTestsWithScoreAndSearch,
+  submitTest,
+} from "../controllers/test.controller";
 
 const router = Router();
 
@@ -43,6 +52,16 @@ router.get("/recent", verifyAccessToken, getRecentUserTests);
  *         schema:
  *           type: string
  *         description: Từ khóa tìm kiếm (có thể bỏ trống).
+ *       - in: query
+ *         name: keywords
+ *         schema:
+ *           type: string
+ *         description: Từ khóa tìm kiếm (ưu tiên dùng cho FE mới).
+ *       - in: query
+ *         name: year
+ *         schema:
+ *           type: string
+ *         description: Lọc theo năm/cụm năm trong tiêu đề đề thi (ví dụ 2023).
  *     responses:
  *       200:
  *         description: Tìm kiếm đề thi thành công
@@ -134,7 +153,5 @@ router.get("/:testId", getTest);
 router.get("/:testId/history", verifyAccessToken, getUserTestHistory);
 router.get("/:testId/detail", verifyAccessToken, getTestDetail);
 router.post("/:testId/submit", verifyAccessToken, submitTest);
-
-
 
 export default router;

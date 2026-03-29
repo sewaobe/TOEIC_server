@@ -7,7 +7,7 @@ import { Types } from "mongoose";
 export const getTest = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { testId } = req.params;
@@ -35,7 +35,7 @@ export const getTest = async (
       const partsArray = (parts as string).split(",");
       const testWithSelectedParts = await testService.getParts(
         testId,
-        partsArray
+        partsArray,
       );
       if (!testWithSelectedParts)
         return res.status(404).json(ApiResponse.fail("Parts not found"));
@@ -44,8 +44,8 @@ export const getTest = async (
         .json(
           ApiResponse.success(
             testWithSelectedParts,
-            "Lấy nhiều part thành công"
-          )
+            "Lấy nhiều part thành công",
+          ),
         );
     }
 
@@ -62,8 +62,8 @@ export const getTest = async (
           status: test.status,
           totalParts: test.questions.size,
         },
-        "Lấy metadata test thành công"
-      )
+        "Lấy metadata test thành công",
+      ),
     );
   } catch (err) {
     next(err);
@@ -73,7 +73,7 @@ export const getTest = async (
 export const submitTest = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { testId } = req.params;
@@ -83,7 +83,7 @@ export const submitTest = async (
       testId,
       answers,
       duration,
-      completedPart // optional
+      completedPart, // optional
     );
 
     return res.status(200).json({
@@ -98,7 +98,7 @@ export const submitTest = async (
 export const getTestsWithScoreAndSearch = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const userId = req.user?._id;
@@ -107,8 +107,8 @@ export const getTestsWithScoreAndSearch = async (
         .status(401)
         .json(
           ApiResponse.fail(
-            "Bạn không có quyền thực hiện chức năng tìm kiếm đề thi!"
-          )
+            "Bạn không có quyền thực hiện chức năng tìm kiếm đề thi!",
+          ),
         );
     }
     // const page = parseInt(req.query.page?.toString() || "1");
@@ -117,29 +117,54 @@ export const getTestsWithScoreAndSearch = async (
     let page = 1;
     let limit = 6;
     let search = "";
+    let keywords = "";
+    let year = "";
 
     if (req.query.page) {
-      page = parseInt(req.query.page.toString());
+      const parsedPage = parseInt(req.query.page.toString(), 10);
+      page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
     }
 
     if (req.query.limit) {
-      limit = parseInt(req.query.limit.toString());
+      const parsedLimit = parseInt(req.query.limit.toString(), 10);
+      limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 6;
     }
 
     if (req.query.search) {
       search = req.query.search.toString().trim();
     }
 
+    if (req.query.keywords) {
+      keywords = req.query.keywords.toString().trim();
+    }
+
+    if (req.query.year) {
+      year = req.query.year.toString().trim();
+    }
+
+    const normalizedKeywords = keywords || search;
+
     const { tests, totalTests, totalPages } =
-      await testService.getTestsWithScoreAndSearch(userId, page, limit, search);
+      await testService.getTestsWithScoreAndSearch(userId, page, limit, {
+        keywords: normalizedKeywords,
+        year,
+      });
 
     res
       .status(200)
       .json(
         ApiResponse.success(
-          { page, limit, totalPages, totalTests, tests },
-          "Tìm kiếm đề thi thành công"
-        )
+          {
+            page,
+            limit,
+            totalPages,
+            totalTests,
+            tests,
+            keywords: normalizedKeywords,
+            year,
+          },
+          "Tìm kiếm đề thi thành công",
+        ),
       );
   } catch (err) {
     next(err);
@@ -149,7 +174,7 @@ export const getTestsWithScoreAndSearch = async (
 export const getLatestTests = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 5;
@@ -160,8 +185,8 @@ export const getLatestTests = async (
         .json(
           ApiResponse.success<ITest[]>(
             [],
-            "Không có bài thi mới nào được tìm thấy!"
-          )
+            "Không có bài thi mới nào được tìm thấy!",
+          ),
         );
       return;
     }
@@ -172,8 +197,8 @@ export const getLatestTests = async (
         `Lấy ${tests.length} bài thi mới nhất thành công!`,
         {
           count: tests.length,
-        }
-      )
+        },
+      ),
     );
   } catch (error) {
     next(error);
@@ -183,7 +208,7 @@ export const getLatestTests = async (
 export const getTestDetail = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { testId } = req.params;
@@ -201,7 +226,7 @@ export const getTestDetail = async (
 export const getAllTests = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
@@ -220,18 +245,16 @@ export const getAllTests = async (
       search,
       status,
       topic,
-      type // ✅ truyền thêm type vào
+      type, // ✅ truyền thêm type vào
     );
 
-    res
-      .status(200)
-      .json(
-        ApiResponse.success<{
-          items: Partial<ITest>[];
-          total: number;
-          pageCount: number;
-        }>({ items, total, pageCount }, "Lấy danh sách đề thi thành công!")
-      );
+    res.status(200).json(
+      ApiResponse.success<{
+        items: Partial<ITest>[];
+        total: number;
+        pageCount: number;
+      }>({ items, total, pageCount }, "Lấy danh sách đề thi thành công!"),
+    );
   } catch (error) {
     next(error);
   }
@@ -240,7 +263,7 @@ export const getAllTests = async (
 export const createTestController = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const payload: Partial<ITest> = req.body;
@@ -274,7 +297,7 @@ export const createTestController = async (
 export const deleteTest = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const { testId } = req.params;
@@ -300,7 +323,7 @@ export const deleteTest = async (
 export const updateTest = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const { testId } = req.params;
@@ -324,7 +347,11 @@ export const updateTest = async (
   }
 };
 
-export const updateTestStatusController = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+export const updateTestStatusController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
   try {
     const { testId } = req.params;
     const { status } = req.body;
@@ -337,24 +364,34 @@ export const updateTestStatusController = async (req: Request, res: Response, ne
       res.status(400).json(ApiResponse.fail("ID không hợp lệ"));
       return;
     }
-    const updatedTest = await testService.updateStatusTest(testId, status, userId);
+    const updatedTest = await testService.updateStatusTest(
+      testId,
+      status,
+      userId,
+    );
     if (!updatedTest) {
       res.status(404).json(ApiResponse.fail("Không tìm thấy đề thi"));
       return;
     }
-    
+
     // Gửi thông báo đến admin khi CTV/user thay đổi status
-    const { pushNotificationToAdmin } = await import("../utils/pushNotificationToAdmin");
+    const { pushNotificationToAdmin } =
+      await import("../utils/pushNotificationToAdmin");
     pushNotificationToAdmin(userId, {
       message: `📝 Bài thi "${updatedTest.title}" đã được chuyển sang trạng thái "${status}".`,
       type: "test",
       url: `http://localhost:5174/admin/tests/${updatedTest._id}`,
     });
-    
+
     res
       .status(200)
-      .json(ApiResponse.success(updatedTest, "Cập nhật trạng thái đề thi thành công!"));
+      .json(
+        ApiResponse.success(
+          updatedTest,
+          "Cập nhật trạng thái đề thi thành công!",
+        ),
+      );
   } catch (err) {
-    next(err)
+    next(err);
   }
-}
+};
