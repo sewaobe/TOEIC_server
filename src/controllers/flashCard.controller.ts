@@ -13,11 +13,16 @@ import {
 import { ApiResponse } from "../utils/ApiResponse";
 import { completeActivityAndUnlockNext } from "../services/day_study.service";
 import { Types } from "mongoose";
+import {
+  updateHLRFromFlashcardLogs,
+  updateHLRFromMatchingGame,
+  updateHLRFromWordRecall,
+} from "../services/hlr_integration.service";
 
 export const getFlashCardById = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const flashCard: any = await getFlashCardByIdService(req.params.id);
@@ -28,7 +33,7 @@ export const getFlashCardById = async (
     res.status(200).json(
       ApiResponse.success(vocab, "Get flash card successfully!", {
         topic_id: flashCard[0]?.topic[0]?._id,
-      })
+      }),
     );
   } catch (err) {
     next(err);
@@ -38,7 +43,7 @@ export const getFlashCardById = async (
 export const submitFlashCard = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     if (!req.user?._id) {
@@ -74,6 +79,12 @@ export const submitFlashCard = async (
     if (!result)
       res.status(404).json(ApiResponse.fail("Submit Flash card thất bại"));
 
+    // ★ Tích hợp HLR: Cập nhật spaced repetition data
+    // Chạy async, không block response, không ảnh hưởng logic cũ
+    updateHLRFromFlashcardLogs(user_id.toString(), logs).catch((err) => {
+      console.error("[HLR] Error in flashcard submit:", err.message);
+    });
+
     // Unlock bài tiếp theo
     // await completeActivityAndUnlockNext(dayStudyId, activityId)
 
@@ -88,7 +99,7 @@ export const submitFlashCard = async (
 export const submitFlashCardGame = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     if (!req.user?._id) {
@@ -150,6 +161,29 @@ export const submitFlashCardGame = async (
         .json(ApiResponse.fail("Submit game result thất bại"));
     }
 
+    // ★ Tích hợp HLR: Cập nhật spaced repetition data cho game
+    // Chạy async, không block response
+    if (game_type === "matching" && game_result.vocabularyIds?.length > 0) {
+      updateHLRFromMatchingGame(user_id.toString(), {
+        vocabularyIds: game_result.vocabularyIds,
+        correctPairIds: game_result.correctPairIds || [],
+        wrongAttemptCounts: game_result.wrongAttemptCounts || {}, // Số lần sai cho từng từ
+      }).catch((err) => {
+        console.error("[HLR] Error in matching game submit:", err.message);
+      });
+    } else if (game_type === "word_recall") {
+      const correctWordIds = game_result.correctWordIds || [];
+      const wrongWordIds = game_result.wrongWordIds || [];
+      if (correctWordIds.length > 0 || wrongWordIds.length > 0) {
+        updateHLRFromWordRecall(user_id.toString(), {
+          correctWordIds,
+          wrongWordIds,
+        }).catch((err) => {
+          console.error("[HLR] Error in word recall submit:", err.message);
+        });
+      }
+    }
+
     res
       .status(201)
       .json(ApiResponse.success(result, "Submit game result thành công"));
@@ -161,7 +195,7 @@ export const submitFlashCardGame = async (
 export const getHistoryFlashCardByTopic = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     if (!req.user?._id) {
@@ -183,8 +217,8 @@ export const getHistoryFlashCardByTopic = async (
       .json(
         ApiResponse.success(
           history,
-          "Lấy lịch sử làm bài của topic thành công!"
-        )
+          "Lấy lịch sử làm bài của topic thành công!",
+        ),
       );
   } catch (err) {
     next(err);
