@@ -76,8 +76,10 @@ export const submitTest = async (
   next: NextFunction,
 ) => {
   try {
+    const userId = req?.user?._id || "guest";
+
     const { testId } = req.params;
-    const { userId, answers, duration, completedPart } = req.body;
+    const { answers, duration, completedPart } = req.body;
     const result = await testService.submitTest(
       userId,
       testId,

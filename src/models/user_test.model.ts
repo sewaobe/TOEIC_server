@@ -6,7 +6,7 @@ export interface IPartAccuracy {
 }
 export interface IUserTest extends Document {
   _id: Types.ObjectId;
-  user_id: Types.ObjectId;
+  user_id: string;
   test_id: Types.ObjectId;
   score: number;
   answers: {
@@ -23,7 +23,7 @@ export interface IUserTest extends Document {
 }
 
 const UserTestSchema = new Schema<IUserTest>({
-  user_id: { type: Schema.Types.ObjectId, ref: 'User' },
+  user_id: { type: String, ref: 'User' },
   test_id: { type: Schema.Types.ObjectId, ref: 'Test' },
   score: { type: Number, default: 0 },
   answers: [

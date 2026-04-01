@@ -61,7 +61,7 @@ export const getUserTestHistoryService = async (
   const safeLimit = Math.min(100, Math.max(1, Number(limit) || 10)); // ch?n limit qu� l?n
   const skip = (safePage - 1) * safeLimit;
 
-  const userObjectId = new Types.ObjectId(userId);
+  const userObjectId = userId;
   const testObjectId = new Types.ObjectId(testId);
 
   const pipeline: PipelineStage[] = [
