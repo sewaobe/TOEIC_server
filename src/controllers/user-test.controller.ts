@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
-import { getRecentUserTestsService, getTestHistoryDetailService, getUserTestHistoryService } from './../services/user_test.service';
+import { claimUserTestService, getRecentUserTestsService, getTestHistoryDetailService, getUserTestHistoryService } from './../services/user_test.service';
 import { ApiResponse } from '../utils/ApiResponse';
 import { IUserRecentTest } from '../dto/IUserRecentTest';
 import { Types } from 'mongoose';
@@ -112,3 +112,36 @@ export const getTestHistoryDetail = async (req: Request, res: Response, next: Ne
         next(error);
     }
 }
+
+export const claimUserTest = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const userId = req.user?._id;
+    const { resultId } = req.body;
+
+    if (!userId) {
+      res.status(401).json(ApiResponse.fail("Unauthorized"));
+      return;
+    }
+
+    if (!resultId) {
+      res.status(400).json(ApiResponse.fail("Result ID is required"));
+      return;
+    }
+
+    const result = await claimUserTestService(resultId, userId);
+
+    if (!result) {
+      // Trả về lỗi nếu không tìm thấy hoặc kết quả này đã có chủ
+      res.status(404).json(ApiResponse.fail("Kết quả không tồn tại hoặc đã được liên kết với tài khoản khác"));
+      return;
+    }
+
+    res.status(200).json(ApiResponse.success(result, "Lưu kết quả thành công"));
+  } catch (err) {
+    next(err);
+  }
+};

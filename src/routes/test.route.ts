@@ -3,6 +3,7 @@ import { Router } from "express";
 import {
   getRecentUserTests,
   getUserTestHistory,
+  claimUserTest
 } from "../controllers/user-test.controller";
 
 import { verifyAccessToken, verifyAccessTokenForSubmitTest } from "../middlewares/verifyAccessToken.middleware";
@@ -153,5 +154,5 @@ router.get("/:testId", getTest);
 router.get("/:testId/history", verifyAccessToken, getUserTestHistory);
 router.get("/:testId/detail", verifyAccessToken, getTestDetail);
 router.post("/:testId/submit", verifyAccessTokenForSubmitTest, submitTest);
-
+router.patch("/claim-guest-result", verifyAccessToken, claimUserTest);
 export default router;
