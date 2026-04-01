@@ -153,7 +153,7 @@ export const submitTest = async (
 
   // Lưu vào DB
   const userTest = new UserTest({
-    user_id: new Types.ObjectId(userId),
+    user_id: userId,
     test_id: new Types.ObjectId(testId),
     score,
     answers: detailedAnswers,
@@ -163,21 +163,23 @@ export const submitTest = async (
     submit_at: new Date(),
   });
 
-  await userTest.save();
+  const saved = await userTest.save();
 
   // Cập nhật IRT abilities (Theta) cho User
-  try {
-    await updateIRTAbilities(
-      userId,
-      userTest._id.toString(),
-      detailedAnswers.map((a) => ({
-        irt_difficulty: a.irt_difficulty,
-        isCorrect: a.isCorrect,
-        part: a.part,
-      })),
-    );
-  } catch (err) {
-    console.warn("⚠️ Failed to update IRT abilities after Full Test:", err);
+  if (userId !== "guest") {
+    try {
+      await updateIRTAbilities(
+        userId,
+        userTest._id.toString(),
+        detailedAnswers.map((a) => ({
+          irt_difficulty: a.irt_difficulty,
+          isCorrect: a.isCorrect,
+          part: a.part,
+        })),
+      );
+    } catch (err) {
+      console.warn("⚠️ Failed to update IRT abilities after Full Test:", err);
+    }
   }
 
   // Cập nhật thống kê cho test
@@ -185,7 +187,7 @@ export const submitTest = async (
     $inc: { countSubmit: 1 },
   });
 
-  return { score, answers: detailedAnswers };
+  return { score, answers: detailedAnswers, resultId: saved._id };
 };
 
 export const getTestsWithScoreAndSearch = async (

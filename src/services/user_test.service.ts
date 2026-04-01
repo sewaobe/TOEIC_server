@@ -9,7 +9,7 @@ export const getRecentUserTestsService = async (
   userId: string,
   limit: number = 3
 ): Promise<IUserRecentTest[]> => {
-  const userObjectId = new Types.ObjectId(userId);
+  const userObjectId = userId;
 
   const recentTests = await UserTest.aggregate<IUserRecentTest>([
     // L?c b�i l�m c?a user
@@ -61,7 +61,7 @@ export const getUserTestHistoryService = async (
   const safeLimit = Math.min(100, Math.max(1, Number(limit) || 10)); // ch?n limit qu� l?n
   const skip = (safePage - 1) * safeLimit;
 
-  const userObjectId = new Types.ObjectId(userId);
+  const userObjectId = userId;
   const testObjectId = new Types.ObjectId(testId);
 
   const pipeline: PipelineStage[] = [
@@ -240,3 +240,25 @@ export const updatedThetaInUserTestService = async (
 
   return updated;
 };
+
+
+export const claimUserTestService = async (
+  resultId: string,
+  userId: string
+) => {
+  const resultIdObject = new Types.ObjectId(resultId);
+  const record = await UserTest.findOneAndUpdate(
+    {
+      _id: resultIdObject,
+      user_id: "guest"
+    },
+    {
+      $set: {
+        user_id: userId
+      }
+    },
+    { new: true }
+  )
+
+  return record;
+}

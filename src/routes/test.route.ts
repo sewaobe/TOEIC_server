@@ -3,9 +3,10 @@ import { Router } from "express";
 import {
   getRecentUserTests,
   getUserTestHistory,
+  claimUserTest
 } from "../controllers/user-test.controller";
 
-import { verifyAccessToken } from "../middlewares/verifyAccessToken.middleware";
+import { verifyAccessToken, verifyAccessTokenForSubmitTest } from "../middlewares/verifyAccessToken.middleware";
 import {
   getLatestTests,
   getTest,
@@ -152,6 +153,6 @@ router.get("/", verifyAccessToken, getTestsWithScoreAndSearch);
 router.get("/:testId", getTest);
 router.get("/:testId/history", verifyAccessToken, getUserTestHistory);
 router.get("/:testId/detail", verifyAccessToken, getTestDetail);
-router.post("/:testId/submit", verifyAccessToken, submitTest);
-
+router.post("/:testId/submit", verifyAccessTokenForSubmitTest, submitTest);
+router.patch("/claim-guest-result", verifyAccessToken, claimUserTest);
 export default router;

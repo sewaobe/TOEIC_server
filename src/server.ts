@@ -2,20 +2,24 @@
 import dotenv from "dotenv";
 dotenv.config();
 
+const isProduction = process.env.NODE_ENV === "production";
+
 import * as Sentry from '@sentry/node'; // Sentry
 import { nodeProfilingIntegration } from '@sentry/profiling-node'; // Sentry
 
 // === KHỞI TẠO SENTRY ===
-Sentry.init({
-  dsn: process.env.SENTRY_DSN,
-  integrations: [
-    // Bật tính năng theo dõi hiệu suất (Profiling)
-    nodeProfilingIntegration(),
-  ],
-  // TracesSampleRate: 1.0 nghĩa là gửi 100% dữ liệu về Sentry (Dùng lúc dev/test)
-  tracesSampleRate: 1.0,
-  profilesSampleRate: 1.0,
-})
+if (isProduction) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    integrations: [
+      // Bật tính năng theo dõi hiệu suất (Profiling)
+      nodeProfilingIntegration(),
+    ],
+    // TracesSampleRate: 1.0 nghĩa là gửi 100% dữ liệu về Sentry (Dùng lúc dev/test)
+    tracesSampleRate: 1.0,
+    profilesSampleRate: 1.0,
+  })
+}
 
 import express, { Request, Response } from "express";
 import path from "path";
@@ -225,7 +229,9 @@ app.use("/api/chat-feedback", verifyAccessToken, chatFeedbackRouter);
 app.use("/api/azure-ai", azureAIRouter);
 
 // Middleware của Sentry để ghi lại lỗi (phải đặt sau tất cả route)
-Sentry.setupExpressErrorHandler(app);
+if(isProduction) {
+  Sentry.setupExpressErrorHandler(app);
+}
 
 app.use(errorLogger);
 
@@ -233,7 +239,7 @@ app.use(errorLogger);
 app.use((err: any, req: Request, res: Response, next: any) => {
   const statusCode = err.status || 500;
 
-  const sentryId = (res as any).sentry || '';
+  const sentryId = (res as any).sentry || 'Sentry inactive';
 
   const response = ApiResponse.fail(
     err.message || "Internal Server Error",
