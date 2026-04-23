@@ -45,5 +45,5 @@ const QuizSchema = new Schema<IQuiz>(
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
   }
 );
-
+	
 export const Quiz = model<IQuiz>("Quiz", QuizSchema);
