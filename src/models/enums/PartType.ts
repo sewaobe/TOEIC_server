@@ -1,4 +1,5 @@
 export enum PartType {
+    GENERAL = 0,
     PART_1 = 1,
     PART_2 = 2,
     PART_3 = 3,
