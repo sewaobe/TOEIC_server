@@ -13,7 +13,7 @@ interface ISegment {
   text: string;
   startTime: number;
   endTime: number;
-  words?: IWord[];
+  translationVi: string;
 }
 
 export interface IShadowing extends Document {
@@ -47,7 +47,7 @@ const ShadowingSchema = new Schema<IShadowing>(
         text: String,
         startTime: Number,
         endTime: Number,
-        words: [{ word: String, start: Number, end: Number }],
+        translationVi: String
       },
     ],
     display_mode: {
