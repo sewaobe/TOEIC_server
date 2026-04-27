@@ -3,14 +3,9 @@ import { PartType } from "./enums/PartType";
 import { CERFLevel } from "./topic_vocabulary.model";
 import { TestStatus } from "./enums/TestStatus";
 
-interface IWord {
-  word: string;
-  start: number;
-  end: number;
-}
-
 interface ISegment {
   text: string;
+  ipa: string;
   startTime: number;
   endTime: number;
   translationVi: string;
@@ -19,7 +14,10 @@ interface ISegment {
 export interface IShadowing extends Document {
   topic: Types.ObjectId[];
   title: string;
+  thumbnailUrl: string;
+  tags: string[];
   part_type: PartType;
+  media_type: string;
   level: CERFLevel;
   status: TestStatus;
   transcript: string;
@@ -36,6 +34,9 @@ const ShadowingSchema = new Schema<IShadowing>(
   {
     topic: [{ type: Schema.Types.ObjectId, ref: "LessonManager" }],
     title: { type: String, required: true },
+    thumbnailUrl: String,
+    media_type: String,
+    tags: [{ type: String }],
     part_type: { type: Number, enum: Object.values(PartType).filter(v => typeof v === "number"), required: true },
     level: { type: String, enum: Object.values(CERFLevel), required: true },
     status: { type: String, enum: Object.values(TestStatus), default: TestStatus.DRAFT },
@@ -45,6 +46,7 @@ const ShadowingSchema = new Schema<IShadowing>(
     timings: [
       {
         text: String,
+        ipa: String,
         startTime: Number,
         endTime: Number,
         translationVi: String
