@@ -71,6 +71,7 @@ import dictationUserRouter from "./routes/dictation.route";
 import dictationAttemptRouter from "./routes/dictation_attempt.route";
 import shadowingUserRouter from "./routes/shadowing.route";
 import progressUserRouter from "./routes/progress.route";
+import shadowingV2Router from "./routes/shadowing_v2.route";
 
 // 🆕 Learning Path routes (user study in learning path)
 import quizLearningPathRouter from "./routes/quiz_learningpath.route";
@@ -158,6 +159,7 @@ app.use("/api/reports", verifyAccessToken, reportRouter);
 app.use("/api/dictations", verifyAccessToken, dictationUserRouter);
 app.use("/api/dictation-attempts", verifyAccessToken, dictationAttemptRouter);
 app.use("/api/shadowings", verifyAccessToken, shadowingUserRouter);
+app.use("/api/v2/shadowings", shadowingV2Router);
 app.use(
   "/api/progress/statistic-result",
   verifyAccessToken,
