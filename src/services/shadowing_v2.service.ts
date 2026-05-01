@@ -1,6 +1,7 @@
 import { Types } from "mongoose";
 import { Shadowing } from "../models/shadowing.model";
 import { TestStatus } from "../models/enums/TestStatus";
+import { PracticeSession } from "../models/practice_session.model";
 
 export type ShadowingV2Category = "ALL" | "TOEIC" | "TED";
 export type ShadowingV2Level = "ALL" | "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
@@ -170,4 +171,45 @@ export const getShadowingV2DetailService = async (shadowingId: string) => {
   }).lean();
 
   return shadowing;
+};
+
+export const getShadowingV2ProgressByIdsService = async (
+  userId: string,
+  shadowingIds: string[]
+) => {
+  const validShadowingIds = Array.from(new Set(shadowingIds))
+    .filter((id) => Types.ObjectId.isValid(id))
+    .map((id) => new Types.ObjectId(id));
+
+  if (validShadowingIds.length === 0) {
+    return [];
+  }
+
+  const sessions = await PracticeSession.find({
+    user_id: new Types.ObjectId(userId),
+    practice_type: "shadowing",
+    status: "in_progress",
+    topic_id: { $in: validShadowingIds },
+  })
+    .select("topic_id completed_items total_items completed_indices last_activity_at")
+    .sort({ last_activity_at: -1 })
+    .lean();
+
+  const latestByTopic = new Map<string, (typeof sessions)[number]>();
+  sessions.forEach((session) => {
+    const topicId = session.topic_id.toString();
+    if (!latestByTopic.has(topicId)) {
+      latestByTopic.set(topicId, session);
+    }
+  });
+
+  return Array.from(latestByTopic.values()).map((session) => {
+    const completedCount = session.completed_indices?.length || session.completed_items || 0;
+    const totalItems = Math.max(session.total_items || 0, 1);
+
+    return {
+      lessonId: session.topic_id.toString(),
+      progress: Math.min(100, Math.round((completedCount / totalItems) * 100)),
+    };
+  });
 };

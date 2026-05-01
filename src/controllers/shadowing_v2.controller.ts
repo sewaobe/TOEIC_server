@@ -3,6 +3,7 @@ import { ApiResponse } from "../utils/ApiResponse";
 import {
   getShadowingV2DetailService,
   getShadowingV2ListService,
+  getShadowingV2ProgressByIdsService,
   ShadowingV2Category,
   ShadowingV2Level,
   ShadowingV2Sort,
@@ -63,6 +64,36 @@ export const getShadowingV2DetailController = async (
     return res
       .status(200)
       .json(ApiResponse.success(shadowing, "Lấy shadowing thành công"));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getShadowingV2ProgressByIdsController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    if (!req.user?._id) {
+      return res.status(401).json(ApiResponse.fail("Unauthorized"));
+    }
+
+    const shadowingIds = req.body.shadowingIds;
+    if (!Array.isArray(shadowingIds)) {
+      return res
+        .status(400)
+        .json(ApiResponse.fail("shadowingIds phải là một mảng"));
+    }
+
+    const progress = await getShadowingV2ProgressByIdsService(
+      req.user._id,
+      shadowingIds
+    );
+
+    return res
+      .status(200)
+      .json(ApiResponse.success(progress, "Lấy tiến trình shadowing thành công"));
   } catch (error) {
     next(error);
   }
