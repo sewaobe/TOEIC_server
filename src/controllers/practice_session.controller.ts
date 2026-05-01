@@ -63,11 +63,12 @@ export const startOrResumeSessionController = async (req: Request, res: Response
 export const updateSessionProgressController = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { sessionId } = req.params;
-        const { current_index, completed_items, correct_count, total_accuracy } = req.body;
+        const { current_index, completed_items, completed_indices, correct_count, total_accuracy } = req.body;
 
         const session = await updateSessionProgressService(sessionId, {
             current_index,
             completed_items,
+            completed_indices,
             correct_count,
             total_accuracy
         });

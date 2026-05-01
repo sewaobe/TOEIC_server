@@ -71,6 +71,8 @@ import dictationUserRouter from "./routes/dictation.route";
 import dictationAttemptRouter from "./routes/dictation_attempt.route";
 import shadowingUserRouter from "./routes/shadowing.route";
 import progressUserRouter from "./routes/progress.route";
+import shadowingV2Router from "./routes/shadowing_v2.route";
+import shadowingAttemptRouter from "./routes/shadowing_attempt.route";
 
 // 🆕 Learning Path routes (user study in learning path)
 import quizLearningPathRouter from "./routes/quiz_learningpath.route";
@@ -158,6 +160,8 @@ app.use("/api/reports", verifyAccessToken, reportRouter);
 app.use("/api/dictations", verifyAccessToken, dictationUserRouter);
 app.use("/api/dictation-attempts", verifyAccessToken, dictationAttemptRouter);
 app.use("/api/shadowings", verifyAccessToken, shadowingUserRouter);
+app.use("/api/shadowing-attempts", verifyAccessToken, shadowingAttemptRouter);
+app.use("/api/v2/shadowings", verifyAccessToken, shadowingV2Router);
 app.use(
   "/api/progress/statistic-result",
   verifyAccessToken,
@@ -229,7 +233,7 @@ app.use("/api/chat-feedback", verifyAccessToken, chatFeedbackRouter);
 app.use("/api/azure-ai", azureAIRouter);
 
 // Middleware của Sentry để ghi lại lỗi (phải đặt sau tất cả route)
-if(isProduction) {
+if (isProduction) {
   Sentry.setupExpressErrorHandler(app);
 }
 

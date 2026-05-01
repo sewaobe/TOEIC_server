@@ -1,6 +1,6 @@
 import { model, Schema, Types, Document } from "mongoose";
 
-export type PracticeType = "definition_based" | "fill_blank" | "listening" | "reading" | "grammar";
+export type PracticeType = "definition_based" | "fill_blank" | "listening" | "reading" | "grammar" | "shadowing";
 export type SessionStatus = "in_progress" | "completed" | "cancelled";
 
 export interface IPracticeSession extends Document {
@@ -13,6 +13,7 @@ export interface IPracticeSession extends Document {
     total_items: number;
     completed_items: number;
     current_index: number;
+    completed_indices: number[];
     
     // Kết quả
     correct_count: number;
@@ -28,7 +29,7 @@ const PracticeSessionSchema = new Schema<IPracticeSession>({
     user_id: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
     practice_type: { 
         type: String, 
-        enum: ["definition_based", "fill_blank", "listening", "reading", "grammar"],
+        enum: ["definition_based", "fill_blank", "listening", "reading", "grammar", "shadowing"],
         required: true,
         index: true
     },
@@ -43,6 +44,7 @@ const PracticeSessionSchema = new Schema<IPracticeSession>({
     total_items: { type: Number, required: true, default: 0 },
     completed_items: { type: Number, default: 0 },
     current_index: { type: Number, default: 0 },
+    completed_indices: { type: [Number], default: [] },
     
     correct_count: { type: Number, default: 0 },
     total_accuracy: { type: Number, default: 0 },
