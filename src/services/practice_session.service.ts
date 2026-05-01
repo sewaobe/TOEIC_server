@@ -55,6 +55,7 @@ export const updateSessionProgressService = async (
     data: {
         current_index?: number;
         completed_items?: number;
+        completed_indices?: number[];
         correct_count?: number;
         total_accuracy?: number;
     }
