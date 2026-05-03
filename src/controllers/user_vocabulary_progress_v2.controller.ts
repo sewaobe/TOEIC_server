@@ -3,6 +3,7 @@ import { ApiResponse } from "../utils/ApiResponse";
 import {
     getMemoryStatusSummary,
     getReviewSchedule,
+    getSuggestionDetail,
     getSuggestedVocabulary,
     getTodayReviewSummary,
     SuggestionPriority,
@@ -144,6 +145,39 @@ export const getSuggestedVocabularyController = async (
         return res
             .status(200)
             .json(ApiResponse.success(data, "Lấy từ vựng gợi ý thành công"));
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getSuggestionDetailController = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+) => {
+    try {
+        const userId = getAuthenticatedUserId(req);
+        if (!userId) {
+            return res.status(401).json(ApiResponse.fail("Unauthorized"));
+        }
+
+        const vocabularyId = req.params.vocabulary_id;
+        if (!vocabularyId) {
+            return res
+                .status(400)
+                .json(ApiResponse.fail("vocabulary_id is required"));
+        }
+
+        const data = await getSuggestionDetail(userId, vocabularyId);
+        if (!data) {
+            return res
+                .status(404)
+                .json(ApiResponse.fail("Suggestion detail not found"));
+        }
+
+        return res
+            .status(200)
+            .json(ApiResponse.success(data, "Lấy chi tiết gợi ý thành công"));
     } catch (error) {
         next(error);
     }

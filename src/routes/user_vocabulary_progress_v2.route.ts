@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
     getMemoryStatusSummaryController,
     getReviewScheduleController,
+    getSuggestionDetailController,
     getSuggestedVocabularyController,
     getTodayReviewSummaryController,
 } from "../controllers/user_vocabulary_progress_v2.controller";
@@ -12,5 +13,6 @@ router.get("/today-review", getTodayReviewSummaryController);
 router.get("/review-schedule", getReviewScheduleController);
 router.get("/memory-status", getMemoryStatusSummaryController);
 router.get("/suggestions", getSuggestedVocabularyController);
+router.get("/suggestions/:vocabulary_id", getSuggestionDetailController);
 
 export default router;

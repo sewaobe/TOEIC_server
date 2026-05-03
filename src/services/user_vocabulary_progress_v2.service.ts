@@ -24,6 +24,10 @@ import {
 import { FlashCardProgress } from "../models/flashcard_progress.model";
 import { TopicVocabulary } from "../models/topic_vocabulary.model";
 import { Vocabulary } from "../models/vocabulary";
+import {
+    buildSuggestionReasons,
+    SuggestionReason,
+} from "../utils/suggestionReason.util";
 
 export interface UpdateVocabularyMemoryV2Params {
     userId: string | Types.ObjectId;
@@ -124,6 +128,22 @@ export interface PaginatedSuggestions {
         overdue: number;
         mastered: number;
     };
+}
+
+export interface SuggestionDetail {
+    vocabulary_id: string;
+    word: string;
+    phonetic?: string;
+    meaning?: string;
+    topic_title?: string;
+    level?: string;
+    priority: SuggestionPriority;
+    p_recall: number;
+    half_life_days: number;
+    last_reviewed_at: Date | null;
+    due_at: Date | null;
+    last_response_time_avg_ms: number | null;
+    reasons: SuggestionReason[];
 }
 
 export async function updateVocabularyMemoryV2AfterFlashcardSession(
@@ -366,6 +386,64 @@ export async function getSuggestedVocabulary(
             totalPages,
         },
         counters,
+    };
+}
+
+export async function getSuggestionDetail(
+    userId: string | Types.ObjectId,
+    vocabularyId: string | Types.ObjectId
+): Promise<SuggestionDetail | null> {
+    const userObjectId = toObjectId(userId, "userId");
+    const vocabularyObjectId = toObjectId(vocabularyId, "vocabularyId");
+    const now = new Date();
+    const bounds = getVietnamDateBounds(now);
+    const scope = await getLearnedVocabularyScope(userObjectId);
+    const vocabularyKey = String(vocabularyObjectId);
+
+    if (!scope.vocabularyTopicMap.has(vocabularyKey)) {
+        return null;
+    }
+
+    const [memory, vocabulary] = await Promise.all([
+        UserVocabularyMemoryV2.findOne({
+            user_id: userObjectId,
+            vocabulary_id: vocabularyObjectId,
+        }).lean(),
+        Vocabulary.findById(vocabularyObjectId).lean(),
+    ]);
+
+    if (!memory || !vocabulary) {
+        return null;
+    }
+
+    const pRecallNow = calculateMemoryPRecall(memory as any, now);
+    const priority = resolveSuggestionPriority(pRecallNow);
+    const topicMeta = scope.vocabularyTopicMap.get(vocabularyKey);
+
+    return {
+        vocabulary_id: vocabularyKey,
+        word: (vocabulary as any).word,
+        phonetic: (vocabulary as any).phonetic,
+        meaning: (vocabulary as any).definition,
+        topic_title: topicMeta?.title ?? (vocabulary as any).tags?.[0],
+        level: topicMeta?.level,
+        priority,
+        p_recall: pRecallNow,
+        half_life_days: roundNumber((memory as any).half_life_days, 6),
+        last_reviewed_at: (memory as any).last_reviewed_at ?? null,
+        due_at: (memory as any).due_at ?? null,
+        last_response_time_avg_ms: (memory as any).last_response_time_avg ?? null,
+        reasons: buildSuggestionReasons({
+            now,
+            dueAt: (memory as any).due_at ?? null,
+            lastReviewedAt: (memory as any).last_reviewed_at ?? null,
+            pRecallNow,
+            difficulty: (memory as any).difficulty,
+            lastHardCount: (memory as any).last_hard_count,
+            lastSeenCount: (memory as any).last_seen_count,
+            lastDhpRecallResult: (memory as any).last_dhp_recall_result,
+            lastResponseTimeAvgMs: (memory as any).last_response_time_avg,
+        }),
     };
 }
 
