@@ -11,9 +11,19 @@ import {
     clampDifficulty,
     resolveMemoryStatus,
     calForgetHalflife,
+    DHP_CONFIG,
+    MEMORY_SUGGESTION_POLICY,
+    MemoryUiBucket,
+    resolveMemoryUiBucket,
 } from "../utils/dhp.util";
 import { lookupSspMmcIntervalDays } from "../services/ssp_mmc_policy.service";
-import { UserVocabularyMemoryV2 } from "../models/user_vocabulary_progress_v2.model";
+import {
+    IUserVocabularyMemoryV2,
+    UserVocabularyMemoryV2,
+} from "../models/user_vocabulary_progress_v2.model";
+import { FlashCardProgress } from "../models/flashcard_progress.model";
+import { TopicVocabulary } from "../models/topic_vocabulary.model";
+import { Vocabulary } from "../models/vocabulary";
 
 export interface UpdateVocabularyMemoryV2Params {
     userId: string | Types.ObjectId;
@@ -50,6 +60,71 @@ export interface VocabularyMemoryV2UpdateResult {
 
 const OBSERVED_DIFFICULTY_WEIGHT = 0.35;
 const MAX_DIFFICULTY_STEP_PER_SESSION = 3;
+const VIETNAM_UTC_OFFSET_MS = 7 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export type SuggestionPriority = "high" | "medium" | "low";
+
+export interface TodayReviewSummary {
+    total: number;
+    dueToday: number;
+    atRisk: number;
+    overdue: number;
+    primaryReviewCount: number;
+    overdueReviewCount: number;
+}
+
+export interface ReviewSchedulePoint {
+    date: string;
+    label: string;
+    count: number;
+}
+
+export interface MemoryStatusSummaryItem {
+    bucket: MemoryUiBucket;
+    label: string;
+    count: number;
+    percentage: number;
+}
+
+export interface SuggestedVocabularyItem {
+    id: string;
+    vocabularyId: string;
+    word: string;
+    phonetic?: string;
+    meaning?: string;
+    type?: string;
+    topic?: string;
+    level?: string;
+    priority: SuggestionPriority;
+    priorityLabel: string;
+    pRecallNow: number;
+    dueAt: Date | null;
+    dueLabel: string;
+    memoryBucket: MemoryUiBucket;
+    status: "learning" | "reviewing" | "mastered";
+    halfLifeDays: number;
+    difficulty: number;
+    reviewCount: number;
+    sessionCount: number;
+}
+
+export interface PaginatedSuggestions {
+    items: SuggestedVocabularyItem[];
+    pagination: {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number;
+    };
+    counters: {
+        all: number;
+        dueToday: number;
+        atRisk: number;
+        overdue: number;
+        mastered: number;
+    };
+}
 
 export async function updateVocabularyMemoryV2AfterFlashcardSession(
     params: UpdateVocabularyMemoryV2Params
@@ -98,6 +173,200 @@ export async function updateVocabularyMemoryV2AfterFlashcardSession(
     }
 
     return results;
+}
+
+export async function getTodayReviewSummary(
+    userId: string | Types.ObjectId
+): Promise<TodayReviewSummary> {
+    const userObjectId = toObjectId(userId, "userId");
+    const now = new Date();
+    const bounds = getVietnamDateBounds(now);
+    const memories = await getScopedMemoryRecords(userObjectId);
+
+    let dueToday = 0;
+    let atRisk = 0;
+    let overdue = 0;
+
+    for (const memory of memories) {
+        if (memory.status === "mastered") {
+            continue;
+        }
+
+        const dueAt = memory.due_at ?? null;
+        const pRecallNow = calculateMemoryPRecall(memory, now);
+
+        if (dueAt && dueAt < bounds.startOfToday) {
+            overdue += 1;
+            continue;
+        }
+
+        if (
+            dueAt &&
+            dueAt >= bounds.startOfToday &&
+            dueAt < bounds.startOfTomorrow
+        ) {
+            dueToday += 1;
+            continue;
+        }
+
+        if (
+            dueAt &&
+            dueAt >= bounds.startOfTomorrow &&
+            dueAt <= bounds.endOfAtRiskWindow &&
+            pRecallNow < MEMORY_SUGGESTION_POLICY.AT_RISK_P_RECALL_THRESHOLD
+        ) {
+            atRisk += 1;
+        }
+    }
+
+    return {
+        total: dueToday + atRisk + overdue,
+        dueToday,
+        atRisk,
+        overdue,
+        primaryReviewCount: dueToday + atRisk,
+        overdueReviewCount: overdue,
+    };
+}
+
+export async function getReviewSchedule(
+    userId: string | Types.ObjectId,
+    rangeDays: 7 | 14 | 30 = 7
+): Promise<ReviewSchedulePoint[]> {
+    const userObjectId = toObjectId(userId, "userId");
+    const bounds = getVietnamDateBounds(new Date());
+    const memories = await getScopedMemoryRecords(userObjectId);
+    const points: ReviewSchedulePoint[] = [];
+
+    for (let dayIndex = 0; dayIndex < rangeDays; dayIndex++) {
+        const start = new Date(bounds.startOfToday.getTime() + dayIndex * DAY_MS);
+        const end = new Date(start.getTime() + DAY_MS);
+        const count = memories.filter((memory) => {
+            const dueAt = memory.due_at;
+            return (
+                memory.status !== "mastered" &&
+                dueAt &&
+                dueAt >= start &&
+                dueAt < end
+            );
+        }).length;
+
+        points.push({
+            date: formatVietnamDateKey(start),
+            label: resolveScheduleLabel(dayIndex),
+            count,
+        });
+    }
+
+    return points;
+}
+
+export async function getMemoryStatusSummary(
+    userId: string | Types.ObjectId
+): Promise<MemoryStatusSummaryItem[]> {
+    const userObjectId = toObjectId(userId, "userId");
+    const now = new Date();
+    const bounds = getVietnamDateBounds(now);
+    const memories = await getScopedMemoryRecords(userObjectId);
+
+    const counts: Record<MemoryUiBucket, number> = {
+        mastered: 0,
+        active_reviewing: 0,
+        at_risk: 0,
+        overdue: 0,
+    };
+
+    for (const memory of memories) {
+        const pRecallNow = calculateMemoryPRecall(memory, now);
+        const bucket = resolveMemoryUiBucket({
+            status: memory.status,
+            dueAt: memory.due_at ?? null,
+            pRecallNow,
+            startOfToday: bounds.startOfToday,
+            startOfTomorrow: bounds.startOfTomorrow,
+            endOfAtRiskWindow: bounds.endOfAtRiskWindow,
+        });
+
+        counts[bucket] += 1;
+    }
+
+    const total = memories.length;
+
+    return [
+        toMemoryStatusSummaryItem("mastered", "Đã nắm vững", counts.mastered, total),
+        toMemoryStatusSummaryItem(
+            "active_reviewing",
+            "Đang ôn",
+            counts.active_reviewing,
+            total
+        ),
+        toMemoryStatusSummaryItem("at_risk", "Sắp quên", counts.at_risk, total),
+        toMemoryStatusSummaryItem("overdue", "Quá hạn", counts.overdue, total),
+    ];
+}
+
+export async function getSuggestedVocabulary(
+    userId: string | Types.ObjectId,
+    options: {
+        page?: number;
+        limit?: number;
+        search?: string;
+        topic?: string;
+        level?: string;
+        priority?: SuggestionPriority | "all";
+        bucket?: MemoryUiBucket | "all";
+        sortBy?: "due_at" | "p_recall" | "word";
+        sortOrder?: "asc" | "desc";
+    }
+): Promise<PaginatedSuggestions> {
+    const userObjectId = toObjectId(userId, "userId");
+    const page = options.page ?? 1;
+    const limit = options.limit ?? 20;
+    const now = new Date();
+    const bounds = getVietnamDateBounds(now);
+    const scope = await getLearnedVocabularyScope(userObjectId);
+    const memories = await getScopedMemoryRecords(userObjectId, scope.vocabularyIds);
+    const vocabularyIds = memories.map((memory) => memory.vocabulary_id);
+    const vocabularies = await Vocabulary.find({ _id: { $in: vocabularyIds } }).lean();
+    const vocabularyById = new Map(
+        vocabularies.map((vocabulary: any) => [String(vocabulary._id), vocabulary])
+    );
+
+    const allItems = memories
+        .map((memory) => {
+            const vocabulary = vocabularyById.get(String(memory.vocabulary_id));
+            if (!vocabulary) {
+                return null;
+            }
+
+            return toSuggestedVocabularyItem({
+                memory,
+                vocabulary,
+                topicMeta: scope.vocabularyTopicMap.get(String(memory.vocabulary_id)),
+                now,
+                bounds,
+            });
+        })
+        .filter((item): item is SuggestedVocabularyItem => Boolean(item));
+
+    const counters = buildSuggestionCounters(allItems, bounds);
+    const filtered = filterSuggestionItems(allItems, options);
+    const sorted = sortSuggestionItems(filtered, options.sortBy ?? "due_at", options.sortOrder ?? "asc");
+    const total = sorted.length;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const startIndex = (page - 1) * limit;
+    const items = sorted.slice(startIndex, startIndex + limit);
+
+    return {
+        items,
+        pagination: {
+            page,
+            limit,
+            total,
+            totalPages,
+        },
+        counters,
+    };
 }
 
 async function createInitialMemory(input: {
@@ -312,6 +581,347 @@ function calculateSmoothedDifficulty(
     );
 
     return clampDifficulty(current + limitedDelta);
+}
+
+async function getLearnedVocabularyScope(userObjectId: Types.ObjectId): Promise<{
+    vocabularyIds: Types.ObjectId[];
+    vocabularyTopicMap: Map<string, { topicId: string; title: string; level?: string }>;
+}> {
+    const topicIds = await FlashCardProgress.distinct("topic_vocabulary_id", {
+        user_id: userObjectId,
+    });
+
+    if (topicIds.length === 0) {
+        return {
+            vocabularyIds: [],
+            vocabularyTopicMap: new Map(),
+        };
+    }
+
+    const topics = await TopicVocabulary.find({
+        _id: { $in: topicIds },
+    })
+        .select("_id title level vocabularies_id")
+        .lean();
+
+    const vocabularyIdsByKey = new Map<string, Types.ObjectId>();
+    const vocabularyTopicMap = new Map<
+        string,
+        { topicId: string; title: string; level?: string }
+    >();
+
+    for (const topic of topics as any[]) {
+        for (const vocabularyId of topic.vocabularies_id ?? []) {
+            const key = String(vocabularyId);
+            if (!vocabularyIdsByKey.has(key)) {
+                vocabularyIdsByKey.set(key, new Types.ObjectId(key));
+                vocabularyTopicMap.set(key, {
+                    topicId: String(topic._id),
+                    title: topic.title,
+                    level: topic.level,
+                });
+            }
+        }
+    }
+
+    return {
+        vocabularyIds: Array.from(vocabularyIdsByKey.values()),
+        vocabularyTopicMap,
+    };
+}
+
+async function getScopedMemoryRecords(
+    userObjectId: Types.ObjectId,
+    vocabularyIds?: Types.ObjectId[]
+): Promise<IUserVocabularyMemoryV2[]> {
+    const scopedVocabularyIds =
+        vocabularyIds ?? (await getLearnedVocabularyScope(userObjectId)).vocabularyIds;
+
+    if (scopedVocabularyIds.length === 0) {
+        return [];
+    }
+
+    return UserVocabularyMemoryV2.find({
+        user_id: userObjectId,
+        vocabulary_id: { $in: scopedVocabularyIds },
+    }).lean() as any;
+}
+
+function calculateMemoryPRecall(
+    memory: Pick<IUserVocabularyMemoryV2, "half_life_days" | "last_reviewed_at">,
+    now: Date
+): number {
+    if (!memory.last_reviewed_at) {
+        return DHP_CONFIG.MAX_P_RECALL;
+    }
+
+    return roundNumber(
+        calculateRecallProbability(memory.half_life_days, memory.last_reviewed_at, now),
+        6
+    );
+}
+
+function getVietnamDateBounds(now: Date): {
+    startOfToday: Date;
+    startOfTomorrow: Date;
+    endOfAtRiskWindow: Date;
+} {
+    const vietnamNow = new Date(now.getTime() + VIETNAM_UTC_OFFSET_MS);
+    const year = vietnamNow.getUTCFullYear();
+    const month = vietnamNow.getUTCMonth();
+    const date = vietnamNow.getUTCDate();
+    const startOfTodayUtcMs =
+        Date.UTC(year, month, date, 0, 0, 0, 0) - VIETNAM_UTC_OFFSET_MS;
+    const startOfToday = new Date(startOfTodayUtcMs);
+    const startOfTomorrow = new Date(startOfTodayUtcMs + DAY_MS);
+    const endOfAtRiskWindow = new Date(startOfTodayUtcMs + 8 * DAY_MS - 1);
+
+    return {
+        startOfToday,
+        startOfTomorrow,
+        endOfAtRiskWindow,
+    };
+}
+
+function formatVietnamDateKey(date: Date): string {
+    const vietnamDate = new Date(date.getTime() + VIETNAM_UTC_OFFSET_MS);
+    const year = vietnamDate.getUTCFullYear();
+    const month = String(vietnamDate.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(vietnamDate.getUTCDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+}
+
+function resolveScheduleLabel(dayIndex: number): string {
+    if (dayIndex === 0) {
+        return "Hôm nay";
+    }
+
+    if (dayIndex === 1) {
+        return "Ngày mai";
+    }
+
+    return `Ngày ${dayIndex + 1}`;
+}
+
+function toMemoryStatusSummaryItem(
+    bucket: MemoryUiBucket,
+    label: string,
+    count: number,
+    total: number
+): MemoryStatusSummaryItem {
+    return {
+        bucket,
+        label,
+        count,
+        percentage: total === 0 ? 0 : roundNumber((count / total) * 100, 2),
+    };
+}
+
+function toSuggestedVocabularyItem(input: {
+    memory: IUserVocabularyMemoryV2;
+    vocabulary: any;
+    topicMeta?: { topicId: string; title: string; level?: string };
+    now: Date;
+    bounds: ReturnType<typeof getVietnamDateBounds>;
+}): SuggestedVocabularyItem {
+    const { memory, vocabulary, topicMeta, now, bounds } = input;
+    const pRecallNow = calculateMemoryPRecall(memory, now);
+    const priority = resolveSuggestionPriority(pRecallNow);
+    const memoryBucket = resolveMemoryUiBucket({
+        status: memory.status,
+        dueAt: memory.due_at ?? null,
+        pRecallNow,
+        startOfToday: bounds.startOfToday,
+        startOfTomorrow: bounds.startOfTomorrow,
+        endOfAtRiskWindow: bounds.endOfAtRiskWindow,
+    });
+
+    return {
+        id: String(memory._id),
+        vocabularyId: String(memory.vocabulary_id),
+        word: vocabulary.word,
+        phonetic: vocabulary.phonetic,
+        meaning: vocabulary.definition,
+        type: vocabulary.type,
+        topic: topicMeta?.title ?? vocabulary.tags?.[0],
+        level: topicMeta?.level,
+        priority,
+        priorityLabel: resolvePriorityLabel(priority),
+        pRecallNow,
+        dueAt: memory.due_at ?? null,
+        dueLabel: resolveDueLabel(memory.due_at ?? null, bounds),
+        memoryBucket,
+        status: memory.status,
+        halfLifeDays: roundNumber(memory.half_life_days, 6),
+        difficulty: memory.difficulty,
+        reviewCount: memory.review_count,
+        sessionCount: memory.session_count,
+    };
+}
+
+function resolveSuggestionPriority(pRecallNow: number): SuggestionPriority {
+    if (pRecallNow < MEMORY_SUGGESTION_POLICY.PRIORITY_HIGH_P_RECALL_THRESHOLD) {
+        return "high";
+    }
+
+    if (pRecallNow < MEMORY_SUGGESTION_POLICY.PRIORITY_MEDIUM_P_RECALL_THRESHOLD) {
+        return "medium";
+    }
+
+    return "low";
+}
+
+function resolvePriorityLabel(priority: SuggestionPriority): string {
+    if (priority === "high") {
+        return "Cao";
+    }
+
+    if (priority === "medium") {
+        return "Trung bình";
+    }
+
+    return "Thấp";
+}
+
+function resolveDueLabel(
+    dueAt: Date | null,
+    bounds: ReturnType<typeof getVietnamDateBounds>
+): string {
+    if (!dueAt) {
+        return "Chưa có lịch";
+    }
+
+    if (dueAt < bounds.startOfToday) {
+        return "Quá hạn";
+    }
+
+    if (dueAt >= bounds.startOfToday && dueAt < bounds.startOfTomorrow) {
+        return "Hôm nay";
+    }
+
+    const dayDiff = Math.floor(
+        (dueAt.getTime() - bounds.startOfToday.getTime()) / DAY_MS
+    );
+
+    if (dayDiff === 1) {
+        return "Ngày mai";
+    }
+
+    return `${dayDiff} ngày tới`;
+}
+
+function buildSuggestionCounters(
+    items: SuggestedVocabularyItem[],
+    bounds: ReturnType<typeof getVietnamDateBounds>
+): PaginatedSuggestions["counters"] {
+    return items.reduce(
+        (counters, item) => {
+            counters.all += 1;
+
+            if (item.memoryBucket === "mastered") {
+                counters.mastered += 1;
+            }
+
+            if (item.memoryBucket === "overdue") {
+                counters.overdue += 1;
+            }
+
+            if (
+                item.dueAt &&
+                item.dueAt >= bounds.startOfToday &&
+                item.dueAt < bounds.startOfTomorrow &&
+                item.status !== "mastered"
+            ) {
+                counters.dueToday += 1;
+            }
+
+            if (item.memoryBucket === "at_risk") {
+                counters.atRisk += 1;
+            }
+
+            return counters;
+        },
+        {
+            all: 0,
+            dueToday: 0,
+            atRisk: 0,
+            overdue: 0,
+            mastered: 0,
+        }
+    );
+}
+
+function filterSuggestionItems(
+    items: SuggestedVocabularyItem[],
+    options: {
+        search?: string;
+        topic?: string;
+        level?: string;
+        priority?: SuggestionPriority | "all";
+        bucket?: MemoryUiBucket | "all";
+    }
+): SuggestedVocabularyItem[] {
+    const search = options.search?.trim().toLowerCase();
+
+    return items.filter((item) => {
+        if (
+            search &&
+            !item.word.toLowerCase().includes(search) &&
+            !item.meaning?.toLowerCase().includes(search)
+        ) {
+            return false;
+        }
+
+        if (options.topic && options.topic !== "all" && item.topic !== options.topic) {
+            return false;
+        }
+
+        if (options.level && options.level !== "all" && item.level !== options.level) {
+            return false;
+        }
+
+        if (
+            options.priority &&
+            options.priority !== "all" &&
+            item.priority !== options.priority
+        ) {
+            return false;
+        }
+
+        if (
+            options.bucket &&
+            options.bucket !== "all" &&
+            item.memoryBucket !== options.bucket
+        ) {
+            return false;
+        }
+
+        return true;
+    });
+}
+
+function sortSuggestionItems(
+    items: SuggestedVocabularyItem[],
+    sortBy: "due_at" | "p_recall" | "word",
+    sortOrder: "asc" | "desc"
+): SuggestedVocabularyItem[] {
+    const direction = sortOrder === "asc" ? 1 : -1;
+
+    return [...items].sort((a, b) => {
+        if (sortBy === "word") {
+            return a.word.localeCompare(b.word) * direction;
+        }
+
+        if (sortBy === "p_recall") {
+            return (a.pRecallNow - b.pRecallNow) * direction;
+        }
+
+        const aTime = a.dueAt?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        const bTime = b.dueAt?.getTime() ?? Number.MAX_SAFE_INTEGER;
+
+        return (aTime - bTime) * direction;
+    });
 }
 
 function addDays(date: Date, days: number): Date {
