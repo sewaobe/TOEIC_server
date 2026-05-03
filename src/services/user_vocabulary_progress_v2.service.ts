@@ -68,6 +68,7 @@ const VIETNAM_UTC_OFFSET_MS = 7 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type SuggestionPriority = "high" | "medium" | "low";
+export type SuggestionBucket = "all" | "due_today" | MemoryUiBucket;
 
 export interface TodayReviewSummary {
     total: number;
@@ -334,7 +335,7 @@ export async function getSuggestedVocabulary(
         topic?: string;
         level?: string;
         priority?: SuggestionPriority | "all";
-        bucket?: MemoryUiBucket | "all";
+        bucket?: SuggestionBucket;
         sortBy?: "due_at" | "p_recall" | "word";
         sortOrder?: "asc" | "desc";
     }
@@ -370,7 +371,7 @@ export async function getSuggestedVocabulary(
         .filter((item): item is SuggestedVocabularyItem => Boolean(item));
 
     const counters = buildSuggestionCounters(allItems, bounds);
-    const filtered = filterSuggestionItems(allItems, options);
+    const filtered = filterSuggestionItems(allItems, options, bounds);
     const sorted = sortSuggestionItems(filtered, options.sortBy ?? "due_at", options.sortOrder ?? "asc");
     const total = sorted.length;
     const totalPages = Math.max(1, Math.ceil(total / limit));
@@ -937,8 +938,9 @@ function filterSuggestionItems(
         topic?: string;
         level?: string;
         priority?: SuggestionPriority | "all";
-        bucket?: MemoryUiBucket | "all";
-    }
+        bucket?: SuggestionBucket;
+    },
+    bounds: ReturnType<typeof getVietnamDateBounds>
 ): SuggestedVocabularyItem[] {
     const search = options.search?.trim().toLowerCase();
 
@@ -967,12 +969,19 @@ function filterSuggestionItems(
             return false;
         }
 
-        if (
-            options.bucket &&
-            options.bucket !== "all" &&
-            item.memoryBucket !== options.bucket
-        ) {
-            return false;
+        if (options.bucket && options.bucket !== "all") {
+            if (options.bucket === "due_today") {
+                if (
+                    !item.dueAt ||
+                    item.status === "mastered" ||
+                    item.dueAt < bounds.startOfToday ||
+                    item.dueAt >= bounds.startOfTomorrow
+                ) {
+                    return false;
+                }
+            } else if (item.memoryBucket !== options.bucket) {
+                return false;
+            }
         }
 
         return true;

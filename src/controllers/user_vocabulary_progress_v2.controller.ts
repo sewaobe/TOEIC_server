@@ -3,12 +3,12 @@ import { ApiResponse } from "../utils/ApiResponse";
 import {
     getMemoryStatusSummary,
     getReviewSchedule,
+    SuggestionBucket,
     getSuggestionDetail,
     getSuggestedVocabulary,
     getTodayReviewSummary,
     SuggestionPriority,
 } from "../services/user_vocabulary_progress_v2.service";
-import { MemoryUiBucket } from "../utils/dhp.util";
 
 export const getTodayReviewSummaryController = async (
     req: Request,
@@ -111,7 +111,7 @@ export const getSuggestedVocabularyController = async (
         if (!bucket) {
             return res.status(400).json(
                 ApiResponse.fail(
-                    "bucket must be all, mastered, active_reviewing, at_risk or overdue"
+                    "bucket must be all, due_today, mastered, active_reviewing, at_risk or overdue"
                 )
             );
         }
@@ -222,13 +222,14 @@ function parsePriority(value?: string): SuggestionPriority | "all" | undefined {
     return undefined;
 }
 
-function parseBucket(value?: string): MemoryUiBucket | "all" | undefined {
+function parseBucket(value?: string): SuggestionBucket | undefined {
     if (!value) {
         return "all";
     }
 
     if (
         value === "all" ||
+        value === "due_today" ||
         value === "mastered" ||
         value === "active_reviewing" ||
         value === "at_risk" ||
