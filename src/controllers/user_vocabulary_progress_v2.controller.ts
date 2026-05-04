@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import { ApiResponse } from "../utils/ApiResponse";
 import {
+    getSuggestionFilterOptions,
     getMemoryStatusSummary,
     getReviewSchedule,
     SuggestionBucket,
@@ -145,6 +146,27 @@ export const getSuggestedVocabularyController = async (
         return res
             .status(200)
             .json(ApiResponse.success(data, "Lấy từ vựng gợi ý thành công"));
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getSuggestionFilterOptionsController = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+) => {
+    try {
+        const userId = getAuthenticatedUserId(req);
+        if (!userId) {
+            return res.status(401).json(ApiResponse.fail("Unauthorized"));
+        }
+
+        const data = await getSuggestionFilterOptions(userId);
+
+        return res
+            .status(200)
+            .json(ApiResponse.success(data, "Lấy filter options cho bảng gợi ý từ vựng thành công"));
     } catch (error) {
         next(error);
     }

@@ -147,6 +147,17 @@ export interface SuggestionDetail {
     reasons: SuggestionReason[];
 }
 
+export interface SuggestionFilterOption {
+    value: string;
+    label: string;
+}
+
+export interface SuggestionFilterOptions {
+    topics: SuggestionFilterOption[];
+    levels: SuggestionFilterOption[];
+    priorities: Array<SuggestionFilterOption & { value: SuggestionPriority }>;
+}
+
 export async function updateVocabularyMemoryV2AfterFlashcardSession(
     params: UpdateVocabularyMemoryV2Params
 ): Promise<VocabularyMemoryV2UpdateResult[]> {
@@ -194,6 +205,52 @@ export async function updateVocabularyMemoryV2AfterFlashcardSession(
     }
 
     return results;
+}
+
+export async function getSuggestionFilterOptions(
+    userId: string | Types.ObjectId
+): Promise<SuggestionFilterOptions> {
+    const userObjectId = toObjectId(userId, "userId");
+    const scope = await getLearnedVocabularyScope(userObjectId);
+    const memories = await getScopedMemoryRecords(userObjectId, scope.vocabularyIds);
+    const learnedMemoryVocabularyIds = new Set(
+        memories.map((memory) => String(memory.vocabulary_id))
+    );
+
+    const topicByTitle = new Map<string, SuggestionFilterOption>();
+    const levelByValue = new Map<string, SuggestionFilterOption>();
+
+    for (const [vocabularyId, topicMeta] of scope.vocabularyTopicMap.entries()) {
+        if (!learnedMemoryVocabularyIds.has(vocabularyId)) {
+            continue;
+        }
+
+        const title = topicMeta.title?.trim();
+        if (title && !topicByTitle.has(title)) {
+            topicByTitle.set(title, {
+                value: title,
+                label: title,
+            });
+        }
+
+        const level = topicMeta.level?.trim();
+        if (level && !levelByValue.has(level)) {
+            levelByValue.set(level, {
+                value: level,
+                label: level,
+            });
+        }
+    }
+
+    return {
+        topics: sortOptions(Array.from(topicByTitle.values())),
+        levels: sortOptions(Array.from(levelByValue.values())),
+        priorities: [
+            { value: "high", label: "Cao" },
+            { value: "medium", label: "Trung bình" },
+            { value: "low", label: "Thấp" },
+        ],
+    };
 }
 
 export async function getTodayReviewSummary(
@@ -1010,6 +1067,10 @@ function sortSuggestionItems(
 
         return (aTime - bTime) * direction;
     });
+}
+
+function sortOptions(options: SuggestionFilterOption[]): SuggestionFilterOption[] {
+    return [...options].sort((a, b) => a.label.localeCompare(b.label));
 }
 
 function addDays(date: Date, days: number): Date {
