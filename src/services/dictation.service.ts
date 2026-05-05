@@ -12,7 +12,7 @@ export const getAllDictationService = async (page: number, limit: number) => {
   const dictations = await Dictation.find()
     .skip(skip)
     .limit(limit)
-    .sort({ created_at: -1 });
+    .sort({ created_at: -1, _id: -1 });
 
   return {
     items: dictations,
@@ -72,8 +72,12 @@ export const getAllDictationPracticeService = async (
     part_type?: number;
     tags?: string[];
     level?: string;
+    practice_status?: "all" | "unpracticed" | "practiced";
+    sort?: string;
   },
-  userId?: string
+  userId?: string,
+  page = 1,
+  limit = 9
 ) => {
   // Build query với status APPROVED bắt buộc
   const query: any = { status: TestStatus.APPROVED };
@@ -97,8 +101,35 @@ export const getAllDictationPracticeService = async (
     }
   }
 
+  const practicedDictationIds =
+    userId && filters?.practice_status && filters.practice_status !== "all"
+      ? await DictationAttempt.distinct("dictation_id", {
+          user_id: new Types.ObjectId(userId),
+        })
+      : [];
+
+  if (filters?.practice_status === "practiced") {
+    query._id = { $in: practicedDictationIds };
+  }
+
+  if (filters?.practice_status === "unpracticed") {
+    query._id = { $nin: practicedDictationIds };
+  }
+
+  const sortMap: Record<string, any> = {
+    newest: { created_at: -1, _id: -1 },
+    oldest: { created_at: 1, _id: 1 },
+    level_asc: { level: 1, created_at: -1, _id: -1 },
+    level_desc: { level: -1, created_at: -1, _id: -1 },
+  };
+  const sort = sortMap[filters?.sort || "newest"] || sortMap.newest;
+  const skip = (page - 1) * limit;
+  const total = await Dictation.countDocuments(query);
+
   const dictations = await Dictation.find(query)
-    .sort({ created_at: -1 })
+    .sort(sort)
+    .skip(skip)
+    .limit(limit)
     .lean();
 
   // Nếu có userId, lấy thêm stats từ DictationAttempt
@@ -126,11 +157,23 @@ export const getAllDictationPracticeService = async (
     // Map stats vào dictations
     const statsMap = new Map(stats.map((s) => [s._id.toString(), s]));
 
-    return dictations.map((dict: any) => ({
+    const items = dictations.map((dict: any) => ({
       ...dict,
       userStats: statsMap.get(dict._id.toString()) || null,
     }));
+
+    return {
+      items,
+      total,
+      page,
+      pageCount: Math.ceil(total / limit),
+    };
   }
 
-  return dictations;
+  return {
+    items: dictations,
+    total,
+    page,
+    pageCount: Math.ceil(total / limit),
+  };
 };
