@@ -125,6 +125,7 @@ export interface PaginatedSuggestions {
     counters: {
         all: number;
         dueToday: number;
+        activeReviewing: number;
         atRisk: number;
         overdue: number;
         mastered: number;
@@ -374,7 +375,7 @@ export async function getMemoryStatusSummary(
         toMemoryStatusSummaryItem("mastered", "Đã nắm vững", counts.mastered, total),
         toMemoryStatusSummaryItem(
             "active_reviewing",
-            "Đang ôn",
+            "Đang học",
             counts.active_reviewing,
             total
         ),
@@ -960,6 +961,10 @@ function buildSuggestionCounters(
                 counters.mastered += 1;
             }
 
+            if (item.memoryBucket === "active_reviewing") {
+                counters.activeReviewing += 1;
+            }
+
             if (item.memoryBucket === "overdue") {
                 counters.overdue += 1;
             }
@@ -982,6 +987,7 @@ function buildSuggestionCounters(
         {
             all: 0,
             dueToday: 0,
+            activeReviewing: 0,
             atRisk: 0,
             overdue: 0,
             mastered: 0,
