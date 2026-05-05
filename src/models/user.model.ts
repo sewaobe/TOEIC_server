@@ -41,7 +41,7 @@ export interface IUser extends Document {
 const UserSchema = new Schema<IUser>({
   _id: { type: Schema.Types.ObjectId, auto: true },
   role_id: { type: Schema.Types.ObjectId, ref: "Role" },
-  firebaseUid: { type: String, unique: true }, // định danh gốc
+  firebaseUid: { type: String }, // định danh gốc
   username: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   passwordHash: { type: String },

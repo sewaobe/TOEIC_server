@@ -14,6 +14,7 @@ export interface IFlashCardAttempt extends Document {
       vocabulary_id: Types.ObjectId;
       eval_type: EvalType;
       response_time: number;
+      attempted_at: Date;
     }
   ];
   accuracy: number;

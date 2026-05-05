@@ -22,7 +22,6 @@ export const loginController = async (
 ): Promise<void> => {
   try {
     const loginRequest = req.body;
-    const isRemember = loginRequest.isRemember;
 
     const { accessToken, refreshToken, role_name, user_id } = await loginService(
       loginRequest
@@ -32,7 +31,7 @@ export const loginController = async (
       httpOnly: true,
       secure: process.env.NODE_ENV === "production", // đổi true nếu deploy HTTPS
       sameSite: "lax",
-      ...(isRemember ? { maxAge: refreshTokenExpiredTime } : {}), // 7 ngày nếu nhớ đăng nhập
+      maxAge: refreshTokenExpiredTime, // 7 ngày
     });
 
     res.cookie("accessToken", accessToken, {

@@ -39,7 +39,7 @@ const mapTopic = async (topic_vocabulary: any) => {
 
   const isNew =
     (Date.now() - new Date(topic_vocabulary.created_at).getTime()) /
-      (1000 * 60 * 60 * 24) <=
+    (1000 * 60 * 60 * 24) <=
     7;
 
   return {
@@ -64,28 +64,12 @@ export const getTopicExploreService = async (page = 1, limit = 6) => {
   const skip = (page - 1) * limit;
 
   const total = await TopicVocabulary.countDocuments({
-    $or: [
-      {
-        tags: { $in: ["explore"] },
-      },
-      {
-        isCollaborator: false,
-        isPublic: true,
-      },
-    ],
+    isPublic: true,
   });
 
   const topicVocabularies: ITopicVocabulary[] | null =
     await TopicVocabulary.find({
-      $or: [
-        {
-          tags: { $in: ["explore"] },
-        },
-        {
-          isCollaborator: false,
-          isPublic: true,
-        },
-      ],
+      isPublic: true
     })
       .skip(skip)
       .limit(limit)
@@ -110,7 +94,7 @@ export const getTopicExploreService = async (page = 1, limit = 6) => {
 
       const isNew =
         (Date.now() - new Date(topicVocabulary.created_at).getTime()) /
-          (1000 * 60 * 60 * 24) <=
+        (1000 * 60 * 60 * 24) <=
         7;
 
       return {

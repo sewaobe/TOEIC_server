@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { FlashCardProgress } from "../models/flashcard_progress.model";
 import { FlashCardAttempt } from "../models";
 import { SubmissionType } from "../models/enums/SubmissionType";
+import { updateVocabularyMemoryV2AfterFlashcardSession } from "./user_vocabulary_progress_v2.service";
 
 export const createFlashcardSessionService = async (userId: string, topicVocabularyId: string, order_queue: string[]) => {
     const sessionId = crypto.randomUUID();
@@ -126,17 +127,27 @@ export const finalizeFlashcardSessionService = async (
             vocabulary_id: l.vocab_id,
             eval_type: l.eval_type,
             response_time: l.response_time,
+            attempted_at: l.attempt_at
         })),
         accuracy,
         started_at,
         finished_at,
     });
 
+    const memoryUpdates = await updateVocabularyMemoryV2AfterFlashcardSession({
+        userId,
+        logs,
+        finishedAt: finished_at,
+    });
+
     progress.status = "archived";
     progress.archive_reason = "completed";
     await progress.save();
 
-    return attempt;
+    return {
+        attempt,
+        memoryUpdates
+    };
 }
 
 export const removeFlashcardSessionService = async (sessionId: string, userId: string) => {

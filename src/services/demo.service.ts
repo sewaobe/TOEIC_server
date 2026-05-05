@@ -843,3 +843,112 @@ export function saveDebugFile(filename: string, data: any) {
 // // // }
 
 // // // deleteLearningItemsCollection();
+
+// import mongoose, { Types } from "mongoose";
+// import { updateVocabularyMemoryV2AfterFlashcardSession } from "./user_vocabulary_progress_v2.service";
+// import { UserVocabularyMemoryV2 } from "../models/user_vocabulary_progress_v2.model";
+
+// async function main() {
+//   const mongoUri = "mongodb://127.0.0.1:27017/test-dhp-memory";
+
+//   await mongoose.connect(mongoUri);
+
+//   console.log("Connected MongoDB:", mongoUri);
+
+//   const userId = new Types.ObjectId();
+//   const vocab1 = new Types.ObjectId();
+//   const vocab2 = new Types.ObjectId();
+
+//   await UserVocabularyMemoryV2.deleteMany({
+//     user_id: userId,
+//     vocabulary_id: { $in: [vocab1, vocab2] },
+//   });
+
+//   console.log("\n=== First session ===");
+
+//   const firstSessionResult =
+//     await updateVocabularyMemoryV2AfterFlashcardSession({
+//       userId,
+//       finishedAt: new Date("2026-05-02T10:05:00Z"),
+//       logs: [
+//         {
+//           vocab_id: vocab1.toString(),
+//           vocab_word: "apple",
+//           eval_type: "hard",
+//           response_time: 4000,
+//           attempted_at: "2026-05-05T10:00:00Z",
+//         },
+//         {
+//           vocab_id: vocab1.toString(),
+//           vocab_word: "apple",
+//           eval_type: "medium",
+//           response_time: 3000,
+//           attempted_at: "2026-05-05T10:01:00Z",
+//         },
+//         {
+//           vocab_id: vocab1.toString(),
+//           vocab_word: "apple",
+//           eval_type: "skip",
+//           response_time: 1000,
+//           attempted_at: "2026-05-05T10:02:00Z",
+//         }
+//       ],
+//     });
+
+//   console.log(JSON.stringify(firstSessionResult, null, 2));
+
+//   const afterFirstSession = await UserVocabularyMemoryV2.find({
+//     user_id: userId,
+//   }).lean();
+
+//   console.log("\nRecords after first session:");
+//   console.log(JSON.stringify(afterFirstSession, null, 2));
+
+//   console.log("\n=== Second session, 3 days later ===");
+
+//   const secondSessionResult =
+//     await updateVocabularyMemoryV2AfterFlashcardSession({
+//       userId,
+//       finishedAt: new Date("2026-05-05T10:05:00Z"),
+//       logs: [
+//         {
+//           vocab_id: vocab1.toString(),
+//           vocab_word: "apple",
+//           eval_type: "skip",
+//           response_time: 1200,
+//           attempted_at: "2026-05-05T10:00:00Z",
+//         },
+//         {
+//           vocab_id: vocab2.toString(),
+//           vocab_word: "book",
+//           eval_type: "hard",
+//           response_time: 4000,
+//           attempted_at: "2026-05-05T10:01:00Z",
+//         },
+//         {
+//           vocab_id: vocab2.toString(),
+//           vocab_word: "book",
+//           eval_type: "skip",
+//           response_time: 1500,
+//           attempted_at: "2026-05-05T10:02:00Z",
+//         },
+//       ],
+//     });
+
+//   console.log(JSON.stringify(secondSessionResult, null, 2));
+
+//   const afterSecondSession = await UserVocabularyMemoryV2.find({
+//     user_id: userId,
+//   }).lean();
+
+//   console.log("\nRecords after second session:");
+//   console.log(JSON.stringify(afterSecondSession, null, 2));
+
+//   await mongoose.disconnect();
+// }
+
+// main().catch(async (error) => {
+//   console.error(error);
+//   await mongoose.disconnect();
+//   process.exit(1);
+// });
