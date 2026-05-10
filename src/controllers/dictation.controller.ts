@@ -145,7 +145,9 @@ export const getAllDictationPracticeController = async (
 ) => {
   try {
     // Đọc filter từ query params: part_type, tags, level
-    const { part_type, tags, level } = req.query;
+    const { part_type, tags, level, practice_status, sort } = req.query;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 9;
 
     // Parse tags: có thể là string csv hoặc array
     let parsedTags: string[] | undefined;
@@ -160,16 +162,31 @@ export const getAllDictationPracticeController = async (
       }
     }
 
+    const parsedPracticeStatus:
+      | "all"
+      | "practiced"
+      | "unpracticed" =
+      practice_status === "practiced" || practice_status === "unpracticed"
+        ? practice_status
+        : "all";
+
     const filters = {
       part_type: part_type ? Number(part_type) : undefined,
       tags: parsedTags,
       level: level ? String(level) : undefined,
+      practice_status: parsedPracticeStatus,
+      sort: sort ? String(sort) : "newest",
     };
 
     // Lấy userId từ req.user (nếu đã auth)
     const userId = (req as any).user?._id || (req as any).user?.id;
 
-    const dictations = await getAllDictationPracticeService(filters, userId);
+    const dictations = await getAllDictationPracticeService(
+      filters,
+      userId,
+      page,
+      limit
+    );
     res
       .status(200)
       .json(
