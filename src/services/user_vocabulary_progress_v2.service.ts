@@ -137,6 +137,10 @@ export interface SuggestionDetail {
     word: string;
     phonetic?: string;
     meaning?: string;
+    examples?: {
+        en: string,
+        vi: string
+    }[];
     topic_title?: string;
     level?: string;
     priority: SuggestionPriority;
@@ -484,6 +488,7 @@ export async function getSuggestionDetail(
         word: (vocabulary as any).word,
         phonetic: (vocabulary as any).phonetic,
         meaning: (vocabulary as any).definition,
+        examples: (vocabulary as any).examples,
         topic_title: topicMeta?.title ?? (vocabulary as any).tags?.[0],
         level: topicMeta?.level,
         priority,
