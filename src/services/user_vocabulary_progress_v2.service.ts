@@ -12,7 +12,6 @@ import {
     resolveMemoryStatus,
     calForgetHalflife,
     DHP_CONFIG,
-    MEMORY_SUGGESTION_POLICY,
     MemoryUiBucket,
     resolveMemoryUiBucket,
 } from "../utils/dhp.util";
@@ -67,13 +66,11 @@ const MAX_DIFFICULTY_STEP_PER_SESSION = 3;
 const VIETNAM_UTC_OFFSET_MS = 7 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export type SuggestionPriority = "high" | "medium" | "low";
 export type SuggestionBucket = "all" | "due_today" | MemoryUiBucket;
 
 export interface TodayReviewSummary {
     total: number;
     dueToday: number;
-    atRisk: number;
     overdue: number;
     primaryReviewCount: number;
     overdueReviewCount: number;
@@ -101,8 +98,6 @@ export interface SuggestedVocabularyItem {
     type?: string;
     topic?: string;
     level?: string;
-    priority: SuggestionPriority;
-    priorityLabel: string;
     pRecallNow: number;
     dueAt: Date | null;
     dueLabel: string;
@@ -126,7 +121,6 @@ export interface PaginatedSuggestions {
         all: number;
         dueToday: number;
         activeReviewing: number;
-        atRisk: number;
         overdue: number;
         mastered: number;
     };
@@ -143,7 +137,7 @@ export interface SuggestionDetail {
     }[];
     topic_title?: string;
     level?: string;
-    priority: SuggestionPriority;
+    difficulty: number;
     p_recall: number;
     half_life_days: number;
     last_reviewed_at: Date | null;
@@ -160,7 +154,6 @@ export interface SuggestionFilterOption {
 export interface SuggestionFilterOptions {
     topics: SuggestionFilterOption[];
     levels: SuggestionFilterOption[];
-    priorities: Array<SuggestionFilterOption & { value: SuggestionPriority }>;
 }
 
 export async function updateVocabularyMemoryV2AfterFlashcardSession(
@@ -250,11 +243,6 @@ export async function getSuggestionFilterOptions(
     return {
         topics: sortOptions(Array.from(topicByTitle.values())),
         levels: sortOptions(Array.from(levelByValue.values())),
-        priorities: [
-            { value: "high", label: "Cao" },
-            { value: "medium", label: "Trung bình" },
-            { value: "low", label: "Thấp" },
-        ],
     };
 }
 
@@ -267,7 +255,6 @@ export async function getTodayReviewSummary(
     const memories = await getScopedMemoryRecords(userObjectId);
 
     let dueToday = 0;
-    let atRisk = 0;
     let overdue = 0;
 
     for (const memory of memories) {
@@ -276,8 +263,6 @@ export async function getTodayReviewSummary(
         }
 
         const dueAt = memory.due_at ?? null;
-        const pRecallNow = calculateMemoryPRecall(memory, now);
-
         if (dueAt && dueAt < bounds.startOfToday) {
             overdue += 1;
             continue;
@@ -291,23 +276,13 @@ export async function getTodayReviewSummary(
             dueToday += 1;
             continue;
         }
-
-        if (
-            dueAt &&
-            dueAt >= bounds.startOfTomorrow &&
-            dueAt <= bounds.endOfAtRiskWindow &&
-            pRecallNow < MEMORY_SUGGESTION_POLICY.AT_RISK_P_RECALL_THRESHOLD
-        ) {
-            atRisk += 1;
-        }
     }
 
     return {
-        total: dueToday + atRisk + overdue,
+        total: dueToday + overdue,
         dueToday,
-        atRisk,
         overdue,
-        primaryReviewCount: dueToday + atRisk,
+        primaryReviewCount: dueToday,
         overdueReviewCount: overdue,
     };
 }
@@ -355,19 +330,14 @@ export async function getMemoryStatusSummary(
     const counts: Record<MemoryUiBucket, number> = {
         mastered: 0,
         active_reviewing: 0,
-        at_risk: 0,
         overdue: 0,
     };
 
     for (const memory of memories) {
-        const pRecallNow = calculateMemoryPRecall(memory, now);
         const bucket = resolveMemoryUiBucket({
             status: memory.status,
             dueAt: memory.due_at ?? null,
-            pRecallNow,
             startOfToday: bounds.startOfToday,
-            startOfTomorrow: bounds.startOfTomorrow,
-            endOfAtRiskWindow: bounds.endOfAtRiskWindow,
         });
 
         counts[bucket] += 1;
@@ -383,7 +353,6 @@ export async function getMemoryStatusSummary(
             counts.active_reviewing,
             total
         ),
-        toMemoryStatusSummaryItem("at_risk", "Sắp quên", counts.at_risk, total),
         toMemoryStatusSummaryItem("overdue", "Quá hạn", counts.overdue, total),
     ];
 }
@@ -396,7 +365,6 @@ export async function getSuggestedVocabulary(
         search?: string;
         topic?: string;
         level?: string;
-        priority?: SuggestionPriority | "all";
         bucket?: SuggestionBucket;
         sortBy?: "due_at" | "p_recall" | "word";
         sortOrder?: "asc" | "desc";
@@ -480,7 +448,6 @@ export async function getSuggestionDetail(
     }
 
     const pRecallNow = calculateMemoryPRecall(memory as any, now);
-    const priority = resolveSuggestionPriority(pRecallNow);
     const topicMeta = scope.vocabularyTopicMap.get(vocabularyKey);
 
     return {
@@ -491,7 +458,7 @@ export async function getSuggestionDetail(
         examples: (vocabulary as any).examples,
         topic_title: topicMeta?.title ?? (vocabulary as any).tags?.[0],
         level: topicMeta?.level,
-        priority,
+        difficulty: (memory as any).difficulty,
         p_recall: pRecallNow,
         half_life_days: roundNumber((memory as any).half_life_days, 6),
         last_reviewed_at: (memory as any).last_reviewed_at ?? null,
@@ -807,7 +774,6 @@ function calculateMemoryPRecall(
 function getVietnamDateBounds(now: Date): {
     startOfToday: Date;
     startOfTomorrow: Date;
-    endOfAtRiskWindow: Date;
 } {
     const vietnamNow = new Date(now.getTime() + VIETNAM_UTC_OFFSET_MS);
     const year = vietnamNow.getUTCFullYear();
@@ -817,12 +783,10 @@ function getVietnamDateBounds(now: Date): {
         Date.UTC(year, month, date, 0, 0, 0, 0) - VIETNAM_UTC_OFFSET_MS;
     const startOfToday = new Date(startOfTodayUtcMs);
     const startOfTomorrow = new Date(startOfTodayUtcMs + DAY_MS);
-    const endOfAtRiskWindow = new Date(startOfTodayUtcMs + 8 * DAY_MS - 1);
 
     return {
         startOfToday,
         startOfTomorrow,
-        endOfAtRiskWindow,
     };
 }
 
@@ -870,14 +834,10 @@ function toSuggestedVocabularyItem(input: {
 }): SuggestedVocabularyItem {
     const { memory, vocabulary, topicMeta, now, bounds } = input;
     const pRecallNow = calculateMemoryPRecall(memory, now);
-    const priority = resolveSuggestionPriority(pRecallNow);
     const memoryBucket = resolveMemoryUiBucket({
         status: memory.status,
         dueAt: memory.due_at ?? null,
-        pRecallNow,
         startOfToday: bounds.startOfToday,
-        startOfTomorrow: bounds.startOfTomorrow,
-        endOfAtRiskWindow: bounds.endOfAtRiskWindow,
     });
 
     return {
@@ -889,8 +849,6 @@ function toSuggestedVocabularyItem(input: {
         type: vocabulary.type,
         topic: topicMeta?.title ?? vocabulary.tags?.[0],
         level: topicMeta?.level,
-        priority,
-        priorityLabel: resolvePriorityLabel(priority),
         pRecallNow,
         dueAt: memory.due_at ?? null,
         dueLabel: resolveDueLabel(memory.due_at ?? null, bounds),
@@ -901,30 +859,6 @@ function toSuggestedVocabularyItem(input: {
         reviewCount: memory.review_count,
         sessionCount: memory.session_count,
     };
-}
-
-function resolveSuggestionPriority(pRecallNow: number): SuggestionPriority {
-    if (pRecallNow < MEMORY_SUGGESTION_POLICY.PRIORITY_HIGH_P_RECALL_THRESHOLD) {
-        return "high";
-    }
-
-    if (pRecallNow < MEMORY_SUGGESTION_POLICY.PRIORITY_MEDIUM_P_RECALL_THRESHOLD) {
-        return "medium";
-    }
-
-    return "low";
-}
-
-function resolvePriorityLabel(priority: SuggestionPriority): string {
-    if (priority === "high") {
-        return "Cao";
-    }
-
-    if (priority === "medium") {
-        return "Trung bình";
-    }
-
-    return "Thấp";
 }
 
 function resolveDueLabel(
@@ -983,17 +917,12 @@ function buildSuggestionCounters(
                 counters.dueToday += 1;
             }
 
-            if (item.memoryBucket === "at_risk") {
-                counters.atRisk += 1;
-            }
-
             return counters;
         },
         {
             all: 0,
             dueToday: 0,
             activeReviewing: 0,
-            atRisk: 0,
             overdue: 0,
             mastered: 0,
         }
@@ -1006,7 +935,6 @@ function filterSuggestionItems(
         search?: string;
         topic?: string;
         level?: string;
-        priority?: SuggestionPriority | "all";
         bucket?: SuggestionBucket;
     },
     bounds: ReturnType<typeof getVietnamDateBounds>
@@ -1027,14 +955,6 @@ function filterSuggestionItems(
         }
 
         if (options.level && options.level !== "all" && item.level !== options.level) {
-            return false;
-        }
-
-        if (
-            options.priority &&
-            options.priority !== "all" &&
-            item.priority !== options.priority
-        ) {
             return false;
         }
 

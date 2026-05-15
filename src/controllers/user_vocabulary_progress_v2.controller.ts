@@ -8,7 +8,6 @@ import {
     getSuggestionDetail,
     getSuggestedVocabulary,
     getTodayReviewSummary,
-    SuggestionPriority,
 } from "../services/user_vocabulary_progress_v2.service";
 
 export const getTodayReviewSummaryController = async (
@@ -101,18 +100,11 @@ export const getSuggestedVocabularyController = async (
                 .json(ApiResponse.fail("limit must be between 1 and 100"));
         }
 
-        const priority = parsePriority(req.query.priority as string);
-        if (!priority) {
-            return res
-                .status(400)
-                .json(ApiResponse.fail("priority must be all, high, medium or low"));
-        }
-
         const bucket = parseBucket(req.query.bucket as string);
         if (!bucket) {
             return res.status(400).json(
                 ApiResponse.fail(
-                    "bucket must be all, due_today, mastered, active_reviewing, at_risk or overdue"
+                    "bucket must be all, due_today, mastered, active_reviewing or overdue"
                 )
             );
         }
@@ -137,7 +129,6 @@ export const getSuggestedVocabularyController = async (
             search: req.query.search as string,
             topic: req.query.topic as string,
             level: req.query.level as string,
-            priority,
             bucket,
             sortBy,
             sortOrder,
@@ -232,18 +223,6 @@ function parsePositiveInteger(value: string | undefined, fallback: number): numb
     return parsed;
 }
 
-function parsePriority(value?: string): SuggestionPriority | "all" | undefined {
-    if (!value) {
-        return "all";
-    }
-
-    if (value === "all" || value === "high" || value === "medium" || value === "low") {
-        return value;
-    }
-
-    return undefined;
-}
-
 function parseBucket(value?: string): SuggestionBucket | undefined {
     if (!value) {
         return "all";
@@ -254,7 +233,6 @@ function parseBucket(value?: string): SuggestionBucket | undefined {
         value === "due_today" ||
         value === "mastered" ||
         value === "active_reviewing" ||
-        value === "at_risk" ||
         value === "overdue"
     ) {
         return value;
