@@ -21,7 +21,7 @@ export const createSessionFlashcardController = async (req: Request, res: Respon
         const userId = req.user._id;
         const { topic_vocabulary_id, order_queue } = req.body;
 
-    const { sessionId, newSession } = await createFlashcardSessionService(
+    const { sessionId, newSession, preview_metadata } = await createFlashcardSessionService(
       userId,
       topic_vocabulary_id,
       order_queue,
@@ -33,6 +33,7 @@ export const createSessionFlashcardController = async (req: Request, res: Respon
         {
           sessionId,
           session: newSession,
+          preview_metadata,
         },
         "Flashcard session created successfully",
       ),
@@ -223,11 +224,14 @@ export const getFlashcardProgressController = async (req: Request, res: Response
         const userId = req.user._id;
         const { session_id } = req.params;
 
-        const progress = await getSession(session_id, userId);
+        const sessionResult = await getSession(session_id, userId);
 
         res.status(200).json(
             ApiResponse.success({
-                progress,
+                progress: sessionResult.progress,
+                ...(sessionResult.preview_metadata
+                    ? { preview_metadata: sessionResult.preview_metadata }
+                    : {}),
             }, "Flashcard progress retrieved successfully")
         );
     } catch (err) {

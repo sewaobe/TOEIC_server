@@ -22,6 +22,8 @@ const mockIdempotencyRecord = {
   updateOne: jest.fn(),
 };
 
+const mockBuildFlashcardSessionPreviewMetadata = jest.fn();
+
 jest.mock("../../src/models/flashcard_progress.model", () => ({
   FlashCardProgress: mockFlashCardProgress,
 }));
@@ -38,12 +40,25 @@ jest.mock("../../src/services/user_vocabulary_progress_v2.service", () => ({
   updateVocabularyMemoryV2AfterFlashcardSession: jest.fn(),
 }));
 
-import { createFlashcardSessionService } from "../../src/services/flashcard_progress.service";
+jest.mock("../../src/services/flashcard_session_preview.service", () => ({
+  buildFlashcardSessionPreviewMetadata: mockBuildFlashcardSessionPreviewMetadata,
+}));
+
+import {
+  createFlashcardSessionService,
+  getSession,
+} from "../../src/services/flashcard_progress.service";
 import { SubmissionType } from "../../src/models/enums/SubmissionType";
 
 const userId = new Types.ObjectId().toString();
 const topicVocabularyId = new Types.ObjectId().toString();
 const orderQueue = [new Types.ObjectId().toString(), new Types.ObjectId().toString()];
+const previewMetadata = {
+  repeat_policy: {},
+  cards: {
+    [orderQueue[0]]: { card_type: "NEW", options: { remember: { interval_days: 1 } } },
+  },
+};
 
 const createRecord = (overrides: Record<string, unknown> = {}) => ({
   _id: new Types.ObjectId(),
@@ -77,6 +92,7 @@ describe("createFlashcardSessionService", () => {
       ...data,
     }));
     mockIdempotencyRecord.updateOne.mockResolvedValue({ acknowledged: true });
+    mockBuildFlashcardSessionPreviewMetadata.mockResolvedValue(previewMetadata);
   });
 
   it("createFlashcardSessionService -> New key -> CreatesProgressAttemptAndCompletesRecord", async () => {
@@ -157,7 +173,7 @@ describe("createFlashcardSessionService", () => {
     );
 
     // Assert
-    expect(result).toBe(firstResult);
+    expect(result).toEqual(firstResult);
     expect(mockFlashCardProgress.findOne).not.toHaveBeenCalled();
     expect(mockFlashCardAttempt.create).not.toHaveBeenCalled();
     expect(mockIdempotencyRecord.updateOne).not.toHaveBeenCalled();
@@ -209,6 +225,7 @@ describe("createFlashcardSessionService", () => {
     expect(result).toEqual({
       sessionId: existingSession.session_id,
       newSession: existingSession,
+      preview_metadata: previewMetadata,
     });
     expect(mockFlashCardAttempt.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -262,6 +279,7 @@ describe("createFlashcardSessionService", () => {
     expect(result).toEqual({
       sessionId: existingSession.session_id,
       newSession: existingSession,
+      preview_metadata: previewMetadata,
     });
     expect(mockFlashCardAttempt.create).not.toHaveBeenCalled();
     expect(mockIdempotencyRecord.updateOne).toHaveBeenCalledWith(
@@ -273,5 +291,91 @@ describe("createFlashcardSessionService", () => {
         }),
       })
     );
+  });
+
+  it("createFlashcardSessionService -> New session -> ResponseIncludesPreviewMetadata", async () => {
+    // Arrange
+    const idempotencyKey = "preview-new-key";
+
+    // Act
+    const result = await createFlashcardSessionService(
+      userId,
+      topicVocabularyId,
+      orderQueue,
+      idempotencyKey
+    );
+
+    // Assert
+    expect(mockBuildFlashcardSessionPreviewMetadata).toHaveBeenCalledWith({
+      userId,
+      vocabularyIds: orderQueue,
+    });
+    expect(result.preview_metadata).toBe(previewMetadata);
+    expect(mockIdempotencyRecord.updateOne).toHaveBeenCalledWith(
+      { _id: expect.any(Types.ObjectId) },
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          response_payload: expect.objectContaining({
+            preview_metadata: previewMetadata,
+          }),
+        }),
+      })
+    );
+  });
+
+  it("createFlashcardSessionService -> Reuse existing active session -> ResponseIncludesPreviewMetadata", async () => {
+    // Arrange
+    const existingSession = createExistingSession();
+    mockFlashCardProgress.findOne.mockResolvedValue(existingSession);
+
+    // Act
+    const result = await createFlashcardSessionService(
+      userId,
+      topicVocabularyId,
+      orderQueue,
+      "preview-existing-key"
+    );
+
+    // Assert
+    expect(result).toEqual({
+      sessionId: existingSession.session_id,
+      newSession: existingSession,
+      preview_metadata: previewMetadata,
+    });
+    expect(mockBuildFlashcardSessionPreviewMetadata).toHaveBeenCalledWith({
+      userId,
+      vocabularyIds: existingSession.order_queue,
+    });
+  });
+
+  it("getSession -> Existing progress -> ReturnsPreviewMetadata", async () => {
+    // Arrange
+    const existingSession = createExistingSession();
+    mockFlashCardProgress.findOne.mockResolvedValue(existingSession);
+
+    // Act
+    const result = await getSession(existingSession.session_id, userId);
+
+    // Assert
+    expect(result).toEqual({
+      progress: existingSession,
+      preview_metadata: previewMetadata,
+    });
+    expect(mockBuildFlashcardSessionPreviewMetadata).toHaveBeenCalledWith({
+      userId,
+      vocabularyIds: existingSession.order_queue,
+    });
+  });
+
+  it("getSession -> Missing progress -> PreservesCurrentNotFoundBehavior", async () => {
+    // Arrange
+    mockFlashCardProgress.findOne.mockResolvedValue(null);
+
+    // Act
+    const result = await getSession("missing-session", userId);
+
+    // Assert
+    expect(result).toEqual({ progress: null });
+    expect(mockBuildFlashcardSessionPreviewMetadata).not.toHaveBeenCalled();
   });
 });

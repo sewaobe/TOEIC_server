@@ -5,6 +5,10 @@ import { FlashCardAttempt } from "../models";
 import { SubmissionType } from "../models/enums/SubmissionType";
 import { updateVocabularyMemoryV2AfterFlashcardSession } from "./user_vocabulary_progress_v2.service";
 import { IdempotencyRecord } from "../models/idempotency_record.model";
+import {
+    buildFlashcardSessionPreviewMetadata,
+    FlashcardSessionPreviewMetadata,
+} from "./flashcard_session_preview.service";
 
 const FLASHCARD_SESSION_START_SCOPE = "flashcard.session.start";
 
@@ -46,9 +50,19 @@ const ensureFlashcardAttemptForSession = async (
     }
 };
 
-const buildSessionStartResponse = (session: any) => ({
+type SessionStartResponse = {
+    sessionId: string;
+    newSession: any;
+    preview_metadata: FlashcardSessionPreviewMetadata;
+};
+
+const buildSessionStartResponse = async (userId: string, session: any): Promise<SessionStartResponse> => ({
     sessionId: session.session_id,
     newSession: session,
+    preview_metadata: await buildFlashcardSessionPreviewMetadata({
+        userId,
+        vocabularyIds: session.order_queue ?? [],
+    }),
 });
 
 const completeIdempotencyRecord = async (recordId: any, responsePayload: any) => {
@@ -64,6 +78,21 @@ const completeIdempotencyRecord = async (recordId: any, responsePayload: any) =>
         }
     );
 };
+
+const hasPreviewMetadata = (payload: any) => Boolean(payload?.preview_metadata);
+
+const enrichSessionStartResponse = async (
+    userId: string,
+    responsePayload: any
+): Promise<SessionStartResponse> => ({
+    ...responsePayload,
+    preview_metadata:
+        responsePayload.preview_metadata ??
+        (await buildFlashcardSessionPreviewMetadata({
+            userId,
+            vocabularyIds: responsePayload.newSession?.order_queue ?? [],
+        })),
+});
 
 export const createFlashcardSessionService = async (
     userId: string,
@@ -107,7 +136,16 @@ export const createFlashcardSessionService = async (
     }
 
     if (idempotencyRecord.status === "completed" && idempotencyRecord.response_payload) {
-        return idempotencyRecord.response_payload as { sessionId: string; newSession: any };
+        const responsePayload = await enrichSessionStartResponse(
+            userId,
+            idempotencyRecord.response_payload
+        );
+
+        if (!hasPreviewMetadata(idempotencyRecord.response_payload)) {
+            await completeIdempotencyRecord(idempotencyRecord._id, responsePayload);
+        }
+
+        return responsePayload;
     }
 
     const existingActiveSession = await FlashCardProgress.findOne({
@@ -123,7 +161,7 @@ export const createFlashcardSessionService = async (
             existingActiveSession.session_id
         );
 
-        const responsePayload = buildSessionStartResponse(existingActiveSession);
+        const responsePayload = await buildSessionStartResponse(userId, existingActiveSession);
         await completeIdempotencyRecord(idempotencyRecord._id, responsePayload);
         return responsePayload;
     }
@@ -159,14 +197,14 @@ export const createFlashcardSessionService = async (
             duplicateActiveSession.session_id
         );
 
-        const responsePayload = buildSessionStartResponse(duplicateActiveSession);
+        const responsePayload = await buildSessionStartResponse(userId, duplicateActiveSession);
         await completeIdempotencyRecord(idempotencyRecord._id, responsePayload);
         return responsePayload;
     }
 
     await ensureFlashcardAttemptForSession(userId, newSession.topic_vocabulary_id, sessionId);
 
-    const responsePayload = buildSessionStartResponse(newSession);
+    const responsePayload = await buildSessionStartResponse(userId, newSession);
     await completeIdempotencyRecord(idempotencyRecord._id, responsePayload);
     return responsePayload;
 }
@@ -199,7 +237,17 @@ export const getSession = async (sessionId: string, userId: string) => {
         { session_id: sessionId, user_id: userId, status: "active" }
     );
 
-    return session;
+    if (!session) {
+        return { progress: null };
+    }
+
+    return {
+        progress: session,
+        preview_metadata: await buildFlashcardSessionPreviewMetadata({
+            userId,
+            vocabularyIds: session.order_queue ?? [],
+        }),
+    };
 }
 
 export const getAllSessionActiveByUserService = async (
