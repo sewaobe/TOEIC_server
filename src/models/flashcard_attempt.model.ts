@@ -5,18 +5,19 @@ export type EvalType = "easy" | "medium" | "hard" | "skip";
 export type GameType = "classic" | "matching" | "word_recall";
 
 export interface IFlashCardAttempt extends Document {
+  session_id?: string;
   user_id: Types.ObjectId;
   topic_vocabulary_id: Types.ObjectId;
   submit_type?: SubmissionType;
   game_type?: GameType;
-  results: [
+  results: Array<
     {
       vocabulary_id: Types.ObjectId;
       eval_type: EvalType;
       response_time: number;
       attempted_at: Date;
     }
-  ];
+  >;
   accuracy: number;
   started_at: Date;
   finished_at?: Date;
@@ -43,6 +44,7 @@ export interface IFlashCardAttempt extends Document {
 
 const FlashCardAttemptSchema = new Schema<IFlashCardAttempt>(
   {
+    session_id: { type: String },
     user_id: { type: Schema.Types.ObjectId, ref: "User", required: true },
     topic_vocabulary_id: {
       type: Schema.Types.ObjectId,
@@ -89,6 +91,16 @@ const FlashCardAttemptSchema = new Schema<IFlashCardAttempt>(
     },
   },
   { timestamps: true }
+);
+
+FlashCardAttemptSchema.index(
+  { session_id: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      session_id: { $exists: true, $type: "string" },
+    },
+  }
 );
 
 export const FlashCardAttempt = model<IFlashCardAttempt>(

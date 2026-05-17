@@ -45,6 +45,14 @@ const FlashCardProgressSchema = new Schema<IFlashCardProgress>(
     { timestamps: true }
 );
 
+FlashCardProgressSchema.index(
+    { user_id: 1, topic_vocabulary_id: 1 },
+    {
+        unique: true,
+        partialFilterExpression: { status: "active" },
+    }
+);
+
 export const FlashCardProgress = model<IFlashCardProgress>(
     "FlashCardProgress",
     FlashCardProgressSchema

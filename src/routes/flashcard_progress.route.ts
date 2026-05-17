@@ -188,10 +188,11 @@ import {
   removeFlashcardSessionController,
   updateSessionFlashcardController,
 } from "../controllers/flashcard_progress.controller";
+import { requireIdempotencyKey } from "../middlewares/requireIdempotencyKey.middleware";
 
 const router = Router();
 
-router.post("/start", createSessionFlashcardController);
+router.post("/start", requireIdempotencyKey, createSessionFlashcardController);
 router.patch("/update", updateSessionFlashcardController);
 router.get("/active-by-user", getAllActiveSessionsController);
 router.get("/:session_id", getFlashcardProgressController);

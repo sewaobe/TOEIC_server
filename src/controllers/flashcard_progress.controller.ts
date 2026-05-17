@@ -25,6 +25,7 @@ export const createSessionFlashcardController = async (req: Request, res: Respon
       userId,
       topic_vocabulary_id,
       order_queue,
+      req.idempotencyKey!,
     );
 
     res.status(201).json(

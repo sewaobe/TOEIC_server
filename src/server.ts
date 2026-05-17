@@ -120,7 +120,7 @@ app.use(
   cors({
     origin: allowOrigins,
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'sentry-trace', 'baggage', 'sentry-sample-rate'], // Thêm các header của Sentry
+    allowedHeaders: ['Content-Type', 'Authorization', 'sentry-trace', 'baggage', 'sentry-sample-rate', 'Idempotency-Key'], // Thêm các header của Sentry
   })
 );
 
