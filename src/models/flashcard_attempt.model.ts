@@ -1,8 +1,8 @@
 import { Schema, model, Document, Types } from "mongoose";
 import { SubmissionType } from "./enums/SubmissionType";
 import {
-  LEGACY_FLASHCARD_EVAL_TYPES,
-  LegacyFlashcardEvalType,
+  FLASHCARD_FEEDBACK_ACTIONS,
+  FlashcardFeedbackAction,
 } from "../types/flashcardFeedback.type";
 
 export type GameType = "classic" | "matching" | "word_recall";
@@ -15,8 +15,9 @@ export interface IFlashCardAttempt extends Document {
   game_type?: GameType;
   results: Array<
     {
+      answer_event_id: string;
       vocabulary_id: Types.ObjectId;
-      eval_type: LegacyFlashcardEvalType;
+      action: FlashcardFeedbackAction;
       response_time: number;
       attempted_at: Date;
     }
@@ -71,17 +72,22 @@ const FlashCardAttemptSchema = new Schema<IFlashCardAttempt>(
     },
     results: [
       {
+        answer_event_id: {
+          type: String,
+          required: true,
+        },
         vocabulary_id: {
           type: Schema.Types.ObjectId,
           ref: "Vocabulary",
           required: true,
         },
-        eval_type: {
+        action: {
           type: String,
-          enum: LEGACY_FLASHCARD_EVAL_TYPES,
+          enum: FLASHCARD_FEEDBACK_ACTIONS,
           required: true,
         },
         response_time: { type: Number, required: true },
+        attempted_at: { type: Date, required: true },
       },
     ],
     accuracy: { type: Number, default: 0 },

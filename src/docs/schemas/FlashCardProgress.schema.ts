@@ -11,9 +11,11 @@
  *         vocab_word:
  *           type: string
  *           example: "restaurant"
- *         eval_type:
+ *         answer_event_id:
  *           type: string
- *           enum: [easy, medium, hard, skip]
+ *         action:
+ *           type: string
+ *           enum: [remember, vague, unknown, forgot]
  *         response_time:
  *           type: number
  *           example: 2.8

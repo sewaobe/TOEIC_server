@@ -11,6 +11,10 @@ import {
     UserVocabularyMemoryV2,
 } from "../models/user_vocabulary_progress_v2.model";
 import { lookupSspMmcIntervalDays } from "./ssp_mmc_policy.service";
+import {
+    FlashcardSessionCardPhase,
+    FlashcardSessionCardState,
+} from "../types/flashcardFeedback.type";
 
 export const NEW_CARD_REMEMBER_INTERVAL_DAYS = 1;
 export const VAGUE_DIFFICULTY_STEP = 1;
@@ -30,13 +34,14 @@ export const SHORT_TERM_REPEAT_POLICIES = {
 } as const;
 
 export type ShortTermRepeatPolicyKey = keyof typeof SHORT_TERM_REPEAT_POLICIES;
-export type PreviewCardType = "NEW" | "REVIEW";
+export type PreviewCardType = "NEW" | "REVIEW" | "REVIEW_REINFORCEMENT";
 
 type PreviewAction = {
     difficulty?: number;
     half_life_days?: number;
     interval_days?: number;
     repeat_policy_key?: ShortTermRepeatPolicyKey;
+    completion_text?: string;
 };
 
 export type FlashcardSessionPreviewCard = {
@@ -58,6 +63,12 @@ export type FlashcardSessionPreviewCard = {
 export type FlashcardSessionPreviewMetadata = {
     repeat_policy: typeof SHORT_TERM_REPEAT_POLICIES;
     cards: Record<string, FlashcardSessionPreviewCard>;
+};
+
+const createHttpError = (status: number, message: string) => {
+    const error = new Error(message) as Error & { status?: number };
+    error.status = status;
+    return error;
 };
 
 type MemoryForPreview = Pick<
@@ -139,12 +150,66 @@ export function buildReviewCardPreview(
     };
 }
 
+export function buildReviewReinforcementCardPreview(): FlashcardSessionPreviewCard {
+    return {
+        card_type: "REVIEW_REINFORCEMENT",
+        options: {
+            remember: {
+                completion_text: "Hoàn tất lượt ôn",
+            },
+            vague: {
+                repeat_policy_key: "vague",
+            },
+            forgot: {
+                repeat_policy_key: "unknown_or_forgot",
+            },
+        },
+    };
+}
+
+function normalizeCardStateMap(
+    cardStates?: Map<string, FlashcardSessionCardState> | Record<string, FlashcardSessionCardState>
+) {
+    if (!cardStates) return undefined;
+    if (cardStates instanceof Map) return cardStates;
+    return new Map(Object.entries(cardStates));
+}
+
+function buildPreviewForPhase(input: {
+    phase: FlashcardSessionCardPhase;
+    memory?: MemoryForPreview;
+    now: Date;
+}): FlashcardSessionPreviewCard | null {
+    if (input.phase === "NEW_LEARNING") {
+        return buildNewCardPreview();
+    }
+
+    if (input.phase === "REVIEW_PENDING") {
+        if (!input.memory) {
+            throw createHttpError(409, "Review memory not found for preview");
+        }
+        return buildReviewCardPreview(input.memory, input.now);
+    }
+
+    if (input.phase === "REVIEW_REINFORCEMENT") {
+        return buildReviewReinforcementCardPreview();
+    }
+
+    if (input.phase === "NEW_GRADUATED" || input.phase === "REVIEW_RESOLVED") {
+        throw createHttpError(409, "Card state is invalid for active queue");
+    }
+
+    return null;
+}
+
 export async function buildFlashcardSessionPreviewMetadata(input: {
     userId: string;
     vocabularyIds: string[];
     now?: Date;
+    cardStates?: Map<string, FlashcardSessionCardState> | Record<string, FlashcardSessionCardState>;
 }): Promise<FlashcardSessionPreviewMetadata> {
     const { userId, vocabularyIds, now = new Date() } = input;
+    const cardStateMap = normalizeCardStateMap(input.cardStates);
     const validObjectIds = vocabularyIds
         .filter((id) => mongoose.Types.ObjectId.isValid(id))
         .map((id) => new Types.ObjectId(id));
@@ -167,9 +232,16 @@ export async function buildFlashcardSessionPreviewMetadata(input: {
     const cards: Record<string, FlashcardSessionPreviewCard> = {};
     for (const vocabularyId of vocabularyIds) {
         const memory = memoryByVocabularyId.get(vocabularyId);
-        cards[vocabularyId] = memory
-            ? buildReviewCardPreview(memory, now)
-            : buildNewCardPreview();
+        const cardState = cardStateMap?.get(vocabularyId);
+        const preview = cardState
+            ? buildPreviewForPhase({ phase: cardState.phase, memory, now })
+            : memory
+                ? buildReviewCardPreview(memory, now)
+                : buildNewCardPreview();
+
+        if (preview) {
+            cards[vocabularyId] = preview;
+        }
     }
 
     return {

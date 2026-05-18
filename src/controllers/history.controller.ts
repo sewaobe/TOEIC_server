@@ -43,14 +43,14 @@ export const getLessonHistory = async (
         .lean();
 
       const mapped = attempts.map((a: any) => {
-        const easy =
-          a.results?.filter((r: any) => r.eval_type === "easy").length || 0;
-        const medium =
-          a.results?.filter((r: any) => r.eval_type === "medium").length || 0;
-        const hard =
-          a.results?.filter((r: any) => r.eval_type === "hard").length || 0;
-        const skip =
-          a.results?.filter((r: any) => r.eval_type === "skip").length || 0;
+        const remember =
+          a.results?.filter((r: any) => r.action === "remember").length || 0;
+        const vague =
+          a.results?.filter((r: any) => r.action === "vague").length || 0;
+        const unknown =
+          a.results?.filter((r: any) => r.action === "unknown").length || 0;
+        const forgot =
+          a.results?.filter((r: any) => r.action === "forgot").length || 0;
         const avgResponseTime = a.results?.length
           ? Number(
               (
@@ -73,14 +73,14 @@ export const getLessonHistory = async (
           submit_type: a.submit_type || "practice",
           meta: {
             wordsReviewed: a.results?.length ?? 0,
-            easy,
-            medium,
-            hard,
-            skip,
+            remember,
+            vague,
+            unknown,
+            forgot,
             avgResponseTime,
             wordSummaries: (a.results || []).map((r: any) => ({
               vocabText: r.vocabulary_id?.word || "",
-              eval_type: r.eval_type,
+              action: r.action,
               response_time: r.response_time,
             })),
           },

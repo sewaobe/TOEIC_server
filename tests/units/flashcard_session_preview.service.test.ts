@@ -1,4 +1,5 @@
 import { Types } from "mongoose";
+import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import {
   calForgetHalflife,
   calculateRecallProbability,
@@ -24,6 +25,7 @@ import {
   SHORT_TERM_REPEAT_POLICIES,
   VAGUE_DIFFICULTY_STEP,
 } from "../../src/services/flashcard_session_preview.service";
+import { FlashcardSessionCardState } from "../../src/types/flashcardFeedback.type";
 
 const userId = new Types.ObjectId().toString();
 const now = new Date("2026-05-17T10:00:00.000Z");
@@ -43,7 +45,7 @@ const createMemory = (overrides: Record<string, unknown> = {}) => ({
 
 const mockLeanMemoryRecords = (records: any[]) => {
   mockUserVocabularyMemoryV2.find.mockReturnValue({
-    lean: jest.fn().mockResolvedValue(records),
+    lean: (jest.fn() as any).mockResolvedValue(records),
   });
 };
 
@@ -222,6 +224,72 @@ describe("flashcard session preview service", () => {
       vocabulary_id: {
         $in: [new Types.ObjectId(newVocabularyId), reviewVocabularyId],
       },
+    });
+  });
+
+  it("buildFlashcardSessionPreviewMetadata -> REVIEW_PENDING without memory -> ThrowsInvalidState", async () => {
+    // Arrange
+    const vocabularyId = new Types.ObjectId().toString();
+    const cardStates = new Map<string, FlashcardSessionCardState>([
+      [vocabularyId, { phase: "REVIEW_PENDING", long_term_committed: false, repeat_count: 0 }],
+    ]);
+
+    // Act
+    const action = buildFlashcardSessionPreviewMetadata({
+      userId,
+      vocabularyIds: [vocabularyId],
+      cardStates,
+      now,
+    });
+
+    // Assert
+    await expect(action).rejects.toMatchObject({
+      status: 409,
+      message: "Review memory not found for preview",
+    });
+  });
+
+  it("buildFlashcardSessionPreviewMetadata -> REVIEW_RESOLVED in active queue -> ThrowsInvalidState", async () => {
+    // Arrange
+    const vocabularyId = new Types.ObjectId().toString();
+    const cardStates = new Map<string, FlashcardSessionCardState>([
+      [vocabularyId, { phase: "REVIEW_RESOLVED", long_term_committed: true, repeat_count: 0 }],
+    ]);
+
+    // Act
+    const action = buildFlashcardSessionPreviewMetadata({
+      userId,
+      vocabularyIds: [vocabularyId],
+      cardStates,
+      now,
+    });
+
+    // Assert
+    await expect(action).rejects.toMatchObject({
+      status: 409,
+      message: "Card state is invalid for active queue",
+    });
+  });
+
+  it("buildFlashcardSessionPreviewMetadata -> NEW_GRADUATED in active queue -> ThrowsInvalidState", async () => {
+    // Arrange
+    const vocabularyId = new Types.ObjectId().toString();
+    const cardStates = new Map<string, FlashcardSessionCardState>([
+      [vocabularyId, { phase: "NEW_GRADUATED", long_term_committed: true, repeat_count: 0 }],
+    ]);
+
+    // Act
+    const action = buildFlashcardSessionPreviewMetadata({
+      userId,
+      vocabularyIds: [vocabularyId],
+      cardStates,
+      now,
+    });
+
+    // Assert
+    await expect(action).rejects.toMatchObject({
+      status: 409,
+      message: "Card state is invalid for active queue",
     });
   });
 });

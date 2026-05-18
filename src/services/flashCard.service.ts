@@ -134,7 +134,7 @@ export const getHistoryFlashCardByTopicService = async (
           $push: {
             vocab_id: "$results.vocabulary_id",
             vocab_word: "$vocabInfo.word",
-            eval_type: "$results.eval_type",
+            action: "$results.action",
             response_time: "$results.response_time",
           },
         },
@@ -166,7 +166,7 @@ export const getHistoryFlashCardByTopicService = async (
             in: {
               vocab_id: { $toString: "$$log.vocab_id" },
               vocab_word: "$$log.vocab_word",
-              eval_type: "$$log.eval_type",
+              action: "$$log.action",
               response_time: "$$log.response_time",
             },
           },

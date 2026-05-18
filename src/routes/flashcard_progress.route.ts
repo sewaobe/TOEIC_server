@@ -71,12 +71,50 @@
  *                   properties:
  *                     vocab_id: { type: string }
  *                     vocab_word: { type: string }
- *                     eval_type: { type: string, enum: ["easy", "medium", "hard", "skip"] }
+ *                     action: { type: string, enum: ["remember", "vague", "unknown", "forgot"] }
  *                     response_time: { type: number }
  *                     attempted_at: { type: string }
  *     responses:
  *       200:
  *         description: Cập nhật tiến trình học thành công
+ */
+
+/**
+ * @openapi
+ * /flashcard-progress/{sessionId}/answer:
+ *   post:
+ *     summary: Submit one semantic flashcard answer
+ *     tags: [Flashcard Progress]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: header
+ *         name: Idempotency-Key
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - vocabulary_id
+ *               - action
+ *               - response_time
+ *               - attempted_at
+ *             properties:
+ *               vocabulary_id: { type: string }
+ *               action: { type: string, enum: ["remember", "vague", "unknown", "forgot"] }
+ *               response_time: { type: number }
+ *               attempted_at: { type: string, example: "2026-05-18T12:35:10Z" }
+ *     responses:
+ *       200:
+ *         description: Answer processed successfully
  */
 
 /**
@@ -181,6 +219,7 @@
 
 import Router from "express";
 import {
+  answerFlashcardSessionController,
   createSessionFlashcardController,
   finalizeFlashcardSessionController,
   getAllActiveSessionsController,
@@ -193,6 +232,7 @@ import { requireIdempotencyKey } from "../middlewares/requireIdempotencyKey.midd
 const router = Router();
 
 router.post("/start", requireIdempotencyKey, createSessionFlashcardController);
+router.post("/:sessionId/answer", requireIdempotencyKey, answerFlashcardSessionController);
 router.patch("/update", updateSessionFlashcardController);
 router.get("/active-by-user", getAllActiveSessionsController);
 router.get("/:session_id", getFlashcardProgressController);

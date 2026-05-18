@@ -3,7 +3,6 @@ import {
   ReviewSessionItem,
   updateProgressWithDeltas,
 } from "./hlr.service";
-import { LegacyFlashcardEvalType } from "../types/flashcardFeedback.type";
 
 const HLR_UPDATE_MAX_ATTEMPTS = 2;
 
@@ -12,25 +11,11 @@ const HLR_UPDATE_MAX_ATTEMPTS = 2;
  *
  * Helper service để tích hợp HLR vào các luồng học từ vựng hiện có.
  * KHÔNG thay đổi logic cũ, chỉ gọi HLR sau khi submit xong.
- *
- * Mapping eval_type → is_correct:
- * - skip   → true  (User tự tin đã thuộc)
- * - easy   → true  (Nhớ rất tốt)
- * - medium → false (Còn chưa chắc → cần ôn)
- * - hard   → false (Không nhớ → ôn sớm)
  */
 
 // ============================================
 // TYPES
 // ============================================
-
-export interface FlashcardLog {
-  vocab_id: string;
-  vocab_word?: string;
-  eval_type: LegacyFlashcardEvalType;
-  response_time?: number;
-  attempted_at?: string;
-}
 
 export interface MatchingGameResult {
   vocabularyIds: string[]; // Tất cả vocabulary IDs trong game
@@ -69,116 +54,8 @@ async function updateProgressWithRetry(
 }
 
 // ============================================
-// HELPER FUNCTIONS
-// ============================================
-
-/**
- * Map eval_type → is_correct
- * - skip, easy → true (user nhớ)
- * - medium, hard → false (user cần ôn thêm)
- */
-function mapEvalToCorrect(evalType: LegacyFlashcardEvalType): boolean {
-  return evalType === "skip" || evalType === "easy";
-}
-
-/**
- * Aggregate logs - Tổng hợp số lần đúng/sai cho mỗi từ trong session
- *
- * Thay vì chỉ lấy kết quả cuối cùng, HLR cần đếm TẤT CẢ các lần gặp từ:
- * - Mỗi lần skip/easy → +1 right
- * - Mỗi lần medium/hard → +1 wrong
- *
- * Ví dụ: từ "apple" được đánh giá: hard → hard → medium → skip
- * → right_delta = 1, wrong_delta = 3
- */
-interface AggregatedResult {
-  vocabulary_id: string;
-  right_delta: number;
-  wrong_delta: number;
-}
-
-function aggregateLogs(logs: FlashcardLog[]): AggregatedResult[] {
-  const aggregateMap = new Map<string, { right: number; wrong: number }>();
-
-  for (const log of logs) {
-    const current = aggregateMap.get(log.vocab_id) || { right: 0, wrong: 0 };
-
-    if (mapEvalToCorrect(log.eval_type)) {
-      current.right += 1;
-    } else {
-      current.wrong += 1;
-    }
-
-    aggregateMap.set(log.vocab_id, current);
-  }
-
-  return Array.from(aggregateMap.entries()).map(([vocab_id, counts]) => ({
-    vocabulary_id: vocab_id,
-    right_delta: counts.right,
-    wrong_delta: counts.wrong,
-  }));
-}
-
-// ============================================
 // MAIN INTEGRATION FUNCTIONS
 // ============================================
-
-/**
- * Cập nhật HLR từ flashcard logs (Classic mode)
- * Gọi sau khi submitFlashCard hoặc finalize thành công
- *
- * Logic mới: Đếm TẤT CẢ các lần đúng/sai cho mỗi từ trong session
- * - Mỗi lần skip/easy → +1 right
- * - Mỗi lần medium/hard → +1 wrong
- *
- * @param userId - User ID
- * @param logs - Mảng logs từ flashcard session
- */
-export async function updateHLRFromFlashcardLogs(
-  userId: string,
-  logs: FlashcardLog[],
-): Promise<{ processed: number; success: boolean }> {
-  if (!logs || logs.length === 0) {
-    return { processed: 0, success: true };
-  }
-
-  try {
-    // Aggregate - tổng hợp số lần đúng/sai cho mỗi từ
-    const aggregatedResults = aggregateLogs(logs);
-
-    let processed = 0;
-
-    // Cập nhật từng từ với deltas
-    for (const item of aggregatedResults) {
-      try {
-        await updateProgressWithRetry(
-          userId,
-          item.vocabulary_id,
-          item.right_delta,
-          item.wrong_delta,
-        );
-        processed++;
-      } catch (error) {
-        console.error(
-          `[HLR] Error updating vocab ${item.vocabulary_id}:`,
-          error,
-        );
-      }
-    }
-
-    console.log(
-      `[HLR Integration] Updated ${processed} words for user ${userId}`,
-    );
-
-    return { processed, success: true };
-  } catch (error: any) {
-    console.error(
-      "[HLR Integration] Error updating from flashcard logs:",
-      error.message,
-    );
-    return { processed: 0, success: false };
-  }
-}
 
 /**
  * Cập nhật HLR từ Matching Game

@@ -14,7 +14,6 @@ import { ApiResponse } from "../utils/ApiResponse";
 import { completeActivityAndUnlockNext } from "../services/day_study.service";
 import { Types } from "mongoose";
 import {
-  updateHLRFromFlashcardLogs,
   updateHLRFromMatchingGame,
   updateHLRFromWordRecall,
 } from "../services/hlr_integration.service";
@@ -57,9 +56,11 @@ export const submitFlashCard = async (
 
     // Chuyển logs về đúng cấu trúc của field "results"
     const results = logs.map((log: any) => ({
+      answer_event_id: log.answer_event_id || new Types.ObjectId().toString(),
       vocabulary_id: new Types.ObjectId(log.vocab_id),
-      eval_type: log.eval_type,
+      action: log.action,
       response_time: log.response_time,
+      attempted_at: log.attempted_at ? new Date(log.attempted_at) : new Date(),
     }));
 
     // Gom dữ liệu đúng theo IFlashCardAttempt
@@ -78,12 +79,6 @@ export const submitFlashCard = async (
 
     if (!result)
       res.status(404).json(ApiResponse.fail("Submit Flash card thất bại"));
-
-    // ★ Tích hợp HLR: Cập nhật spaced repetition data
-    // Chạy async, không block response, không ảnh hưởng logic cũ
-    updateHLRFromFlashcardLogs(user_id.toString(), logs).catch((err) => {
-      console.error("[HLR] Error in flashcard submit:", err.message);
-    });
 
     // Unlock bài tiếp theo
     // await completeActivityAndUnlockNext(dayStudyId, activityId)
