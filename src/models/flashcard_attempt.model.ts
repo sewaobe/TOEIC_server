@@ -1,22 +1,27 @@
 import { Schema, model, Document, Types } from "mongoose";
 import { SubmissionType } from "./enums/SubmissionType";
+import {
+  FLASHCARD_FEEDBACK_ACTIONS,
+  FlashcardFeedbackAction,
+} from "../types/flashcardFeedback.type";
 
-export type EvalType = "easy" | "medium" | "hard" | "skip";
 export type GameType = "classic" | "matching" | "word_recall";
 
 export interface IFlashCardAttempt extends Document {
+  session_id?: string;
   user_id: Types.ObjectId;
   topic_vocabulary_id: Types.ObjectId;
   submit_type?: SubmissionType;
   game_type?: GameType;
-  results: [
+  results: Array<
     {
+      answer_event_id: string;
       vocabulary_id: Types.ObjectId;
-      eval_type: EvalType;
+      action: FlashcardFeedbackAction;
       response_time: number;
       attempted_at: Date;
     }
-  ];
+  >;
   accuracy: number;
   started_at: Date;
   finished_at?: Date;
@@ -43,6 +48,7 @@ export interface IFlashCardAttempt extends Document {
 
 const FlashCardAttemptSchema = new Schema<IFlashCardAttempt>(
   {
+    session_id: { type: String },
     user_id: { type: Schema.Types.ObjectId, ref: "User", required: true },
     topic_vocabulary_id: {
       type: Schema.Types.ObjectId,
@@ -66,17 +72,22 @@ const FlashCardAttemptSchema = new Schema<IFlashCardAttempt>(
     },
     results: [
       {
+        answer_event_id: {
+          type: String,
+          required: true,
+        },
         vocabulary_id: {
           type: Schema.Types.ObjectId,
           ref: "Vocabulary",
           required: true,
         },
-        eval_type: {
+        action: {
           type: String,
-          enum: ["easy", "medium", "hard", "skip"],
+          enum: FLASHCARD_FEEDBACK_ACTIONS,
           required: true,
         },
         response_time: { type: Number, required: true },
+        attempted_at: { type: Date, required: true },
       },
     ],
     accuracy: { type: Number, default: 0 },
@@ -89,6 +100,16 @@ const FlashCardAttemptSchema = new Schema<IFlashCardAttempt>(
     },
   },
   { timestamps: true }
+);
+
+FlashCardAttemptSchema.index(
+  { session_id: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      session_id: { $exists: true, $type: "string" },
+    },
+  }
 );
 
 export const FlashCardAttempt = model<IFlashCardAttempt>(

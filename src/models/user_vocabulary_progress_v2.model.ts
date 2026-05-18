@@ -26,10 +26,11 @@ export interface IUserVocabularyMemoryV2 extends Document {
     last_p_recall?: number;
     last_interval_days?: number;
     last_seen_count?: number;
-    last_hard_count?: number;
-    last_medium_count?: number;
-    last_easy_count?: number;
-    last_skip_count?: number;
+    last_remember_count?: number;
+    last_vague_count?: number;
+    last_unknown_count?: number;
+    last_forgot_count?: number;
+    last_flashcard_answer_event_id?: string;
     last_learning_effort?: number;
     last_response_time_avg?: number;
     last_recall_failure_score?: number;
@@ -106,21 +107,24 @@ const UserVocabularyMemoryV2Schema =
                 type: Number,
                 min: 0,
             },
-            last_hard_count: {
+            last_remember_count: {
                 type: Number,
                 min: 0,
             },
-            last_medium_count: {
+            last_vague_count: {
                 type: Number,
                 min: 0,
             },
-            last_easy_count: {
+            last_unknown_count: {
                 type: Number,
                 min: 0,
             },
-            last_skip_count: {
+            last_forgot_count: {
                 type: Number,
                 min: 0,
+            },
+            last_flashcard_answer_event_id: {
+                type: String,
             },
             last_response_time_avg: {
                 type: Number,
