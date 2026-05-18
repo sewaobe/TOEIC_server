@@ -3,6 +3,7 @@ import {
   ReviewSessionItem,
   updateProgressWithDeltas,
 } from "./hlr.service";
+import { LegacyFlashcardEvalType } from "../types/flashcardFeedback.type";
 
 const HLR_UPDATE_MAX_ATTEMPTS = 2;
 
@@ -23,12 +24,10 @@ const HLR_UPDATE_MAX_ATTEMPTS = 2;
 // TYPES
 // ============================================
 
-export type EvalType = "skip" | "easy" | "medium" | "hard";
-
 export interface FlashcardLog {
   vocab_id: string;
   vocab_word?: string;
-  eval_type: EvalType;
+  eval_type: LegacyFlashcardEvalType;
   response_time?: number;
   attempted_at?: string;
 }
@@ -78,7 +77,7 @@ async function updateProgressWithRetry(
  * - skip, easy → true (user nhớ)
  * - medium, hard → false (user cần ôn thêm)
  */
-function mapEvalToCorrect(evalType: EvalType): boolean {
+function mapEvalToCorrect(evalType: LegacyFlashcardEvalType): boolean {
   return evalType === "skip" || evalType === "easy";
 }
 

@@ -1,5 +1,8 @@
 import { Schema, model, Document, Types } from "mongoose";
-import { EvalType } from "./flashcard_attempt.model";
+import {
+    LEGACY_FLASHCARD_EVAL_TYPES,
+    LegacyFlashcardEvalType,
+} from "../types/flashcardFeedback.type";
 
 export interface IFlashCardProgress extends Document {
     session_id: string;
@@ -10,7 +13,7 @@ export interface IFlashCardProgress extends Document {
     logs: {
         vocab_id: string;
         vocab_word: string;
-        eval_type: EvalType;
+        eval_type: LegacyFlashcardEvalType;
         response_time: number;
         attempted_at: string;
     }[];
@@ -32,7 +35,7 @@ const FlashCardProgressSchema = new Schema<IFlashCardProgress>(
                 vocab_word: String,
                 eval_type: {
                     type: String,
-                    enum: ["easy", "medium", "hard", "skip"],
+                    enum: LEGACY_FLASHCARD_EVAL_TYPES,
                 },
                 response_time: Number,
                 attempted_at: String,

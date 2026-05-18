@@ -1,4 +1,6 @@
-export type FlashcardEvalType = "easy" | "medium" | "hard" | "skip";
+import { LegacyFlashcardEvalType } from "../types/flashcardFeedback.type";
+
+export type FlashcardEvalType = LegacyFlashcardEvalType;
 
 export type DhpRecallResult = "remembered" | "forgot";
 

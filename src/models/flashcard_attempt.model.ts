@@ -1,7 +1,10 @@
 import { Schema, model, Document, Types } from "mongoose";
 import { SubmissionType } from "./enums/SubmissionType";
+import {
+  LEGACY_FLASHCARD_EVAL_TYPES,
+  LegacyFlashcardEvalType,
+} from "../types/flashcardFeedback.type";
 
-export type EvalType = "easy" | "medium" | "hard" | "skip";
 export type GameType = "classic" | "matching" | "word_recall";
 
 export interface IFlashCardAttempt extends Document {
@@ -13,7 +16,7 @@ export interface IFlashCardAttempt extends Document {
   results: Array<
     {
       vocabulary_id: Types.ObjectId;
-      eval_type: EvalType;
+      eval_type: LegacyFlashcardEvalType;
       response_time: number;
       attempted_at: Date;
     }
@@ -75,7 +78,7 @@ const FlashCardAttemptSchema = new Schema<IFlashCardAttempt>(
         },
         eval_type: {
           type: String,
-          enum: ["easy", "medium", "hard", "skip"],
+          enum: LEGACY_FLASHCARD_EVAL_TYPES,
           required: true,
         },
         response_time: { type: Number, required: true },
