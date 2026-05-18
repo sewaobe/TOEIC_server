@@ -326,13 +326,6 @@ export const createFlashcardSessionService = async (
     return responsePayload;
 };
 
-export const updateFlashcardProgressService = async () => {
-    throw createHttpError(
-        410,
-        "Snapshot-based flashcard progress updates are deprecated. Use the answer endpoint."
-    );
-};
-
 export const getSession = async (sessionId: string, userId: string) => {
     const session = await FlashCardProgress.findOne({
         session_id: sessionId,
@@ -894,7 +887,6 @@ export const finalizeFlashcardSessionService = async (
     accuracy: number,
     avg_time: number,
     total: number,
-    _logs: any[],
     started_at: string,
     finished_at: string
 ) => {

@@ -13,10 +13,6 @@ import {
 import { ApiResponse } from "../utils/ApiResponse";
 import { completeActivityAndUnlockNext } from "../services/day_study.service";
 import { Types } from "mongoose";
-import {
-  updateHLRFromMatchingGame,
-  updateHLRFromWordRecall,
-} from "../services/hlr_integration.service";
 
 export const getFlashCardById = async (
   req: Request,
@@ -154,29 +150,6 @@ export const submitFlashCardGame = async (
       return res
         .status(500)
         .json(ApiResponse.fail("Submit game result thất bại"));
-    }
-
-    // ★ Tích hợp HLR: Cập nhật spaced repetition data cho game
-    // Chạy async, không block response
-    if (game_type === "matching" && game_result.vocabularyIds?.length > 0) {
-      updateHLRFromMatchingGame(user_id.toString(), {
-        vocabularyIds: game_result.vocabularyIds,
-        correctPairIds: game_result.correctPairIds || [],
-        wrongAttemptCounts: game_result.wrongAttemptCounts || {}, // Số lần sai cho từng từ
-      }).catch((err) => {
-        console.error("[HLR] Error in matching game submit:", err.message);
-      });
-    } else if (game_type === "word_recall") {
-      const correctWordIds = game_result.correctWordIds || [];
-      const wrongWordIds = game_result.wrongWordIds || [];
-      if (correctWordIds.length > 0 || wrongWordIds.length > 0) {
-        updateHLRFromWordRecall(user_id.toString(), {
-          correctWordIds,
-          wrongWordIds,
-        }).catch((err) => {
-          console.error("[HLR] Error in word recall submit:", err.message);
-        });
-      }
     }
 
     res

@@ -6,7 +6,6 @@ import {
     getAllSessionActiveByUserService,
     getSession,
     removeFlashcardSessionService,
-    updateFlashcardProgressService,
 } from "../services/flashcard_progress.service";
 import { ApiResponse } from "../utils/ApiResponse";
 
@@ -43,31 +42,6 @@ export const createSessionFlashcardController = async (req: Request, res: Respon
     }
 };
 
-
-export const updateSessionFlashcardController = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        if (!req.user?._id) {
-            return res
-                .status(401)
-                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
-        }
-
-        const userId = req.user._id;
-        const { session_id, order_queue, current_index, logs_delta } = req.body;
-        const updatedProgress = await updateFlashcardProgressService();
-
-        res.status(200).json(
-            ApiResponse.success(
-                {
-                    progress: updatedProgress,
-                },
-                "Flashcard progress updated successfully",
-            ),
-        );
-    } catch (err) {
-        next(err);
-    }
-};
 
 export const getFlashcardProgressController = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -153,7 +127,7 @@ export const finalizeFlashcardSessionController = async (req: Request, res: Resp
         }
 
         const userId = req.user._id;
-        const { session_id, accuracy, avg_time, total, logs, started_at, finished_at } = req.body;
+        const { session_id, accuracy, avg_time, total, started_at, finished_at } = req.body;
 
         const finalizedSession = await finalizeFlashcardSessionService(
             userId,
@@ -161,7 +135,6 @@ export const finalizeFlashcardSessionController = async (req: Request, res: Resp
             accuracy,
             avg_time,
             total,
-            logs,
             started_at,
             finished_at
         );

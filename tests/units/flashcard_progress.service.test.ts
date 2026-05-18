@@ -83,7 +83,6 @@ import {
   finalizeFlashcardSessionService,
   FlashcardAnswerInput,
   getSession,
-  updateFlashcardProgressService,
 } from "../../src/services/flashcard_progress.service";
 import { SubmissionType } from "../../src/models/enums/SubmissionType";
 
@@ -700,7 +699,6 @@ describe("flashcard progress service semantic flow", () => {
       90,
       2,
       3,
-      [],
       "2026-05-18T10:00:00.000Z",
       "2026-05-18T10:02:00.000Z"
     );
@@ -713,16 +711,4 @@ describe("flashcard progress service semantic flow", () => {
     expect(result.memoryUpdates).toEqual([]);
   });
 
-  it("updateFlashcardProgressService -> Deprecated snapshot update -> Throws410Gone", async () => {
-    // Arrange
-
-    // Act
-    const action = updateFlashcardProgressService();
-
-    // Assert
-    await expect(action).rejects.toMatchObject({
-      status: 410,
-      message: "Snapshot-based flashcard progress updates are deprecated. Use the answer endpoint.",
-    });
-  });
 });
