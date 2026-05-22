@@ -28,6 +28,7 @@ import {
     FlashcardSessionCardPhase,
     FlashcardSessionCardState,
 } from "../types/flashcardFeedback.type";
+import { getVietnamDateBounds, isBeforeStartOfVietnamToday } from "../utils/vietnamDay.util";
 
 const FLASHCARD_SESSION_START_SCOPE = "flashcard.session.start";
 const FLASHCARD_SESSION_ANSWER_SCOPE = "flashcard.session.answer";
@@ -108,6 +109,27 @@ const assertModernSession = (session: any) => {
             "Flashcard session is outdated. Please start a new session."
         );
     }
+};
+
+const isExpiredActiveSession = (session: Pick<IFlashCardProgress, "last_activity">, now = new Date()) => {
+    return isBeforeStartOfVietnamToday(new Date(session.last_activity), now);
+};
+
+const archiveExpiredActiveSession = async (session: any) => {
+    session.status = "archived";
+    session.archive_reason = "expired";
+    await session.save();
+};
+
+const archiveExpiredActiveSessionsForUser = async (userId: string, now = new Date()) => {
+    const { startOfToday } = getVietnamDateBounds(now);
+    const expiredSessions = await FlashCardProgress.find({
+        user_id: userId,
+        status: "active",
+        last_activity: { $lt: startOfToday },
+    }).select("_id status archive_reason last_activity");
+
+    await Promise.all(expiredSessions.map((session: any) => archiveExpiredActiveSession(session)));
 };
 
 const calculateRepeatAfterCards = (
@@ -270,16 +292,20 @@ export const createFlashcardSessionService = async (
     });
 
     if (existingActiveSession) {
-        assertModernSession(existingActiveSession);
-        await ensureFlashcardAttemptForSession(
-            userId,
-            existingActiveSession.topic_vocabulary_id,
-            existingActiveSession.session_id
-        );
+        if (isExpiredActiveSession(existingActiveSession)) {
+            await archiveExpiredActiveSession(existingActiveSession);
+        } else {
+            assertModernSession(existingActiveSession);
+            await ensureFlashcardAttemptForSession(
+                userId,
+                existingActiveSession.topic_vocabulary_id,
+                existingActiveSession.session_id
+            );
 
-        const responsePayload = await buildSessionStartResponse(userId, existingActiveSession);
-        await completeIdempotencyRecord(idempotencyRecord._id, responsePayload);
-        return responsePayload;
+            const responsePayload = await buildSessionStartResponse(userId, existingActiveSession);
+            await completeIdempotencyRecord(idempotencyRecord._id, responsePayload);
+            return responsePayload;
+        }
     }
 
     const sessionId = randomUUID();
@@ -306,6 +332,15 @@ export const createFlashcardSessionService = async (
             status: "active",
         });
         if (!duplicateActiveSession) throw error;
+        if (isExpiredActiveSession(duplicateActiveSession)) {
+            await archiveExpiredActiveSession(duplicateActiveSession);
+            await newSession.save();
+            await ensureFlashcardAttemptForSession(userId, newSession.topic_vocabulary_id, sessionId);
+
+            const responsePayload = await buildSessionStartResponse(userId, newSession);
+            await completeIdempotencyRecord(idempotencyRecord._id, responsePayload);
+            return responsePayload;
+        }
         assertModernSession(duplicateActiveSession);
 
         await ensureFlashcardAttemptForSession(
@@ -334,6 +369,10 @@ export const getSession = async (sessionId: string, userId: string) => {
     });
 
     if (!session) return { progress: null };
+    if (isExpiredActiveSession(session)) {
+        await archiveExpiredActiveSession(session);
+        return { progress: null };
+    }
     assertModernSession(session);
 
     return {
@@ -352,7 +391,10 @@ export const getAllSessionActiveByUserService = async (
     limit: number
 ) => {
     const skip = (page - 1) * limit;
-    const query = { user_id: userId, status: "active" };
+    await archiveExpiredActiveSessionsForUser(userId);
+
+    const { startOfToday } = getVietnamDateBounds(new Date());
+    const query = { user_id: userId, status: "active", last_activity: { $gte: startOfToday } };
     const total = await FlashCardProgress.countDocuments(query);
 
     const sessions = await FlashCardProgress.find(query)
@@ -712,6 +754,7 @@ async function mutateProgressForAnswer(input: {
     const updated = await FlashCardProgress.findOneAndUpdate(
         {
             _id: input.progress._id,
+            status: "active",
             last_processed_answer_event_id: { $ne: input.answerEventId },
             "order_queue.0": input.vocabularyId,
         },
@@ -787,6 +830,10 @@ export async function answerFlashcardSessionService(
         status: "active",
     });
     if (!progress) throw createHttpError(404, "Flashcard session not found");
+    if (isExpiredActiveSession(progress)) {
+        await archiveExpiredActiveSession(progress);
+        throw createHttpError(409, "Flashcard session has expired. Please start a new session.");
+    }
     assertModernSession(progress);
 
     if (progress.last_processed_answer_event_id === answerEventId) {
@@ -919,6 +966,10 @@ export const finalizeFlashcardSessionService = async (
 export const removeFlashcardSessionService = async (sessionId: string, userId: string) => {
     const session = await FlashCardProgress.findOne({ session_id: sessionId, user_id: userId });
     if (!session) throw new Error("Flashcard session not found");
+
+    if (session.status === "archived") {
+        return session;
+    }
 
     session.status = "archived";
     session.archive_reason = "abandoned";

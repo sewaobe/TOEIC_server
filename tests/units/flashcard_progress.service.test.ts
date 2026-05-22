@@ -82,7 +82,9 @@ import {
   createFlashcardSessionService,
   finalizeFlashcardSessionService,
   FlashcardAnswerInput,
+  getAllSessionActiveByUserService,
   getSession,
+  removeFlashcardSessionService,
 } from "../../src/services/flashcard_progress.service";
 import { SubmissionType } from "../../src/models/enums/SubmissionType";
 
@@ -132,6 +134,19 @@ const createAttempt = (overrides: Record<string, unknown> = {}) => ({
   time_spent: undefined,
   save: mockAttemptSave,
   ...overrides,
+});
+
+const createFlashCardProgressFindChain = (items: any[]) => ({
+  skip: jest.fn().mockReturnThis(),
+  limit: jest.fn().mockReturnThis(),
+  sort: jest.fn().mockReturnThis(),
+  select: jest.fn().mockReturnThis(),
+  populate: jest.fn().mockReturnThis(),
+  lean: (jest.fn() as any).mockResolvedValue(items),
+});
+
+const createFlashCardProgressSelectChain = (items: any[]) => ({
+  select: (jest.fn() as any).mockResolvedValue(items),
 });
 
 describe("flashcard progress service semantic flow", () => {
@@ -209,6 +224,197 @@ describe("flashcard progress service semantic flow", () => {
         results: [],
       })
     );
+  });
+
+  it("getAllSessionActiveByUserService -> previous-day active sessions -> archives expired and excludes from result", async () => {
+    // Arrange
+    const previousDaySession = createExistingSession({
+      last_activity: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+    });
+    const sameDaySession = createExistingSession({
+      session_id: "same-day-session",
+      topic_vocabulary_id: {
+        _id: new Types.ObjectId(topicVocabularyId),
+        title: "Daily topic",
+        description: "Same day topic",
+        isPublic: true,
+      },
+      logs: [{ vocab_id: orderQueue[0] }],
+      last_activity: new Date(),
+    });
+    mockFlashCardProgress.find
+      .mockReturnValueOnce(createFlashCardProgressSelectChain([previousDaySession]))
+      .mockReturnValueOnce(createFlashCardProgressFindChain([sameDaySession]));
+    mockFlashCardProgress.countDocuments.mockResolvedValue(1);
+
+    // Act
+    const result = await getAllSessionActiveByUserService(userId, 1, 9);
+
+    // Assert
+    expect(previousDaySession.status).toBe("archived");
+    expect(previousDaySession.archive_reason).toBe("expired");
+    expect(mockSave).toHaveBeenCalledTimes(1);
+    expect(mockFlashCardProgress.countDocuments).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_id: userId,
+        status: "active",
+        last_activity: expect.objectContaining({ $gte: expect.any(Date) }),
+      })
+    );
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].session_id).toBe("same-day-session");
+    expect(result.total).toBe(1);
+  });
+
+  it("getSession -> previous-day active session -> archives expired and returns null progress", async () => {
+    // Arrange
+    const previousDaySession = createExistingSession({
+      last_activity: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+    });
+    mockFlashCardProgress.findOne.mockResolvedValue(previousDaySession);
+
+    // Act
+    const result = await getSession(previousDaySession.session_id, userId);
+
+    // Assert
+    expect(previousDaySession.status).toBe("archived");
+    expect(previousDaySession.archive_reason).toBe("expired");
+    expect(mockSave).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ progress: null });
+    expect(mockBuildFlashcardSessionPreviewMetadata).not.toHaveBeenCalled();
+  });
+
+  it("getSession -> same-day active session -> returns progress", async () => {
+    // Arrange
+    const sameDaySession = createExistingSession({ last_activity: new Date() });
+    mockFlashCardProgress.findOne.mockResolvedValue(sameDaySession);
+
+    // Act
+    const result = await getSession(sameDaySession.session_id, userId);
+
+    // Assert
+    expect(result.progress).toBe(sameDaySession);
+    expect(result.preview_metadata).toBe(previewMetadata);
+    expect(mockSave).not.toHaveBeenCalled();
+    expect(mockBuildFlashcardSessionPreviewMetadata).toHaveBeenCalledWith({
+      userId,
+      vocabularyIds: sameDaySession.order_queue,
+      cardStates: sameDaySession.card_states,
+    });
+  });
+
+  it("createFlashcardSessionService -> previous-day active topic session -> archives old and creates new session", async () => {
+    // Arrange
+    const previousDaySession = createExistingSession({
+      last_activity: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+    });
+    mockFlashCardProgress.findOne.mockResolvedValue(previousDaySession);
+
+    // Act
+    const result = await createFlashcardSessionService(
+      userId,
+      topicVocabularyId,
+      orderQueue,
+      "new-after-expired-key"
+    );
+
+    // Assert
+    expect(previousDaySession.status).toBe("archived");
+    expect(previousDaySession.archive_reason).toBe("expired");
+    expect(mockFlashCardProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_id: new Types.ObjectId(userId),
+        topic_vocabulary_id: new Types.ObjectId(topicVocabularyId),
+        status: "active",
+      })
+    );
+    expect(result.sessionId).not.toBe(previousDaySession.session_id);
+    expect(result.newSession.status).toBe("active");
+    expect(mockFlashCardAttempt.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        session_id: result.sessionId,
+      })
+    );
+  });
+
+  it("createFlashcardSessionService -> same-day active topic session -> returns existing session", async () => {
+    // Arrange
+    const sameDaySession = createExistingSession({ last_activity: new Date() });
+    mockFlashCardProgress.findOne.mockResolvedValue(sameDaySession);
+
+    // Act
+    const result = await createFlashcardSessionService(
+      userId,
+      topicVocabularyId,
+      orderQueue,
+      "same-day-existing-key"
+    );
+
+    // Assert
+    expect(result.sessionId).toBe(sameDaySession.session_id);
+    expect(result.newSession).toBe(sameDaySession);
+    expect(mockFlashCardProgress).not.toHaveBeenCalled();
+    expect(mockSave).not.toHaveBeenCalled();
+    expect(mockFlashCardAttempt.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        session_id: sameDaySession.session_id,
+      })
+    );
+  });
+
+  it("answerFlashcardSessionService -> previous-day active session -> archives expired and rejects answer", async () => {
+    // Arrange
+    const previousDaySession = createExistingSession({
+      last_activity: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+    });
+    mockFlashCardProgress.findOne.mockResolvedValue(previousDaySession);
+
+    // Act
+    const action = answerFlashcardSessionService(
+      userId,
+      previousDaySession.session_id,
+      {
+        vocabulary_id: orderQueue[0],
+        action: "remember",
+        response_time: 1200,
+        attempted_at: "2026-05-18T10:00:00.000Z",
+      },
+      "expired-answer-key"
+    );
+
+    // Assert
+    await expect(action).rejects.toMatchObject({
+      status: 409,
+      message: "Flashcard session has expired. Please start a new session.",
+    });
+    expect(previousDaySession.status).toBe("archived");
+    expect(previousDaySession.archive_reason).toBe("expired");
+    expect(mockSave).toHaveBeenCalledTimes(1);
+    expect(mockFlashCardAttempt.findOne).not.toHaveBeenCalled();
+    expect(mockFlashCardAttempt.updateOne).not.toHaveBeenCalled();
+    expect(mockUserVocabularyMemoryV2.create).not.toHaveBeenCalled();
+    expect(mockUserVocabularyMemoryV2.updateOne).not.toHaveBeenCalled();
+    expect(mockVocabulary.findById).not.toHaveBeenCalled();
+    expect(mockFlashCardProgress.findOneAndUpdate).not.toHaveBeenCalled();
+    expect(mockIdempotencyRecord.updateOne).not.toHaveBeenCalled();
+  });
+
+  it("removeFlashcardSessionService -> already archived expired session -> does not overwrite archive reason", async () => {
+    // Arrange
+    const expiredSession = createExistingSession({
+      status: "archived",
+      archive_reason: "expired",
+    });
+    mockFlashCardProgress.findOne.mockResolvedValue(expiredSession);
+
+    // Act
+    const result = await removeFlashcardSessionService(expiredSession.session_id, userId);
+
+    // Assert
+    expect(result).toBe(expiredSession);
+    expect(expiredSession.status).toBe("archived");
+    expect(expiredSession.archive_reason).toBe("expired");
+    expect(mockSave).not.toHaveBeenCalled();
   });
 
   it("getSession -> Outdated active progress -> Throws409OutdatedSession", async () => {
