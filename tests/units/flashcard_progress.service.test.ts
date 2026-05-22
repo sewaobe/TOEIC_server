@@ -149,6 +149,12 @@ const createFlashCardProgressSelectChain = (items: any[]) => ({
   select: (jest.fn() as any).mockResolvedValue(items),
 });
 
+const createMemoryFindChain = (items: any[]) => ({
+  select: jest.fn().mockReturnValue({
+    lean: (jest.fn() as any).mockResolvedValue(items),
+  }),
+});
+
 describe("flashcard progress service semantic flow", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -172,11 +178,7 @@ describe("flashcard progress service semantic flow", () => {
       card_type: "REVIEW_REINFORCEMENT",
       options: { remember: { completion_text: "Hoàn tất lượt ôn" } },
     });
-    mockUserVocabularyMemoryV2.find.mockReturnValue({
-      select: jest.fn().mockReturnValue({
-        lean: (jest.fn() as any).mockResolvedValue([]),
-      }),
-    });
+    mockUserVocabularyMemoryV2.find.mockReturnValue(createMemoryFindChain([]));
     mockUserVocabularyMemoryV2.findOne.mockResolvedValue(null);
     mockUserVocabularyMemoryV2.create.mockResolvedValue({});
     mockUserVocabularyMemoryV2.updateOne.mockResolvedValue({ modifiedCount: 1 });
@@ -222,6 +224,116 @@ describe("flashcard progress service semantic flow", () => {
         session_id: result.sessionId,
         submit_type: SubmissionType.PRACTICE,
         results: [],
+      })
+    );
+  });
+
+  it("createFlashcardSessionService -> existing memory due today -> initializes card as REVIEW_PENDING", async () => {
+    // Arrange
+    const idempotencyKey = "due-memory-key";
+    mockUserVocabularyMemoryV2.find.mockReturnValue(
+      createMemoryFindChain([
+        {
+          vocabulary_id: new Types.ObjectId(orderQueue[0]),
+          due_at: new Date(Date.now() - 60 * 1000),
+          last_reviewed_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+        },
+      ])
+    );
+
+    // Act
+    await createFlashcardSessionService(
+      userId,
+      topicVocabularyId,
+      orderQueue,
+      idempotencyKey
+    );
+
+    // Assert
+    expect(mockFlashCardProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        card_states: expect.objectContaining({
+          [orderQueue[0]]: {
+            phase: "REVIEW_PENDING",
+            long_term_committed: false,
+            repeat_count: 0,
+          },
+          [orderQueue[1]]: {
+            phase: "NEW_LEARNING",
+            long_term_committed: false,
+            repeat_count: 0,
+          },
+        }),
+      })
+    );
+  });
+
+  it("createFlashcardSessionService -> existing memory due in future -> initializes card as REVIEW_REINFORCEMENT", async () => {
+    // Arrange
+    const idempotencyKey = "future-memory-key";
+    mockUserVocabularyMemoryV2.find.mockReturnValue(
+      createMemoryFindChain([
+        {
+          vocabulary_id: new Types.ObjectId(orderQueue[0]),
+          due_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          last_reviewed_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+        },
+      ])
+    );
+
+    // Act
+    await createFlashcardSessionService(
+      userId,
+      topicVocabularyId,
+      orderQueue,
+      idempotencyKey
+    );
+
+    // Assert
+    expect(mockFlashCardProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        card_states: expect.objectContaining({
+          [orderQueue[0]]: {
+            phase: "REVIEW_REINFORCEMENT",
+            long_term_committed: false,
+            repeat_count: 0,
+          },
+        }),
+      })
+    );
+  });
+
+  it("createFlashcardSessionService -> existing memory already reviewed today -> initializes card as REVIEW_REINFORCEMENT", async () => {
+    // Arrange
+    const idempotencyKey = "reviewed-today-memory-key";
+    mockUserVocabularyMemoryV2.find.mockReturnValue(
+      createMemoryFindChain([
+        {
+          vocabulary_id: new Types.ObjectId(orderQueue[0]),
+          due_at: new Date(Date.now() - 60 * 1000),
+          last_reviewed_at: new Date(),
+        },
+      ])
+    );
+
+    // Act
+    await createFlashcardSessionService(
+      userId,
+      topicVocabularyId,
+      orderQueue,
+      idempotencyKey
+    );
+
+    // Assert
+    expect(mockFlashCardProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        card_states: expect.objectContaining({
+          [orderQueue[0]]: {
+            phase: "REVIEW_REINFORCEMENT",
+            long_term_committed: false,
+            repeat_count: 0,
+          },
+        }),
       })
     );
   });
@@ -535,6 +647,7 @@ describe("flashcard progress service semantic flow", () => {
       difficulty: 5,
       half_life_days: 3,
       last_reviewed_at: new Date("2026-05-01T00:00:00.000Z"),
+      due_at: new Date("2026-05-17T00:00:00.000Z"),
       review_count: 1,
       session_count: 1,
     };
@@ -668,6 +781,77 @@ describe("flashcard progress service semantic flow", () => {
     );
   });
 
+  it("answerFlashcardSessionService -> non-due review reinforcement answer -> does not update long-term memory fields", async () => {
+    // Arrange
+    const memory = {
+      _id: new Types.ObjectId(),
+      difficulty: 5,
+      half_life_days: 3,
+      due_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      last_reviewed_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+    };
+    const progress = createExistingSession({
+      order_queue: [orderQueue[1]],
+      card_states: new Map([
+        [orderQueue[1], { phase: "REVIEW_REINFORCEMENT", long_term_committed: false, repeat_count: 0 }],
+      ]),
+    });
+    const updatedProgress = createExistingSession({
+      order_queue: [],
+      card_states: new Map([
+        [orderQueue[1], { phase: "REVIEW_RESOLVED", long_term_committed: false, repeat_count: 0 }],
+      ]),
+      logs: [
+        {
+          answer_event_id: "answer-key-reinforcement",
+          vocab_id: orderQueue[1],
+          vocab_word: "alpha",
+          action: "remember",
+          response_time: 1500,
+          attempted_at: "2026-05-18T10:00:00.000Z",
+        },
+      ],
+      last_processed_answer_event_id: "answer-key-reinforcement",
+    });
+    const attempt = createAttempt({ results: [] });
+    mockFlashCardProgress.findOne.mockResolvedValue(progress);
+    mockFlashCardProgress.findOneAndUpdate.mockResolvedValue(updatedProgress);
+    mockFlashCardAttempt.findOne.mockResolvedValue(attempt);
+    mockUserVocabularyMemoryV2.findOne.mockResolvedValue(memory);
+
+    // Act
+    const result = (await answerFlashcardSessionService(
+      userId,
+      progress.session_id,
+      {
+        vocabulary_id: orderQueue[1],
+        action: "remember",
+        response_time: 1500,
+        attempted_at: "2026-05-18T10:00:00.000Z",
+      },
+      "answer-key-reinforcement"
+    )) as any;
+
+    // Assert
+    expect(mockUserVocabularyMemoryV2.updateOne).toHaveBeenCalledWith(
+      {
+        user_id: new Types.ObjectId(userId),
+        vocabulary_id: new Types.ObjectId(orderQueue[1]),
+        last_flashcard_answer_event_id: { $ne: "answer-key-reinforcement" },
+      },
+      {
+        $inc: { review_count: 1 },
+        $set: { last_flashcard_answer_event_id: "answer-key-reinforcement" },
+      }
+    );
+    const memoryUpdate = mockUserVocabularyMemoryV2.updateOne.mock.calls[0][1];
+    expect(memoryUpdate.$set).not.toHaveProperty("due_at");
+    expect(memoryUpdate.$set).not.toHaveProperty("half_life_days");
+    expect(memoryUpdate.$set).not.toHaveProperty("difficulty");
+    expect(memoryUpdate.$set).not.toHaveProperty("last_reviewed_at");
+    expect(result.preview_metadata_patch).toBeNull();
+  });
+
   it("appendAttemptResultIfNeeded -> Same answer_event_id already exists -> DoesNotAppendDuplicateResult", async () => {
     // Arrange
     mockFlashCardAttempt.updateOne.mockResolvedValue({ modifiedCount: 0 });
@@ -754,6 +938,7 @@ describe("flashcard progress service semantic flow", () => {
       difficulty: 6,
       half_life_days: 4,
       last_reviewed_at: new Date("2026-05-01T00:00:00.000Z"),
+      due_at: new Date("2026-05-17T00:00:00.000Z"),
       last_flashcard_answer_event_id: "answer-key-4",
     };
     mockUserVocabularyMemoryV2.findOne
@@ -784,6 +969,56 @@ describe("flashcard progress service semantic flow", () => {
         }),
       })
     );
+  });
+
+  it("applyReviewPendingMemory -> memory due in future -> skips long-term update", async () => {
+    // Arrange
+    const memory = {
+      _id: new Types.ObjectId(),
+      difficulty: 6,
+      half_life_days: 4,
+      due_at: new Date("2026-05-19T10:00:00.000Z"),
+      last_reviewed_at: new Date("2026-05-01T00:00:00.000Z"),
+    };
+    mockUserVocabularyMemoryV2.findOne.mockResolvedValue(memory);
+
+    // Act
+    await __test__.applyReviewPendingMemory({
+      userId,
+      vocabularyId: orderQueue[0],
+      action: "remember",
+      answerEventId: "answer-key-future-due",
+      responseTime: 1000,
+      processedAt: new Date("2026-05-18T10:00:00.000Z"),
+    });
+
+    // Assert
+    expect(mockUserVocabularyMemoryV2.updateOne).not.toHaveBeenCalled();
+  });
+
+  it("applyReviewPendingMemory -> memory already reviewed today -> skips long-term update", async () => {
+    // Arrange
+    const memory = {
+      _id: new Types.ObjectId(),
+      difficulty: 6,
+      half_life_days: 4,
+      due_at: new Date("2026-05-18T09:00:00.000Z"),
+      last_reviewed_at: new Date("2026-05-18T02:00:00.000Z"),
+    };
+    mockUserVocabularyMemoryV2.findOne.mockResolvedValue(memory);
+
+    // Act
+    await __test__.applyReviewPendingMemory({
+      userId,
+      vocabularyId: orderQueue[0],
+      action: "remember",
+      answerEventId: "answer-key-reviewed-today",
+      responseTime: 1000,
+      processedAt: new Date("2026-05-18T10:00:00.000Z"),
+    });
+
+    // Assert
+    expect(mockUserVocabularyMemoryV2.updateOne).not.toHaveBeenCalled();
   });
 
   it("applyReviewReinforcementMemory -> Same answer_event_id already applied -> DoesNotDoubleIncrement", async () => {

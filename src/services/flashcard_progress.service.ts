@@ -151,7 +151,31 @@ const getRepeatAfterCards = (action: FlashcardFeedbackAction, remainingCards: nu
     return calculateRepeatAfterCards(remainingCards, policy);
 };
 
+type LongTermReviewMemory = {
+    vocabulary_id?: Types.ObjectId | string;
+    due_at?: Date | null;
+    last_reviewed_at?: Date | null;
+};
+
+const isReviewedInCurrentVietnamDay = (lastReviewedAt: Date | null | undefined, now: Date) => {
+    if (!lastReviewedAt) return false;
+    const reviewedAt = new Date(lastReviewedAt);
+    if (Number.isNaN(reviewedAt.getTime())) return false;
+
+    const { startOfToday, startOfTomorrow } = getVietnamDateBounds(now);
+    return reviewedAt >= startOfToday && reviewedAt < startOfTomorrow;
+};
+
+const isDueForLongTermReview = (memory: LongTermReviewMemory, now: Date) => {
+    if (!memory.due_at) return false;
+    const dueAt = new Date(memory.due_at);
+    if (Number.isNaN(dueAt.getTime()) || dueAt > now) return false;
+
+    return !isReviewedInCurrentVietnamDay(memory.last_reviewed_at, now);
+};
+
 const initializeCardStates = async (userId: string, vocabularyIds: string[]) => {
+    const now = new Date();
     const validIds = vocabularyIds
         .filter((id) => Types.ObjectId.isValid(id))
         .map((id) => new Types.ObjectId(id));
@@ -161,15 +185,26 @@ const initializeCardStates = async (userId: string, vocabularyIds: string[]) => 
             : await UserVocabularyMemoryV2.find({
                 user_id: new Types.ObjectId(userId),
                 vocabulary_id: { $in: validIds },
-            }).select("vocabulary_id").lean();
+            }).select("vocabulary_id due_at last_reviewed_at").lean();
 
-    const reviewIds = new Set(memories.map((memory: any) => String(memory.vocabulary_id)));
+    const memoryByVocabularyId = new Map(
+        (memories as LongTermReviewMemory[]).map((memory) => [
+            String(memory.vocabulary_id),
+            memory,
+        ])
+    );
     const cardStates: Record<string, FlashcardSessionCardState> = {};
 
     for (const vocabularyId of vocabularyIds) {
-        cardStates[vocabularyId] = reviewIds.has(vocabularyId)
+        const memory = memoryByVocabularyId.get(vocabularyId);
+        if (!memory) {
+            cardStates[vocabularyId] = { phase: "NEW_LEARNING", long_term_committed: false, repeat_count: 0 };
+            continue;
+        }
+
+        cardStates[vocabularyId] = isDueForLongTermReview(memory, now)
             ? { phase: "REVIEW_PENDING", long_term_committed: false, repeat_count: 0 }
-            : { phase: "NEW_LEARNING", long_term_committed: false, repeat_count: 0 };
+            : { phase: "REVIEW_REINFORCEMENT", long_term_committed: false, repeat_count: 0 };
     }
 
     return cardStates;
@@ -570,6 +605,8 @@ async function applyReviewPendingMemory(input: {
         vocabulary_id: new Types.ObjectId(input.vocabularyId),
     });
     if (!memory) throw createHttpError(409, "Review memory not found for vocabulary");
+
+    if (!isDueForLongTermReview(memory, input.processedAt)) return;
 
     const currentDifficulty = clampDifficulty(memory.difficulty);
     const currentHalfLifeDays = memory.half_life_days;
