@@ -173,11 +173,14 @@ export const getDemoTestTagAccuracyService = async (
   return tagAccuracy;
 };
 
+
 const mapAnswer = (ans: any, idx: number) => {
-  const qid = ans.question_id?._id ?? ans.question_id; // nếu populate thì lấy _id, còn không thì lấy luôn
+  const qid = ans.question_id?._id ?? ans.question_id;
+  const match = ans.question_id.name?.match(/Question\s*(\d+)/i);
+
   return {
     question_id: qid.toString(),
-    question_no: ans.question_id.name.split(" ")[1],
+    question_no: match ? Number(match[1]) : idx + 1,
     selectedOption: ans.selectedOption,
     isCorrect: ans.isCorrect,
     correctAnswer: ans.question_id.correctAnswer,

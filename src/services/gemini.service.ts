@@ -14,14 +14,11 @@ const ai = new GoogleGenAI({
 });
 
 const MODELS = [
-  "gemini-3.1-pro-preview",
-  "gemini-3.1-flash-lite-preview",
-  "gemini-3-flash-preview",
-  "gemini-2.5-pro",
   "gemini-2.5-flash",
+  "gemini-3-flash-preview",
+  "gemini-3.1-flash-lite",
+  "gemini-3.1-flash-lite-preview",
   "gemini-2.5-flash-lite",
-  "gemini-2.0-flash",
-  "gemini-2.0-flash-lite",
 ];
 
 export const ToeicPlanSchema = {
@@ -1056,9 +1053,12 @@ export async function evaluateDefinitionWithAI(
       if (
         msg.includes("503") ||
         msg.includes("UNAVAILABLE") ||
-        msg.includes("overloaded")
+        msg.includes("overloaded") ||
+        msg.includes("429") ||
+        msg.includes("RESOURCE_EXHAUSTED") ||
+        msg.includes("Quota exceeded")
       ) {
-        console.warn(`🚧 ${model} quá tải, thử model kế tiếp...`);
+        console.warn(`🚧 ${model} không khả dụng hoặc hết quota, thử model kế tiếp...`);
         continue;
       }
       console.error(`❌ Lỗi khi gọi ${model}:`, msg);
@@ -1368,7 +1368,7 @@ Trả về JSON hợp lệ với đầy đủ tất cả nội dung.
       if (!jsonText) throw new Error("Không nhận được dữ liệu từ Gemini");
 
       const parsed = JSON.parse(jsonText);
-      
+
       // Validate structure
       if (!parsed.name) {
         throw new Error("Invalid mind map structure: missing root name");
