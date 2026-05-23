@@ -16,15 +16,23 @@ import {
     buildSuggestionReasons,
     SuggestionReason,
 } from "../utils/suggestionReason.util";
+import { getVietnamDateBounds } from "../utils/vietnamDay.util";
 
 const VIETNAM_UTC_OFFSET_MS = 7 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export type SuggestionBucket = "all" | "due_today" | MemoryUiBucket;
+export type SuggestionBucket =
+    | "all"
+    | "due_today"
+    | "due_now"
+    | "upcoming_today"
+    | MemoryUiBucket;
 
 export interface TodayReviewSummary {
     total: number;
     dueToday: number;
+    dueNow: number;
+    upcomingToday: number;
     overdue: number;
     primaryReviewCount: number;
     overdueReviewCount: number;
@@ -74,6 +82,8 @@ export interface PaginatedSuggestions {
     counters: {
         all: number;
         dueToday: number;
+        dueNow: number;
+        upcomingToday: number;
         activeReviewing: number;
         overdue: number;
         mastered: number;
@@ -159,8 +169,9 @@ export async function getTodayReviewSummary(
     const bounds = getVietnamDateBounds(now);
     const memories = await getScopedMemoryRecords(userObjectId);
 
-    let dueToday = 0;
     let overdue = 0;
+    let dueNow = 0;
+    let upcomingToday = 0;
 
     for (const memory of memories) {
         if (memory.status === "mastered") {
@@ -176,18 +187,31 @@ export async function getTodayReviewSummary(
         if (
             dueAt &&
             dueAt >= bounds.startOfToday &&
+            dueAt <= now
+        ) {
+            dueNow += 1;
+            continue;
+        }
+
+        if (
+            dueAt &&
+            dueAt > now &&
             dueAt < bounds.startOfTomorrow
         ) {
-            dueToday += 1;
+            upcomingToday += 1;
             continue;
         }
     }
 
+    const dueToday = dueNow + upcomingToday;
+
     return {
-        total: dueToday + overdue,
+        total: overdue + dueNow + upcomingToday,
         dueToday,
+        dueNow,
+        upcomingToday,
         overdue,
-        primaryReviewCount: dueToday,
+        primaryReviewCount: dueNow,
         overdueReviewCount: overdue,
     };
 }
@@ -305,8 +329,8 @@ export async function getSuggestedVocabulary(
         })
         .filter((item): item is SuggestedVocabularyItem => Boolean(item));
 
-    const counters = buildSuggestionCounters(allItems, bounds);
-    const filtered = filterSuggestionItems(allItems, options, bounds);
+    const counters = buildSuggestionCounters(allItems, bounds, now);
+    const filtered = filterSuggestionItems(allItems, options, bounds, now);
     const sorted = sortSuggestionItems(filtered, options.sortBy ?? "due_at", options.sortOrder ?? "asc");
     const total = sorted.length;
     const totalPages = Math.max(1, Math.ceil(total / limit));
@@ -464,25 +488,6 @@ function calculateMemoryPRecall(
     );
 }
 
-function getVietnamDateBounds(now: Date): {
-    startOfToday: Date;
-    startOfTomorrow: Date;
-} {
-    const vietnamNow = new Date(now.getTime() + VIETNAM_UTC_OFFSET_MS);
-    const year = vietnamNow.getUTCFullYear();
-    const month = vietnamNow.getUTCMonth();
-    const date = vietnamNow.getUTCDate();
-    const startOfTodayUtcMs =
-        Date.UTC(year, month, date, 0, 0, 0, 0) - VIETNAM_UTC_OFFSET_MS;
-    const startOfToday = new Date(startOfTodayUtcMs);
-    const startOfTomorrow = new Date(startOfTodayUtcMs + DAY_MS);
-
-    return {
-        startOfToday,
-        startOfTomorrow,
-    };
-}
-
 function formatVietnamDateKey(date: Date): string {
     const vietnamDate = new Date(date.getTime() + VIETNAM_UTC_OFFSET_MS);
     const year = vietnamDate.getUTCFullYear();
@@ -583,7 +588,8 @@ function resolveDueLabel(
 
 function buildSuggestionCounters(
     items: SuggestedVocabularyItem[],
-    bounds: ReturnType<typeof getVietnamDateBounds>
+    bounds: ReturnType<typeof getVietnamDateBounds>,
+    now: Date
 ): PaginatedSuggestions["counters"] {
     return items.reduce(
         (counters, item) => {
@@ -608,6 +614,12 @@ function buildSuggestionCounters(
                 item.status !== "mastered"
             ) {
                 counters.dueToday += 1;
+
+                if (item.dueAt <= now) {
+                    counters.dueNow += 1;
+                } else {
+                    counters.upcomingToday += 1;
+                }
             }
 
             return counters;
@@ -615,6 +627,8 @@ function buildSuggestionCounters(
         {
             all: 0,
             dueToday: 0,
+            dueNow: 0,
+            upcomingToday: 0,
             activeReviewing: 0,
             overdue: 0,
             mastered: 0,
@@ -630,7 +644,8 @@ function filterSuggestionItems(
         level?: string;
         bucket?: SuggestionBucket;
     },
-    bounds: ReturnType<typeof getVietnamDateBounds>
+    bounds: ReturnType<typeof getVietnamDateBounds>,
+    now: Date
 ): SuggestedVocabularyItem[] {
     const search = options.search?.trim().toLowerCase();
 
@@ -652,13 +667,25 @@ function filterSuggestionItems(
         }
 
         if (options.bucket && options.bucket !== "all") {
-            if (options.bucket === "due_today") {
+            if (
+                options.bucket === "due_today" ||
+                options.bucket === "due_now" ||
+                options.bucket === "upcoming_today"
+            ) {
                 if (
                     !item.dueAt ||
                     item.status === "mastered" ||
                     item.dueAt < bounds.startOfToday ||
                     item.dueAt >= bounds.startOfTomorrow
                 ) {
+                    return false;
+                }
+
+                if (options.bucket === "due_now" && item.dueAt > now) {
+                    return false;
+                }
+
+                if (options.bucket === "upcoming_today" && item.dueAt <= now) {
                     return false;
                 }
             } else if (item.memoryBucket !== options.bucket) {

@@ -104,7 +104,7 @@ export const getSuggestedVocabularyController = async (
         if (!bucket) {
             return res.status(400).json(
                 ApiResponse.fail(
-                    "bucket must be all, due_today, mastered, active_reviewing or overdue"
+                    "bucket must be all, due_today, due_now, upcoming_today, mastered, active_reviewing or overdue"
                 )
             );
         }
@@ -231,6 +231,8 @@ function parseBucket(value?: string): SuggestionBucket | undefined {
     if (
         value === "all" ||
         value === "due_today" ||
+        value === "due_now" ||
+        value === "upcoming_today" ||
         value === "mastered" ||
         value === "active_reviewing" ||
         value === "overdue"
