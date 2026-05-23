@@ -22,6 +22,7 @@ import {
 import { lookupSspMmcIntervalDays } from "./ssp_mmc_policy.service";
 import { UserVocabularyMemoryV2 } from "../models/user_vocabulary_progress_v2.model";
 import { Vocabulary } from "../models/vocabulary";
+import { TopicVocabulary } from "../models/topic_vocabulary.model";
 import {
     FLASHCARD_FEEDBACK_ACTIONS,
     FlashcardFeedbackAction,
@@ -32,6 +33,9 @@ import { getVietnamDateBounds, isBeforeStartOfVietnamToday } from "../utils/viet
 
 const FLASHCARD_SESSION_START_SCOPE = "flashcard.session.start";
 const FLASHCARD_SESSION_ANSWER_SCOPE = "flashcard.session.answer";
+const TOPIC_PRACTICE_SOURCE = "TOPIC_PRACTICE";
+const SUGGESTION_QUICK_REVIEW_SOURCE = "SUGGESTION_QUICK_REVIEW";
+const SUGGESTION_QUICK_REVIEW_LABEL = "Ôn tập gợi ý";
 
 const NEW_CARD_BASE_DIFFICULTY = 3;
 const NEW_CARD_VAGUE_DIFFICULTY_PENALTY = 2;
@@ -52,6 +56,13 @@ type SessionStartResponse = {
     sessionId: string;
     newSession: any;
     preview_metadata: FlashcardSessionPreviewMetadata;
+};
+
+type SuggestionReviewMode = "due_now" | "overdue" | "custom" | "single";
+
+type SuggestionReviewStartInput = {
+    mode?: SuggestionReviewMode;
+    vocabulary_ids?: string[];
 };
 
 export type FlashcardAnswerInput = {
@@ -210,24 +221,105 @@ const initializeCardStates = async (userId: string, vocabularyIds: string[]) => 
     return cardStates;
 };
 
+const setCardState = (
+    session: any,
+    vocabularyId: string,
+    state: FlashcardSessionCardState
+) => {
+    if (session.card_states instanceof Map) {
+        session.card_states.set(vocabularyId, state);
+        return;
+    }
+
+    session.card_states = {
+        ...(session.card_states ?? {}),
+        [vocabularyId]: state,
+    };
+};
+
+const normalizeStaleReviewPendingCards = async (
+    userId: string,
+    session: any,
+    now = new Date()
+) => {
+    const pendingVocabularyIds = (session.order_queue ?? []).filter((vocabularyId: string) => {
+        return getCardState(session, vocabularyId)?.phase === "REVIEW_PENDING";
+    });
+
+    if (pendingVocabularyIds.length === 0) {
+        return session;
+    }
+
+    const validIds = pendingVocabularyIds
+        .filter((id: string) => Types.ObjectId.isValid(id))
+        .map((id: string) => new Types.ObjectId(id));
+
+    const memories =
+        validIds.length === 0
+            ? []
+            : await UserVocabularyMemoryV2.find({
+                user_id: new Types.ObjectId(userId),
+                vocabulary_id: { $in: validIds },
+            }).select("vocabulary_id due_at last_reviewed_at").lean();
+
+    const memoryByVocabularyId = new Map(
+        (memories as LongTermReviewMemory[]).map((memory) => [
+            String(memory.vocabulary_id),
+            memory,
+        ])
+    );
+
+    let changed = false;
+
+    for (const vocabularyId of pendingVocabularyIds) {
+        const memory = memoryByVocabularyId.get(vocabularyId);
+        if (memory && isDueForLongTermReview(memory, now)) {
+            continue;
+        }
+
+        const currentState = getCardState(session, vocabularyId);
+        if (!currentState || currentState.phase !== "REVIEW_PENDING") {
+            continue;
+        }
+
+        setCardState(session, vocabularyId, {
+            ...currentState,
+            phase: "REVIEW_REINFORCEMENT",
+            long_term_committed: false,
+        });
+        changed = true;
+    }
+
+    if (changed) {
+        await session.save();
+    }
+
+    return session;
+};
+
 const ensureFlashcardAttemptForSession = async (
     userId: string,
-    topicVocabularyId: mongoose.Types.ObjectId | string,
+    topicVocabularyId: mongoose.Types.ObjectId | string | undefined,
     sessionId: string
 ) => {
     const existingAttempt = await FlashCardAttempt.findOne({ session_id: sessionId });
     if (existingAttempt) return existingAttempt;
 
     try {
-        return await FlashCardAttempt.create({
+        const createPayload: Record<string, unknown> = {
             session_id: sessionId,
             user_id: new mongoose.Types.ObjectId(userId),
-            topic_vocabulary_id: topicVocabularyId,
             submit_type: SubmissionType.PRACTICE,
             results: [],
             accuracy: 0,
             started_at: new Date(),
-        });
+        };
+
+        if (topicVocabularyId) {
+            createPayload.topic_vocabulary_id = topicVocabularyId;
+        }
+
+        return await FlashCardAttempt.create(createPayload);
     } catch (error: any) {
         if (!isDuplicateKeyError(error)) throw error;
         return FlashCardAttempt.findOne({ session_id: sessionId });
@@ -349,6 +441,7 @@ export const createFlashcardSessionService = async (
         session_id: sessionId,
         user_id: userObjectId,
         topic_vocabulary_id: new mongoose.Types.ObjectId(topicVocabularyId),
+        source_type: TOPIC_PRACTICE_SOURCE,
         order_queue,
         current_index: 0,
         logs: [],
@@ -396,6 +489,140 @@ export const createFlashcardSessionService = async (
     return responsePayload;
 };
 
+const getCompletedTopicPracticeVocabularyScope = async (userObjectId: Types.ObjectId) => {
+    const topicIds = await FlashCardProgress.distinct("topic_vocabulary_id", {
+        user_id: userObjectId,
+        archive_reason: "completed",
+        topic_vocabulary_id: { $exists: true, $ne: null },
+        $or: [
+            { source_type: { $exists: false } },
+            { source_type: TOPIC_PRACTICE_SOURCE },
+        ],
+    });
+
+    if (topicIds.length === 0) {
+        return {
+            vocabularyIds: [] as Types.ObjectId[],
+            vocabularyIdSet: new Set<string>(),
+        };
+    }
+
+    const topics = await TopicVocabulary.find({ _id: { $in: topicIds } })
+        .select("_id vocabularies_id")
+        .lean();
+
+    const vocabularyIdsByKey = new Map<string, Types.ObjectId>();
+
+    for (const topic of topics as any[]) {
+        for (const vocabularyId of topic.vocabularies_id ?? []) {
+            const key = String(vocabularyId);
+            if (Types.ObjectId.isValid(key) && !vocabularyIdsByKey.has(key)) {
+                vocabularyIdsByKey.set(key, new Types.ObjectId(key));
+            }
+        }
+    }
+
+    return {
+        vocabularyIds: Array.from(vocabularyIdsByKey.values()),
+        vocabularyIdSet: new Set(vocabularyIdsByKey.keys()),
+    };
+};
+
+const getScopedSuggestionReviewVocabularyIds = async (
+    userObjectId: Types.ObjectId,
+    input: SuggestionReviewStartInput,
+    now = new Date()
+) => {
+    const mode = input.mode;
+    if (
+        mode !== "due_now" &&
+        mode !== "overdue" &&
+        mode !== "custom" &&
+        mode !== "single"
+    ) {
+        throw createHttpError(400, "mode must be due_now, overdue, custom or single");
+    }
+
+    const scope = await getCompletedTopicPracticeVocabularyScope(userObjectId);
+    if (scope.vocabularyIds.length === 0) {
+        return [];
+    }
+
+    if (mode === "custom" || mode === "single") {
+        if (!Array.isArray(input.vocabulary_ids) || input.vocabulary_ids.length === 0) {
+            throw createHttpError(400, "vocabulary_ids is required");
+        }
+
+        const invalidId = input.vocabulary_ids.find((id) => !Types.ObjectId.isValid(id));
+        if (invalidId) {
+            throw createHttpError(400, "Invalid vocabulary_id");
+        }
+
+        const dedupedIds = Array.from(new Set(input.vocabulary_ids.map((id) => String(id))));
+        const scopedIds = dedupedIds.filter((id) => scope.vocabularyIdSet.has(id));
+        if (scopedIds.length === 0) {
+            return [];
+        }
+
+        const existingVocabularies = await Vocabulary.find({
+            _id: { $in: scopedIds.map((id) => new Types.ObjectId(id)) },
+        }).select("_id").lean();
+        const existingVocabularyIdSet = new Set(
+            (existingVocabularies as any[]).map((vocabulary) => String(vocabulary._id))
+        );
+
+        return scopedIds.filter((id) => existingVocabularyIdSet.has(id));
+    }
+
+    const { startOfToday } = getVietnamDateBounds(now);
+    const dueAtQuery =
+        mode === "due_now"
+            ? { $gte: startOfToday, $lte: now }
+            : { $lt: startOfToday };
+
+    const memories = await UserVocabularyMemoryV2.find({
+        user_id: userObjectId,
+        vocabulary_id: { $in: scope.vocabularyIds },
+        status: { $ne: "mastered" },
+        due_at: dueAtQuery,
+    }).select("vocabulary_id").lean();
+
+    return (memories as LongTermReviewMemory[]).map((memory) => String(memory.vocabulary_id));
+};
+
+export const startSuggestionReviewSessionService = async (
+    userId: string,
+    input: SuggestionReviewStartInput
+) => {
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+    const vocabularyIds = await getScopedSuggestionReviewVocabularyIds(userObjectId, input);
+    const orderQueue = Array.from(new Set(vocabularyIds));
+
+    if (orderQueue.length === 0) {
+        throw createHttpError(400, "No vocabulary available for suggestion review");
+    }
+
+    const sessionId = randomUUID();
+    const cardStates = await initializeCardStates(userId, orderQueue);
+    const newSession = new FlashCardProgress({
+        session_id: sessionId,
+        user_id: userObjectId,
+        source_type: SUGGESTION_QUICK_REVIEW_SOURCE,
+        source_label: SUGGESTION_QUICK_REVIEW_LABEL,
+        order_queue: orderQueue,
+        current_index: 0,
+        logs: [],
+        card_states: cardStates,
+        last_activity: new Date(),
+        status: "active",
+    });
+
+    await newSession.save();
+    await ensureFlashcardAttemptForSession(userId, undefined, sessionId);
+
+    return buildSessionStartResponse(userId, newSession);
+};
+
 export const getSession = async (sessionId: string, userId: string) => {
     const session = await FlashCardProgress.findOne({
         session_id: sessionId,
@@ -409,6 +636,7 @@ export const getSession = async (sessionId: string, userId: string) => {
         return { progress: null };
     }
     assertModernSession(session);
+    await normalizeStaleReviewPendingCards(userId, session);
 
     return {
         progress: session,
@@ -429,7 +657,16 @@ export const getAllSessionActiveByUserService = async (
     await archiveExpiredActiveSessionsForUser(userId);
 
     const { startOfToday } = getVietnamDateBounds(new Date());
-    const query = { user_id: userId, status: "active", last_activity: { $gte: startOfToday } };
+    const query = {
+        user_id: userId,
+        status: "active",
+        last_activity: { $gte: startOfToday },
+        topic_vocabulary_id: { $exists: true, $ne: null },
+        $or: [
+            { source_type: { $exists: false } },
+            { source_type: TOPIC_PRACTICE_SOURCE },
+        ],
+    };
     const total = await FlashCardProgress.countDocuments(query);
 
     const sessions = await FlashCardProgress.find(query)
@@ -872,6 +1109,7 @@ export async function answerFlashcardSessionService(
         throw createHttpError(409, "Flashcard session has expired. Please start a new session.");
     }
     assertModernSession(progress);
+    await normalizeStaleReviewPendingCards(userId, progress);
 
     if (progress.last_processed_answer_event_id === answerEventId) {
         const persistedState = getCardState(progress, body.vocabulary_id);
@@ -1019,4 +1257,6 @@ export const __test__ = {
     applyReviewPendingMemory,
     applyReviewReinforcementMemory,
     applyNewCardMemory,
+    getCompletedTopicPracticeVocabularyScope,
+    normalizeStaleReviewPendingCards,
 };

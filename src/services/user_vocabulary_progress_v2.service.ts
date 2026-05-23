@@ -415,7 +415,12 @@ async function getLearnedVocabularyScope(userObjectId: Types.ObjectId): Promise<
 }> {
     const topicIds = await FlashCardProgress.distinct("topic_vocabulary_id", {
         user_id: userObjectId,
-        archive_reason: "completed"
+        archive_reason: "completed",
+        topic_vocabulary_id: { $exists: true, $ne: null },
+        $or: [
+            { source_type: { $exists: false } },
+            { source_type: "TOPIC_PRACTICE" },
+        ],
     });
 
     if (topicIds.length === 0) {

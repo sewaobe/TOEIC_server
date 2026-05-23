@@ -6,6 +6,7 @@ import {
     getAllSessionActiveByUserService,
     getSession,
     removeFlashcardSessionService,
+    startSuggestionReviewSessionService,
 } from "../services/flashcard_progress.service";
 import { ApiResponse } from "../utils/ApiResponse";
 
@@ -35,6 +36,34 @@ export const createSessionFlashcardController = async (req: Request, res: Respon
                     preview_metadata,
                 },
                 "Flashcard session created successfully",
+            ),
+        );
+    } catch (err) {
+        next(err);
+    }
+};
+
+export const startSuggestionReviewSessionController = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        if (!req.user?._id) {
+            return res
+                .status(401)
+                .json(ApiResponse.fail('NgÆ°á»i dÃ¹ng chÆ°a Ä‘Äƒng nháº­p!'));
+        }
+
+        const { sessionId, newSession, preview_metadata } = await startSuggestionReviewSessionService(
+            req.user._id,
+            req.body,
+        );
+
+        res.status(201).json(
+            ApiResponse.success(
+                {
+                    sessionId,
+                    session: newSession,
+                    preview_metadata,
+                },
+                "Suggestion review session created successfully",
             ),
         );
     } catch (err) {

@@ -9,7 +9,9 @@ import {
 export interface IFlashCardProgress extends Document {
     session_id: string;
     user_id: Types.ObjectId;
-    topic_vocabulary_id: Types.ObjectId;
+    topic_vocabulary_id?: Types.ObjectId;
+    source_type?: "TOPIC_PRACTICE" | "SUGGESTION_QUICK_REVIEW";
+    source_label?: string;
     order_queue: string[]; // session queue order is authoritative (backend-managed)
     current_index: number;
     logs: {
@@ -31,7 +33,14 @@ const FlashCardProgressSchema = new Schema<IFlashCardProgress>(
     {
         session_id: { type: String, required: true, unique: true },
         user_id: { type: Schema.Types.ObjectId, ref: "User", required: true },
-        topic_vocabulary_id: { type: Schema.Types.ObjectId, ref: "TopicVocabulary", required: true },
+        topic_vocabulary_id: { type: Schema.Types.ObjectId, ref: "TopicVocabulary", required: false },
+        source_type: {
+            type: String,
+            enum: ["TOPIC_PRACTICE", "SUGGESTION_QUICK_REVIEW"],
+            default: "TOPIC_PRACTICE",
+            index: true,
+        },
+        source_label: { type: String },
         order_queue: { type: [String], default: [] },
         current_index: { type: Number, default: 0 },
         logs: [
@@ -82,7 +91,10 @@ FlashCardProgressSchema.index(
     { user_id: 1, topic_vocabulary_id: 1 },
     {
         unique: true,
-        partialFilterExpression: { status: "active" },
+        partialFilterExpression: {
+            status: "active",
+            topic_vocabulary_id: { $exists: true },
+        },
     }
 );
 

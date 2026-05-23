@@ -179,6 +179,7 @@ import {
   getAllActiveSessionsController,
   getFlashcardProgressController,
   removeFlashcardSessionController,
+  startSuggestionReviewSessionController,
 } from "../controllers/flashcard_progress.controller";
 import { requireIdempotencyKey } from "../middlewares/requireIdempotencyKey.middleware";
 
@@ -187,6 +188,7 @@ const router = Router();
 router.post("/start", requireIdempotencyKey, createSessionFlashcardController);
 router.post("/:sessionId/answer", requireIdempotencyKey, answerFlashcardSessionController);
 router.get("/active-by-user", getAllActiveSessionsController);
+router.post("/start-suggestion-review", startSuggestionReviewSessionController);
 router.get("/:session_id", getFlashcardProgressController);
 router.post("/finalize", finalizeFlashcardSessionController);
 router.delete("/remove/:session_id", removeFlashcardSessionController);
