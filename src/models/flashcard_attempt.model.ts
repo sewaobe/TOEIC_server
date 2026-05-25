@@ -10,7 +10,7 @@ export type GameType = "classic" | "matching" | "word_recall";
 export interface IFlashCardAttempt extends Document {
   session_id?: string;
   user_id: Types.ObjectId;
-  topic_vocabulary_id: Types.ObjectId;
+  topic_vocabulary_id?: Types.ObjectId;
   submit_type?: SubmissionType;
   game_type?: GameType;
   results: Array<
@@ -53,7 +53,7 @@ const FlashCardAttemptSchema = new Schema<IFlashCardAttempt>(
     topic_vocabulary_id: {
       type: Schema.Types.ObjectId,
       ref: "TopicVocabulary",
-      required: true,
+      required: false,
     },
     day_study_id: {
       type: Schema.Types.ObjectId,
