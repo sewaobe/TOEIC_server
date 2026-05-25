@@ -5,10 +5,12 @@ declare const require: any;
 const { createHash } = require("crypto") as { createHash: any };
 
 const mockSave = jest.fn() as any;
+const mockMarkModified = jest.fn() as any;
 const mockFlashCardProgress: any = Object.assign(
   jest.fn().mockImplementation((data: any) => ({
     ...data,
     save: mockSave,
+    markModified: mockMarkModified,
   })),
   {
     findOne: jest.fn(),
@@ -17,6 +19,7 @@ const mockFlashCardProgress: any = Object.assign(
     distinct: jest.fn(),
     findOneAndUpdate: jest.fn(),
     findById: jest.fn(),
+    updateOne: jest.fn(),
   }
 );
 
@@ -109,6 +112,34 @@ const previewMetadata = {
   },
 };
 
+const getPreviewPhase = (cardStates: any, vocabularyId: string) => {
+  if (cardStates instanceof Map) return cardStates.get(vocabularyId)?.phase;
+  if (cardStates && typeof cardStates.get === "function") return cardStates.get(vocabularyId)?.phase;
+  return cardStates?.[vocabularyId]?.phase;
+};
+
+const getTestCardState = (cardStates: any, vocabularyId: string) => {
+  if (cardStates instanceof Map) return cardStates.get(vocabularyId);
+  if (cardStates && typeof cardStates.get === "function") return cardStates.get(vocabularyId);
+  return cardStates?.[vocabularyId];
+};
+
+const createPreviewMetadataFromInput = (input: any) => ({
+  repeat_policy: {},
+  cards: Object.fromEntries(
+    (input.vocabularyIds ?? []).map((vocabularyId: string) => {
+      const phase = getPreviewPhase(input.cardStates, vocabularyId);
+      const cardType =
+        phase === "REVIEW_PENDING"
+          ? "REVIEW"
+          : phase === "REVIEW_REINFORCEMENT"
+            ? "REVIEW_REINFORCEMENT"
+            : "NEW";
+      return [vocabularyId, { card_type: cardType, options: {} }];
+    })
+  ),
+});
+
 const createRecord = (overrides: Record<string, unknown> = {}) => ({
   _id: new Types.ObjectId(),
   request_hash: expect.any(String),
@@ -132,6 +163,7 @@ const createExistingSession = (overrides: Record<string, unknown> = {}) => ({
   status: "active",
   archive_reason: undefined,
   save: mockSave,
+  markModified: mockMarkModified,
   ...overrides,
 });
 
@@ -176,11 +208,13 @@ describe("flashcard progress service semantic flow", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSave.mockResolvedValue(undefined);
+    mockMarkModified.mockReturnValue(undefined);
     mockAttemptSave.mockResolvedValue(undefined);
     mockFlashCardProgress.findOne.mockResolvedValue(null);
     mockFlashCardProgress.distinct.mockResolvedValue([]);
     mockFlashCardProgress.findOneAndUpdate.mockResolvedValue(null);
     mockFlashCardProgress.findById.mockResolvedValue(null);
+    mockFlashCardProgress.updateOne.mockResolvedValue({ modifiedCount: 1 });
     mockFlashCardAttempt.findOne.mockResolvedValue(null);
     mockFlashCardAttempt.findById.mockResolvedValue(null);
     mockFlashCardAttempt.create.mockResolvedValue(createAttempt());
@@ -471,7 +505,13 @@ describe("flashcard progress service semantic flow", () => {
     expect(mockBuildFlashcardSessionPreviewMetadata).toHaveBeenCalledWith({
       userId,
       vocabularyIds: sameDaySession.order_queue,
-      cardStates: sameDaySession.card_states,
+      cardStates: {
+        [orderQueue[0]]: {
+          phase: "NEW_LEARNING",
+          long_term_committed: false,
+          repeat_count: 0,
+        },
+      },
     });
   });
 
@@ -782,7 +822,47 @@ describe("flashcard progress service semantic flow", () => {
     });
   });
 
-  it("getSession -> stale REVIEW_PENDING already reviewed today -> normalizes to REVIEW_REINFORCEMENT", async () => {
+  it("normalizeStaleReviewPendingCards -> stale REVIEW_PENDING reviewed today -> returns snapshot REVIEW_REINFORCEMENT", async () => {
+    // Arrange
+    const session = createExistingSession({
+      order_queue: [orderQueue[0]],
+      card_states: new Map([
+        [orderQueue[0], { phase: "REVIEW_PENDING", long_term_committed: false, repeat_count: 0 }],
+      ]),
+    });
+    mockUserVocabularyMemoryV2.find.mockReturnValue(
+      createMemoryFindChain([
+        {
+          vocabulary_id: new Types.ObjectId(orderQueue[0]),
+          due_at: new Date(Date.now() - 60 * 1000),
+          last_reviewed_at: new Date(),
+        },
+      ])
+    );
+
+    // Act
+    const result = await __test__.normalizeStaleReviewPendingCards(userId, session);
+
+    // Assert
+    expect(result.cardStates[orderQueue[0]]).toEqual({
+      phase: "REVIEW_REINFORCEMENT",
+      long_term_committed: false,
+      repeat_count: 0,
+    });
+    expect(mockFlashCardProgress.updateOne).toHaveBeenCalledWith(
+      { _id: session._id },
+      {
+        $set: {
+          [`card_states.${orderQueue[0]}.phase`]: "REVIEW_REINFORCEMENT",
+          [`card_states.${orderQueue[0]}.long_term_committed`]: false,
+          [`card_states.${orderQueue[0]}.repeat_count`]: 0,
+        },
+      }
+    );
+    expect(mockSave).not.toHaveBeenCalled();
+  });
+
+  it("getSession -> stale REVIEW_PENDING reviewed today -> returns REVIEW_REINFORCEMENT progress and preview", async () => {
     // Arrange
     const session = createExistingSession({
       order_queue: [orderQueue[0]],
@@ -800,17 +880,39 @@ describe("flashcard progress service semantic flow", () => {
         },
       ])
     );
+    mockBuildFlashcardSessionPreviewMetadata.mockImplementationOnce(async (input: any) =>
+      createPreviewMetadataFromInput(input)
+    );
 
     // Act
     const result = await getSession(session.session_id, userId);
 
     // Assert
-    expect(session.card_states.get(orderQueue[0])).toEqual({
+    expect(getTestCardState(result.progress?.card_states, orderQueue[0])).toEqual({
       phase: "REVIEW_REINFORCEMENT",
       long_term_committed: false,
       repeat_count: 0,
     });
-    expect(mockSave).toHaveBeenCalledTimes(1);
+    expect(result.preview_metadata?.cards[orderQueue[0]].card_type).toBe("REVIEW_REINFORCEMENT");
+    expect(mockBuildFlashcardSessionPreviewMetadata).toHaveBeenCalledWith({
+      userId,
+      vocabularyIds: session.order_queue,
+      cardStates: expect.objectContaining({
+        [orderQueue[0]]: expect.objectContaining({ phase: "REVIEW_REINFORCEMENT" }),
+      }),
+    });
+    expect(mockFlashCardProgress.updateOne).toHaveBeenCalledWith(
+      { _id: session._id },
+      {
+        $set: {
+          [`card_states.${orderQueue[0]}.phase`]: "REVIEW_REINFORCEMENT",
+          [`card_states.${orderQueue[0]}.long_term_committed`]: false,
+          [`card_states.${orderQueue[0]}.repeat_count`]: 0,
+        },
+      }
+    );
+    expect(mockMarkModified).not.toHaveBeenCalled();
+    expect(mockSave).not.toHaveBeenCalled();
     expect(result.progress).toBe(session);
   });
 
@@ -832,21 +934,36 @@ describe("flashcard progress service semantic flow", () => {
         },
       ])
     );
+    mockBuildFlashcardSessionPreviewMetadata.mockImplementationOnce(async (input: any) =>
+      createPreviewMetadataFromInput(input)
+    );
 
     // Act
     const result = await getSession(session.session_id, userId);
 
     // Assert
-    expect(session.card_states.get(orderQueue[0])).toEqual({
+    expect(getTestCardState(session.card_states, orderQueue[0])).toEqual({
       phase: "REVIEW_REINFORCEMENT",
       long_term_committed: false,
       repeat_count: 0,
     });
-    expect(mockSave).toHaveBeenCalledTimes(1);
+    expect(result.preview_metadata?.cards[orderQueue[0]].card_type).toBe("REVIEW_REINFORCEMENT");
+    expect(mockFlashCardProgress.updateOne).toHaveBeenCalledWith(
+      { _id: session._id },
+      {
+        $set: {
+          [`card_states.${orderQueue[0]}.phase`]: "REVIEW_REINFORCEMENT",
+          [`card_states.${orderQueue[0]}.long_term_committed`]: false,
+          [`card_states.${orderQueue[0]}.repeat_count`]: 0,
+        },
+      }
+    );
+    expect(mockMarkModified).not.toHaveBeenCalled();
+    expect(mockSave).not.toHaveBeenCalled();
     expect(result.progress).toBe(session);
   });
 
-  it("getSession -> eligible REVIEW_PENDING due now -> remains REVIEW_PENDING", async () => {
+  it("getSession -> eligible REVIEW_PENDING due now -> remains REVIEW_PENDING preview REVIEW", async () => {
     // Arrange
     const session = createExistingSession({
       order_queue: [orderQueue[0]],
@@ -864,6 +981,9 @@ describe("flashcard progress service semantic flow", () => {
         },
       ])
     );
+    mockBuildFlashcardSessionPreviewMetadata.mockImplementationOnce(async (input: any) =>
+      createPreviewMetadataFromInput(input)
+    );
 
     // Act
     const result = await getSession(session.session_id, userId);
@@ -874,8 +994,128 @@ describe("flashcard progress service semantic flow", () => {
       long_term_committed: false,
       repeat_count: 0,
     });
+    expect(result.preview_metadata?.cards[orderQueue[0]].card_type).toBe("REVIEW");
+    expect(mockMarkModified).not.toHaveBeenCalled();
     expect(mockSave).not.toHaveBeenCalled();
+    expect(mockFlashCardProgress.updateOne).not.toHaveBeenCalled();
     expect(result.progress).toBe(session);
+  });
+
+  it("getSession -> REVIEW_REINFORCEMENT due now -> normalizes to REVIEW_PENDING progress and preview", async () => {
+    // Arrange
+    const session = createExistingSession({
+      order_queue: [orderQueue[0]],
+      card_states: new Map([
+        [orderQueue[0], { phase: "REVIEW_REINFORCEMENT", long_term_committed: false, repeat_count: 2 }],
+      ]),
+    });
+    mockFlashCardProgress.findOne.mockResolvedValue(session);
+    mockUserVocabularyMemoryV2.find.mockReturnValue(
+      createMemoryFindChain([
+        {
+          vocabulary_id: new Types.ObjectId(orderQueue[0]),
+          due_at: new Date(Date.now() - 60 * 1000),
+          last_reviewed_at: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        },
+      ])
+    );
+    mockBuildFlashcardSessionPreviewMetadata.mockImplementationOnce(async (input: any) =>
+      createPreviewMetadataFromInput(input)
+    );
+
+    // Act
+    const result = await getSession(session.session_id, userId);
+
+    // Assert
+    expect(getTestCardState(result.progress?.card_states, orderQueue[0])).toEqual({
+      phase: "REVIEW_PENDING",
+      long_term_committed: false,
+      repeat_count: 2,
+    });
+    expect(result.preview_metadata?.cards[orderQueue[0]].card_type).toBe("REVIEW");
+    expect(mockBuildFlashcardSessionPreviewMetadata).toHaveBeenCalledWith({
+      userId,
+      vocabularyIds: session.order_queue,
+      cardStates: expect.objectContaining({
+        [orderQueue[0]]: expect.objectContaining({ phase: "REVIEW_PENDING" }),
+      }),
+    });
+    expect(mockFlashCardProgress.updateOne).toHaveBeenCalledWith(
+      { _id: session._id },
+      {
+        $set: {
+          [`card_states.${orderQueue[0]}.phase`]: "REVIEW_PENDING",
+          [`card_states.${orderQueue[0]}.long_term_committed`]: false,
+          [`card_states.${orderQueue[0]}.repeat_count`]: 2,
+        },
+      }
+    );
+  });
+
+  it("getSession -> REVIEW_REINFORCEMENT not due -> remains REVIEW_REINFORCEMENT", async () => {
+    // Arrange
+    const session = createExistingSession({
+      order_queue: [orderQueue[0]],
+      card_states: new Map([
+        [orderQueue[0], { phase: "REVIEW_REINFORCEMENT", long_term_committed: false, repeat_count: 1 }],
+      ]),
+    });
+    mockFlashCardProgress.findOne.mockResolvedValue(session);
+    mockUserVocabularyMemoryV2.find.mockReturnValue(
+      createMemoryFindChain([
+        {
+          vocabulary_id: new Types.ObjectId(orderQueue[0]),
+          due_at: new Date(Date.now() + 60 * 1000),
+          last_reviewed_at: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        },
+      ])
+    );
+    mockBuildFlashcardSessionPreviewMetadata.mockImplementationOnce(async (input: any) =>
+      createPreviewMetadataFromInput(input)
+    );
+
+    // Act
+    const result = await getSession(session.session_id, userId);
+
+    // Assert
+    expect(getTestCardState(result.progress?.card_states, orderQueue[0])).toEqual({
+      phase: "REVIEW_REINFORCEMENT",
+      long_term_committed: false,
+      repeat_count: 1,
+    });
+    expect(result.preview_metadata?.cards[orderQueue[0]].card_type).toBe("REVIEW_REINFORCEMENT");
+    expect(mockFlashCardProgress.updateOne).not.toHaveBeenCalled();
+  });
+
+  it("getSession -> REVIEW_RESOLVED due now -> remains REVIEW_RESOLVED", async () => {
+    // Arrange
+    const session = createExistingSession({
+      order_queue: [orderQueue[0]],
+      card_states: new Map([
+        [orderQueue[0], { phase: "REVIEW_RESOLVED", long_term_committed: true, repeat_count: 0 }],
+      ]),
+    });
+    mockFlashCardProgress.findOne.mockResolvedValue(session);
+    mockUserVocabularyMemoryV2.find.mockReturnValue(
+      createMemoryFindChain([
+        {
+          vocabulary_id: new Types.ObjectId(orderQueue[0]),
+          due_at: new Date(Date.now() - 60 * 1000),
+          last_reviewed_at: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        },
+      ])
+    );
+
+    // Act
+    const result = await getSession(session.session_id, userId);
+
+    // Assert
+    expect(getTestCardState(result.progress?.card_states, orderQueue[0])).toEqual({
+      phase: "REVIEW_RESOLVED",
+      long_term_committed: true,
+      repeat_count: 0,
+    });
+    expect(mockFlashCardProgress.updateOne).not.toHaveBeenCalled();
   });
 
   it("answerFlashcardSessionService -> New card remember -> AppendsAttemptCreatesMemoryAndCompletesRecord", async () => {
@@ -1122,6 +1362,210 @@ describe("flashcard progress service semantic flow", () => {
         }),
       })
     );
+  });
+
+  it("answerFlashcardSessionService -> stale REVIEW_PENDING reviewed today before answer -> treats as REVIEW_REINFORCEMENT", async () => {
+    // Arrange
+    const memory = {
+      _id: new Types.ObjectId(),
+      difficulty: 5,
+      half_life_days: 3,
+      due_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      last_reviewed_at: new Date(),
+    };
+    const progress = createExistingSession({
+      order_queue: [orderQueue[1]],
+      card_states: new Map([
+        [orderQueue[1], { phase: "REVIEW_PENDING", long_term_committed: false, repeat_count: 0 }],
+      ]),
+    });
+    const updatedProgress = createExistingSession({
+      order_queue: [],
+      card_states: new Map([
+        [orderQueue[1], { phase: "REVIEW_RESOLVED", long_term_committed: false, repeat_count: 0 }],
+      ]),
+      logs: [
+        {
+          answer_event_id: "answer-key-stale-reviewed-today",
+          vocab_id: orderQueue[1],
+          vocab_word: "alpha",
+          action: "remember",
+          response_time: 1500,
+          attempted_at: "2026-05-18T10:00:00.000Z",
+        },
+      ],
+      last_processed_answer_event_id: "answer-key-stale-reviewed-today",
+    });
+    const attempt = createAttempt({ results: [] });
+    mockFlashCardProgress.findOne.mockResolvedValue(progress);
+    mockFlashCardProgress.findOneAndUpdate.mockResolvedValue(updatedProgress);
+    mockFlashCardAttempt.findOne.mockResolvedValue(attempt);
+    mockUserVocabularyMemoryV2.find.mockReturnValue(
+      createMemoryFindChain([
+        {
+          vocabulary_id: new Types.ObjectId(orderQueue[1]),
+          due_at: memory.due_at,
+          last_reviewed_at: memory.last_reviewed_at,
+        },
+      ])
+    );
+    mockUserVocabularyMemoryV2.findOne.mockResolvedValue(memory);
+
+    // Act
+    const result = (await answerFlashcardSessionService(
+      userId,
+      progress.session_id,
+      {
+        vocabulary_id: orderQueue[1],
+        action: "remember",
+        response_time: 1500,
+        attempted_at: "2026-05-18T10:00:00.000Z",
+      },
+      "answer-key-stale-reviewed-today"
+    )) as any;
+
+    // Assert
+    expect(getTestCardState(progress.card_states, orderQueue[1])).toEqual({
+      phase: "REVIEW_REINFORCEMENT",
+      long_term_committed: false,
+      repeat_count: 0,
+    });
+    expect(mockFlashCardProgress.updateOne).toHaveBeenCalledWith(
+      { _id: progress._id },
+      {
+        $set: {
+          [`card_states.${orderQueue[1]}.phase`]: "REVIEW_REINFORCEMENT",
+          [`card_states.${orderQueue[1]}.long_term_committed`]: false,
+          [`card_states.${orderQueue[1]}.repeat_count`]: 0,
+        },
+      }
+    );
+    expect(mockMarkModified).not.toHaveBeenCalled();
+    expect(mockSave).not.toHaveBeenCalled();
+    expect(mockUserVocabularyMemoryV2.updateOne).toHaveBeenCalledTimes(1);
+    expect(mockUserVocabularyMemoryV2.updateOne).toHaveBeenCalledWith(
+      {
+        user_id: new Types.ObjectId(userId),
+        vocabulary_id: new Types.ObjectId(orderQueue[1]),
+        last_flashcard_answer_event_id: { $ne: "answer-key-stale-reviewed-today" },
+      },
+      {
+        $inc: { review_count: 1 },
+        $set: { last_flashcard_answer_event_id: "answer-key-stale-reviewed-today" },
+      }
+    );
+    const memoryUpdate = mockUserVocabularyMemoryV2.updateOne.mock.calls[0][1];
+    expect(memoryUpdate.$set).not.toHaveProperty("due_at");
+    expect(memoryUpdate.$set).not.toHaveProperty("half_life_days");
+    expect(memoryUpdate.$set).not.toHaveProperty("difficulty");
+    expect(memoryUpdate.$set).not.toHaveProperty("last_reviewed_at");
+    expect(result.progress.card_states.get(orderQueue[1])).toEqual({
+      phase: "REVIEW_RESOLVED",
+      long_term_committed: false,
+      repeat_count: 0,
+    });
+    expect(result.preview_metadata_patch).toBeNull();
+  });
+
+  it("answerFlashcardSessionService -> REVIEW_REINFORCEMENT becomes due before answer -> treats as REVIEW_PENDING", async () => {
+    // Arrange
+    const memory = {
+      _id: new Types.ObjectId(),
+      difficulty: 5,
+      half_life_days: 3,
+      last_reviewed_at: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      due_at: new Date(Date.now() - 60 * 1000),
+      review_count: 1,
+      session_count: 1,
+    };
+    const progress = createExistingSession({
+      order_queue: [orderQueue[1]],
+      card_states: new Map([
+        [orderQueue[1], { phase: "REVIEW_REINFORCEMENT", long_term_committed: false, repeat_count: 0 }],
+      ]),
+    });
+    const updatedProgress = createExistingSession({
+      order_queue: [],
+      card_states: new Map([
+        [orderQueue[1], { phase: "REVIEW_RESOLVED", long_term_committed: true, repeat_count: 0 }],
+      ]),
+      logs: [
+        {
+          answer_event_id: "answer-key-reinforcement-due",
+          vocab_id: orderQueue[1],
+          vocab_word: "alpha",
+          action: "remember",
+          response_time: 1500,
+          attempted_at: "2026-05-18T10:00:00.000Z",
+        },
+      ],
+      last_processed_answer_event_id: "answer-key-reinforcement-due",
+    });
+    const attempt = createAttempt({ results: [] });
+    mockFlashCardProgress.findOne.mockResolvedValue(progress);
+    mockFlashCardProgress.findOneAndUpdate.mockResolvedValue(updatedProgress);
+    mockFlashCardAttempt.findOne.mockResolvedValue(attempt);
+    mockUserVocabularyMemoryV2.find.mockReturnValue(
+      createMemoryFindChain([
+        {
+          vocabulary_id: new Types.ObjectId(orderQueue[1]),
+          due_at: memory.due_at,
+          last_reviewed_at: memory.last_reviewed_at,
+        },
+      ])
+    );
+    mockUserVocabularyMemoryV2.findOne.mockResolvedValue(memory);
+
+    // Act
+    const result = (await answerFlashcardSessionService(
+      userId,
+      progress.session_id,
+      {
+        vocabulary_id: orderQueue[1],
+        action: "remember",
+        response_time: 1500,
+        attempted_at: "2026-05-18T10:00:00.000Z",
+      },
+      "answer-key-reinforcement-due"
+    )) as any;
+
+    // Assert
+    expect(getTestCardState(progress.card_states, orderQueue[1])).toEqual({
+      phase: "REVIEW_PENDING",
+      long_term_committed: false,
+      repeat_count: 0,
+    });
+    expect(mockFlashCardProgress.updateOne).toHaveBeenCalledWith(
+      { _id: progress._id },
+      {
+        $set: {
+          [`card_states.${orderQueue[1]}.phase`]: "REVIEW_PENDING",
+          [`card_states.${orderQueue[1]}.long_term_committed`]: false,
+          [`card_states.${orderQueue[1]}.repeat_count`]: 0,
+        },
+      }
+    );
+    expect(mockUserVocabularyMemoryV2.updateOne).toHaveBeenCalledTimes(1);
+    expect(mockUserVocabularyMemoryV2.updateOne).toHaveBeenCalledWith(
+      {
+        _id: memory._id,
+        last_flashcard_answer_event_id: { $ne: "answer-key-reinforcement-due" },
+      },
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          last_reviewed_at: expect.any(Date),
+          due_at: expect.any(Date),
+          last_flashcard_answer_event_id: "answer-key-reinforcement-due",
+        }),
+        $inc: { session_count: 1, review_count: 1 },
+      })
+    );
+    expect(result.progress.card_states.get(orderQueue[1])).toEqual({
+      phase: "REVIEW_RESOLVED",
+      long_term_committed: true,
+      repeat_count: 0,
+    });
+    expect(result.preview_metadata_patch).toBeNull();
   });
 
   it("answerFlashcardSessionService -> non-due review reinforcement answer -> does not update long-term memory fields", async () => {

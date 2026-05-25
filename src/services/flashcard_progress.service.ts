@@ -84,14 +84,6 @@ const createHttpError = (status: number, message: string) => {
     return error;
 };
 
-const toObjectId = (value: string | Types.ObjectId, fieldName: string) => {
-    if (value instanceof Types.ObjectId) return value;
-    if (!Types.ObjectId.isValid(value)) {
-        throw createHttpError(400, `Invalid ${fieldName}`);
-    }
-    return new Types.ObjectId(value);
-};
-
 const addDays = (date: Date, days: number) => new Date(date.getTime() + days * DAY_MS);
 
 const roundNumber = (value: number, digits: number) => {
@@ -101,15 +93,16 @@ const roundNumber = (value: number, digits: number) => {
 
 const hasCardStates = (session: any) => Boolean(session?.card_states);
 
-const getCardState = (session: any, vocabularyId: string): FlashcardSessionCardState | undefined => {
+const normalizeCardStatesForPreview = (session: any): Record<string, FlashcardSessionCardState> => {
     const states = session.card_states;
-    if (!states) return undefined;
-    if (states instanceof Map) return states.get(vocabularyId);
-    return states[vocabularyId];
-};
+    if (states && typeof states.forEach === "function") {
+        const normalized: Record<string, FlashcardSessionCardState> = {};
+        states.forEach((value: FlashcardSessionCardState, key: string) => {
+            normalized[String(key)] = value;
+        });
+        return normalized;
+    }
 
-const normalizeCardStatesForPreview = (session: any) => {
-    if (session.card_states instanceof Map) return session.card_states;
     return session.card_states ?? {};
 };
 
@@ -226,8 +219,9 @@ const setCardState = (
     vocabularyId: string,
     state: FlashcardSessionCardState
 ) => {
-    if (session.card_states instanceof Map) {
+    if (session.card_states && typeof session.card_states.set === "function") {
         session.card_states.set(vocabularyId, state);
+        session.markModified?.("card_states");
         return;
     }
 
@@ -235,6 +229,7 @@ const setCardState = (
         ...(session.card_states ?? {}),
         [vocabularyId]: state,
     };
+    session.markModified?.("card_states");
 };
 
 const normalizeStaleReviewPendingCards = async (
@@ -242,15 +237,21 @@ const normalizeStaleReviewPendingCards = async (
     session: any,
     now = new Date()
 ) => {
-    const pendingVocabularyIds = (session.order_queue ?? []).filter((vocabularyId: string) => {
-        return getCardState(session, vocabularyId)?.phase === "REVIEW_PENDING";
+    const cardStatesSnapshot = normalizeCardStatesForPreview(session);
+    const normalizableVocabularyIds = (session.order_queue ?? []).filter((vocabularyId: string) => {
+        const phase = cardStatesSnapshot[vocabularyId]?.phase;
+        return phase === "REVIEW_PENDING" || phase === "REVIEW_REINFORCEMENT";
     });
 
-    if (pendingVocabularyIds.length === 0) {
-        return session;
+    if (normalizableVocabularyIds.length === 0) {
+        return {
+            session,
+            cardStates: cardStatesSnapshot,
+            changed: false,
+        };
     }
 
-    const validIds = pendingVocabularyIds
+    const validIds = normalizableVocabularyIds
         .filter((id: string) => Types.ObjectId.isValid(id))
         .map((id: string) => new Types.ObjectId(id));
 
@@ -270,31 +271,61 @@ const normalizeStaleReviewPendingCards = async (
     );
 
     let changed = false;
+    const updates: Record<string, unknown> = {};
 
-    for (const vocabularyId of pendingVocabularyIds) {
+    for (const vocabularyId of normalizableVocabularyIds) {
         const memory = memoryByVocabularyId.get(vocabularyId);
-        if (memory && isDueForLongTermReview(memory, now)) {
+        const currentState = cardStatesSnapshot[vocabularyId];
+        const isEligibleForLongTermReview = Boolean(memory && isDueForLongTermReview(memory, now));
+
+        if (!currentState) {
             continue;
         }
 
-        const currentState = getCardState(session, vocabularyId);
-        if (!currentState || currentState.phase !== "REVIEW_PENDING") {
+        if (
+            (currentState.phase === "REVIEW_PENDING" && isEligibleForLongTermReview) ||
+            (currentState.phase === "REVIEW_REINFORCEMENT" && !isEligibleForLongTermReview)
+        ) {
             continue;
         }
 
-        setCardState(session, vocabularyId, {
+        if (
+            currentState.phase !== "REVIEW_PENDING" &&
+            currentState.phase !== "REVIEW_REINFORCEMENT"
+        ) {
+            continue;
+        }
+
+        const nextPhase: FlashcardSessionCardPhase = isEligibleForLongTermReview
+            ? "REVIEW_PENDING"
+            : "REVIEW_REINFORCEMENT";
+        const nextState: FlashcardSessionCardState = {
             ...currentState,
-            phase: "REVIEW_REINFORCEMENT",
+            phase: nextPhase,
             long_term_committed: false,
-        });
+            repeat_count: currentState.repeat_count ?? 0,
+        };
+
+        cardStatesSnapshot[vocabularyId] = nextState;
+        updates[`card_states.${vocabularyId}.phase`] = nextState.phase;
+        updates[`card_states.${vocabularyId}.long_term_committed`] = nextState.long_term_committed;
+        updates[`card_states.${vocabularyId}.repeat_count`] = nextState.repeat_count;
         changed = true;
     }
 
     if (changed) {
-        await session.save();
+        await FlashCardProgress.updateOne(
+            { _id: session._id },
+            { $set: updates }
+        );
+        session.card_states = cardStatesSnapshot;
     }
 
-    return session;
+    return {
+        session,
+        cardStates: cardStatesSnapshot,
+        changed,
+    };
 };
 
 const ensureFlashcardAttemptForSession = async (
@@ -636,14 +667,15 @@ export const getSession = async (sessionId: string, userId: string) => {
         return { progress: null };
     }
     assertModernSession(session);
-    await normalizeStaleReviewPendingCards(userId, session);
+
+    const normalization = await normalizeStaleReviewPendingCards(userId, session);
 
     return {
         progress: session,
         preview_metadata: await buildFlashcardSessionPreviewMetadata({
             userId,
             vocabularyIds: session.order_queue ?? [],
-            cardStates: normalizeCardStatesForPreview(session),
+            cardStates: normalization.cardStates,
         }),
     };
 };
@@ -1109,10 +1141,10 @@ export async function answerFlashcardSessionService(
         throw createHttpError(409, "Flashcard session has expired. Please start a new session.");
     }
     assertModernSession(progress);
-    await normalizeStaleReviewPendingCards(userId, progress);
+    const normalization = await normalizeStaleReviewPendingCards(userId, progress);
 
     if (progress.last_processed_answer_event_id === answerEventId) {
-        const persistedState = getCardState(progress, body.vocabulary_id);
+        const persistedState = normalization.cardStates[body.vocabulary_id];
         const shouldReturnPatch =
             (body.action === "vague" || body.action === "forgot") &&
             persistedState?.phase === "REVIEW_REINFORCEMENT";
@@ -1132,7 +1164,7 @@ export async function answerFlashcardSessionService(
         throw createHttpError(409, "Answered vocabulary is not the current card");
     }
 
-    const currentState = getCardState(progress, body.vocabulary_id);
+    const currentState = normalization.cardStates[body.vocabulary_id];
     if (!currentState) throw createHttpError(409, "Card state not found for vocabulary");
 
     if (!ALLOWED_ACTIONS_BY_PHASE[currentState.phase].includes(body.action)) {
