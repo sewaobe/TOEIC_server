@@ -3,6 +3,7 @@ import { ApiResponse } from "../utils/ApiResponse";
 import {
   createLessonManagerService,
   deleteLessonManagerService,
+  getActivityOptionsService,
   getAllLessonManagerService,
   getAllTopicTitlesService,
   getLessonManagerByIdService,
@@ -12,9 +13,24 @@ import {
 } from "../services/lesson_manager.service";
 import { TestStatus } from "../models/enums/TestStatus";
 import { pushNotificationToAdmin } from "../utils/pushNotificationToAdmin";
-import { pushNotification } from "../utils/pushNotification";
-import { CERFLevel } from "../models/topic_vocabulary.model";
 import { PartType } from "../models/enums/PartType";
+import {
+  ActivityType,
+  LessonManagerNodeRole,
+  LessonManagerUnitType,
+} from "../models/lesson_manager.model";
+
+const parsePartType = (value: unknown): PartType | undefined => {
+  if (value === undefined || value === null || value === "") return undefined;
+  const parsed = parseInt(String(value), 10);
+  return Number.isFinite(parsed) ? (parsed as PartType) : undefined;
+};
+
+const parseNumber = (value: unknown): number | undefined => {
+  if (value === undefined || value === null || value === "") return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
 
 export const searchLessonManagerController = async (
   req: Request,
@@ -23,20 +39,19 @@ export const searchLessonManagerController = async (
 ) => {
   try {
     const query = (req.query.query as string) || "";
-    const level = req.query.level as CERFLevel | undefined;
-    const partType = req.query.part_type
-      ? (parseInt(req.query.part_type as string) as PartType)
-      : undefined;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
 
-    const result = await searchLessonManagerService(
+    const result = await searchLessonManagerService({
       query,
-      level,
-      partType,
-      page,
-      limit
-    );
+      part_type: parsePartType(req.query.part_type),
+      status: req.query.status as TestStatus | undefined,
+      unit_type: req.query.unit_type as LessonManagerUnitType | undefined,
+      node_role: req.query.node_role as LessonManagerNodeRole | undefined,
+      target_tag: req.query.target_tag as string | undefined,
+      score_from: parseNumber(req.query.score_from),
+      score_to: parseNumber(req.query.score_to),
+    }, page, limit);
 
     res
       .status(200)
@@ -83,7 +98,16 @@ export const getAllLessonManagerController = async (
     const limit = parseInt(req.query.limit as string) || 10;
     const userId = req.user._id;
 
-    const result = await getAllLessonManagerService(page, limit, userId);
+    const result = await getAllLessonManagerService(page, limit, userId, {
+      query: (req.query.query as string) || "",
+      part_type: parsePartType(req.query.part_type),
+      status: req.query.status as TestStatus | undefined,
+      unit_type: req.query.unit_type as LessonManagerUnitType | undefined,
+      node_role: req.query.node_role as LessonManagerNodeRole | undefined,
+      target_tag: req.query.target_tag as string | undefined,
+      score_from: parseNumber(req.query.score_from),
+      score_to: parseNumber(req.query.score_to),
+    });
 
     res
       .status(200)
@@ -224,7 +248,8 @@ export const updateStatusLessonManagerController = async (
     const userId = req.user._id;
     const result = await updateStatusLessonManagerService(
       lessonManagerId,
-      status
+      status,
+      userId
     );
 
     if (result.status === TestStatus.PENDING) {
@@ -241,6 +266,34 @@ export const updateStatusLessonManagerController = async (
         ApiResponse.success(
           result,
           "Updated lesson manager status successfully"
+        )
+      );
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getActivityOptionsController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const result = await getActivityOptionsService({
+      activity_type: req.query.activity_type as ActivityType | undefined,
+      part_type: parsePartType(req.query.part_type),
+      query: (req.query.query as string) || "",
+      page: parseInt(req.query.page as string) || 1,
+      limit: parseInt(req.query.limit as string) || 20,
+    });
+
+    res
+      .status(200)
+      .json(
+        ApiResponse.success(
+          result.data,
+          "Fetched activity options successfully",
+          result.pagination
         )
       );
   } catch (err) {

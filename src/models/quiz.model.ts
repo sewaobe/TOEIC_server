@@ -12,6 +12,9 @@ export interface IQuiz extends Document {
   status: TestStatus;
   planned_completion_time: number;
   weight: number;
+  content_html?: string;
+  image_url?: string;
+  audio_url?: string;
   created_at: Date;
   updated_at?: Date;
 }
@@ -40,10 +43,13 @@ const QuizSchema = new Schema<IQuiz>(
     },
     planned_completion_time: { type: Number, default: 0 },
     weight: { type: Number, default: 0.1 },
+    content_html: { type: String },
+    image_url: { type: String },
+    audio_url: { type: String }
   },
   {
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
   }
 );
-	
+
 export const Quiz = model<IQuiz>("Quiz", QuizSchema);

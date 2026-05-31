@@ -28,7 +28,6 @@ export const listLessonsController = async (
     const search = req.query.search ? String(req.query.search).trim() : "";
     const status = req.query.status ? String(req.query.status) : "";
     const part = req.query.part ? String(req.query.part) : "";
-    const level = req.query.level ? String(req.query.level) : "";
 
     const skip = (page - 1) * limit;
 
@@ -36,12 +35,11 @@ export const listLessonsController = async (
     if (search) filter.title = { $regex: new RegExp(search, "i") };
     if (status) filter.status = status;
     if (part) filter.part_type = part;
-    if (level) filter.level = level;
 
     const [items, total] = await Promise.all([
       LessonManager.find(filter)
         .select(
-          "title part_type level status created_at created_by thumbnail description"
+          "title part_type score_band unit_type node_role target_tags status created_at created_by thumbnail description planned_completion_time weight rating student_count"
         )
         .skip(skip)
         .limit(limit)
