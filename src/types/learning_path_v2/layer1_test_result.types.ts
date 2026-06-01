@@ -1,9 +1,4 @@
 import type { SchedulerTriggerType } from "../../models";
-import type {
-  BuildFullTestLearningPathPlanInput,
-  BuildInitialLearningPathPlanInput,
-  BuildMiniTestNextWeekPlanInput,
-} from "./learning_path_v2.types";
 
 export type LearningPathV2Layer1TriggerType = Extract<
   SchedulerTriggerType,
@@ -39,6 +34,7 @@ export interface NormalizedTestAnswerV2 {
   correct_answer?: string;
   is_correct?: boolean;
   part_type?: number;
+  irt_difficulty?: number;
   tags?: string[];
   raw_tags?: string[];
   skills?: NormalizedToeicSkillV2[];
@@ -79,6 +75,15 @@ export interface RawUserTestLikeInput {
   [key: string]: unknown;
 }
 
+export interface NormalizeTestResultInput {
+  trigger_type: LearningPathV2Layer1TriggerType;
+  user_id: string;
+  test_id?: string;
+  raw_result: RawUserTestLikeInput;
+  default_test_type?: NormalizedTestTypeV2;
+  source?: NormalizedTestResultSourceV2;
+}
+
 // Output chuẩn của Layer 1 cho Layer 2. Không chứa ability.
 export interface NormalizedTestResultV2 {
   trigger_type: LearningPathV2Layer1TriggerType;
@@ -95,10 +100,3 @@ export interface NormalizedTestResultV2 {
   part_results: NormalizedPartResultV2[];
   metadata: Record<string, unknown>;
 }
-
-export type NormalizeInitialAssessmentInput =
-  BuildInitialLearningPathPlanInput;
-
-export type NormalizeFullTestResultInput = BuildFullTestLearningPathPlanInput;
-
-export type NormalizeMiniTestResultInput = BuildMiniTestNextWeekPlanInput;

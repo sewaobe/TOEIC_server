@@ -1,7 +1,5 @@
 import type {
-  NormalizeFullTestResultInput,
-  NormalizeInitialAssessmentInput,
-  NormalizeMiniTestResultInput,
+  NormalizeTestResultInput,
   NormalizedPartResultV2,
   NormalizedTestAnswerV2,
   NormalizedTestResultSourceV2,
@@ -15,12 +13,13 @@ import { normalizeToeicSkillTags } from "../../utils/toeic_skill.util";
 type QuestionMetadata = {
   question_id: string;
   raw_tags?: string[];
+  irt_difficulty?: number;
   part_type?: number;
 };
 
-// Layer 1 chỉ chuẩn hóa kết quả test để làm input cho Layer 2.
-// Có đọc metadata câu hỏi cho Layer 2, nhưng không tính ability, không gọi IRT, không ghi DB.
-type NormalizeUserTestResultOptions = {
+// Layer 1 chuẩn hóa test result ở cấp question.
+// Có enrich tags/part/irt_difficulty cho Layer 2, nhưng không tính ability, không gọi IRT, không ghi DB.
+type BuildNormalizedTestResultOptions = {
   trigger_type: NormalizedTestResultV2["trigger_type"];
   user_id: string;
   fallback_test_type: NormalizedTestTypeV2;
@@ -112,8 +111,20 @@ const derivePartTypeFromName = (partName: unknown): number | undefined => {
   return Number.isInteger(partType) && partType > 0 ? partType : undefined;
 };
 
-const isValidSource = (value: unknown): value is NormalizedTestResultSourceV2 =>
-  value === "overview_test" || value === "lesson_mini_test" || value === "manual";
+const getDefaultContextByTrigger = (
+  triggerType: NormalizedTestResultV2["trigger_type"]
+): {
+  fallback_test_type: NormalizedTestTypeV2;
+  source: NormalizedTestResultSourceV2;
+} => {
+  if (triggerType === "initial_generation") {
+    return { fallback_test_type: "entry_test", source: "manual" };
+  }
+  if (triggerType === "mini_test_completion") {
+    return { fallback_test_type: "mini_test", source: "lesson_mini_test" };
+  }
+  return { fallback_test_type: "practice", source: "overview_test" };
+};
 
 const getRawCompletedPart = (input: RawUserTestLikeInput): unknown =>
   input.completedPart ?? input.completed_part;
@@ -136,7 +147,7 @@ const stripNormalizedLargeFields = (
   return rawInput;
 };
 
-export const normalizeCompletedPartToTestType = (
+const normalizeCompletedPartToTestType = (
   completedPart: unknown,
   fallback: NormalizedTestTypeV2
 ): NormalizedTestTypeV2 => {
@@ -157,7 +168,7 @@ export const normalizeCompletedPartToTestType = (
   return fallback;
 };
 
-export const normalizeDurationToSeconds = (
+const normalizeDurationToSeconds = (
   duration: unknown
 ): number | undefined => {
   // FE hiện gửi duration theo giây; Layer 1 expose thống nhất là elapsed_seconds.
@@ -165,7 +176,7 @@ export const normalizeDurationToSeconds = (
   return seconds !== undefined && seconds > 0 ? seconds : undefined;
 };
 
-export const normalizeAnswers = (answers: unknown): NormalizedTestAnswerV2[] => {
+const normalizeAnswers = (answers: unknown): NormalizedTestAnswerV2[] => {
   // Hỗ trợ cả camelCase legacy và snake_case mới từ các nguồn kết quả khác nhau.
   if (!Array.isArray(answers)) return [];
 
@@ -200,7 +211,7 @@ export const normalizeAnswers = (answers: unknown): NormalizedTestAnswerV2[] => 
   }, []);
 };
 
-export const normalizePartResults = (
+const normalizePartResults = (
   parts: unknown
 ): NormalizedPartResultV2[] => {
   // Giữ accuracy theo Part và chỉ suy ra part_type khi tên Part đủ rõ ràng.
@@ -237,7 +248,7 @@ export const normalizePartResults = (
   }, []);
 };
 
-export const calculateAccuracyFromAnswers = (
+const calculateAccuracyFromAnswers = (
   answers: NormalizedTestAnswerV2[]
 ): number | undefined => {
   // Không đủ dữ liệu chấm đúng/sai thì để undefined, không mặc định là 0.
@@ -250,9 +261,9 @@ export const calculateAccuracyFromAnswers = (
   return (correctCount / answers.length) * 100;
 };
 
-export const normalizeUserTestResult = (
+const buildNormalizedTestResult = (
   rawInput: RawUserTestLikeInput,
-  options: NormalizeUserTestResultOptions
+  options: BuildNormalizedTestResultOptions
 ): NormalizedTestResultV2 => {
   // Adapter chung cho object giống UserTest; không ghi DB và không thay thế UserTest model.
   const answers = normalizeAnswers(rawInput.answers);
@@ -298,7 +309,7 @@ export const normalizeUserTestResult = (
   };
 };
 
-export const loadQuestionMetadataByIds = async (
+const loadQuestionMetadataByIds = async (
   questionIds: string[],
   testId?: string
 ): Promise<Map<string, QuestionMetadata>> => {
@@ -309,7 +320,7 @@ export const loadQuestionMetadataByIds = async (
   const questionDocs = await Question.find({
     _id: { $in: uniqueQuestionIds },
   })
-    .select("_id tags")
+    .select("_id tags irt_difficulty")
     .lean();
 
   for (const question of questionDocs as any[]) {
@@ -319,6 +330,7 @@ export const loadQuestionMetadataByIds = async (
     metadataMap.set(questionId, {
       question_id: questionId,
       raw_tags: normalizeTags(question.tags) ?? [],
+      irt_difficulty: toNumberValue(question.irt_difficulty),
     });
   }
 
@@ -353,18 +365,20 @@ export const loadQuestionMetadataByIds = async (
   return metadataMap;
 };
 
-export const applyQuestionMetadataToAnswers = (
+const applyQuestionMetadataToAnswers = (
   answers: NormalizedTestAnswerV2[],
   metadataMap: Map<string, QuestionMetadata>
 ): {
   answers: NormalizedTestAnswerV2[];
   missingQuestionMetadataCount: number;
+  missingIrtDifficultyCount: number;
   unmappedTags: string[];
   warnings: string[];
 } => {
   const unmappedTags: string[] = [];
   const warnings: string[] = [];
   let missingQuestionMetadataCount = 0;
+  let missingIrtDifficultyCount = 0;
   let missingPartTypeCount = 0;
 
   const enrichedAnswers = answers.map((answer) => {
@@ -382,6 +396,7 @@ export const applyQuestionMetadataToAnswers = (
     const rawTags = metadata.raw_tags ?? [];
     const partType = metadata.part_type ?? answer.part_type;
     if (!partType) missingPartTypeCount += 1;
+    if (metadata.irt_difficulty === undefined) missingIrtDifficultyCount += 1;
 
     const skills = normalizeToeicSkillTags(rawTags, partType);
     const mappedRawTags = new Set(skills.map((skill) => skill.raw_tag));
@@ -392,6 +407,8 @@ export const applyQuestionMetadataToAnswers = (
     return {
       ...answer,
       part_type: partType,
+      // Rasch 1PL dùng irt_difficulty ở cấp question; Layer 2 mới tính ability.
+      irt_difficulty: metadata.irt_difficulty,
       raw_tags: rawTags,
       skills,
       skill_keys: skills.map((skill) => skill.key),
@@ -406,16 +423,22 @@ export const applyQuestionMetadataToAnswers = (
   if (missingPartTypeCount > 0) {
     warnings.push(`Không xác định được part_type cho ${missingPartTypeCount} câu hỏi.`);
   }
+  if (missingIrtDifficultyCount > 0) {
+    warnings.push(
+      `Không tìm thấy irt_difficulty cho ${missingIrtDifficultyCount} câu hỏi.`
+    );
+  }
 
   return {
     answers: enrichedAnswers,
     missingQuestionMetadataCount,
+    missingIrtDifficultyCount,
     unmappedTags: uniqueStrings(unmappedTags),
     warnings,
   };
 };
 
-export const enrichAnswersWithQuestionMetadata = async (
+const enrichAnswersWithQuestionMetadata = async (
   result: NormalizedTestResultV2
 ): Promise<NormalizedTestResultV2> => {
   if (result.answers.length === 0) return result;
@@ -435,6 +458,10 @@ export const enrichAnswersWithQuestionMetadata = async (
     metadata.missing_question_metadata_count =
       enrichment.missingQuestionMetadataCount;
   }
+  if (enrichment.missingIrtDifficultyCount > 0) {
+    metadata.missing_irt_difficulty_count =
+      enrichment.missingIrtDifficultyCount;
+  }
 
   return {
     ...result,
@@ -443,57 +470,22 @@ export const enrichAnswersWithQuestionMetadata = async (
   };
 };
 
-export const normalizeInitialAssessment = async (
-  input: NormalizeInitialAssessmentInput
+export const normalizeTestResult = async (
+  input: NormalizeTestResultInput
 ): Promise<NormalizedTestResultV2> => {
-  // Chuẩn hóa kết quả đánh giá đầu vào cho trigger initial_generation.
-  const rawInput = input.initial_assessment as RawUserTestLikeInput;
-  const source = isValidSource(rawInput.source)
-    ? rawInput.source
-    : isRecord(rawInput.metadata) && isValidSource(rawInput.metadata.source)
-      ? rawInput.metadata.source
-      : "manual";
-
-  const result = normalizeUserTestResult(rawInput, {
-    trigger_type: "initial_generation",
+  // Đây là core flow duy nhất của Layer 1.
+  const defaultContext = getDefaultContextByTrigger(input.trigger_type);
+  const rawInput: RawUserTestLikeInput = {
+    ...input.raw_result,
+    test_id: input.raw_result.test_id ?? input.test_id,
+  };
+  const result = buildNormalizedTestResult(rawInput, {
+    trigger_type: input.trigger_type,
     user_id: input.user_id,
-    fallback_test_type: "entry_test",
-    source,
+    fallback_test_type:
+      input.default_test_type ?? defaultContext.fallback_test_type,
+    source: input.source ?? defaultContext.source,
   });
-
-  return enrichAnswersWithQuestionMetadata(result);
-};
-
-export const normalizeFullTestResult = async (
-  input: NormalizeFullTestResultInput
-): Promise<NormalizedTestResultV2> => {
-  // Chuẩn hóa kết quả full/practice/demo test từ luồng overview_test.
-  const result = normalizeUserTestResult(
-    input.full_test_result as RawUserTestLikeInput,
-    {
-      trigger_type: "full_test_review",
-      user_id: input.user_id,
-      fallback_test_type: "practice",
-      source: "overview_test",
-    }
-  );
-
-  return enrichAnswersWithQuestionMetadata(result);
-};
-
-export const normalizeMiniTestResult = async (
-  input: NormalizeMiniTestResultInput
-): Promise<NormalizedTestResultV2> => {
-  // Chuẩn hóa kết quả mini test từ lesson, không gọi weekly-plan hoặc IRT.
-  const result = normalizeUserTestResult(
-    input.mini_test_result as RawUserTestLikeInput,
-    {
-      trigger_type: "mini_test_completion",
-      user_id: input.user_id,
-      fallback_test_type: "mini_test",
-      source: "lesson_mini_test",
-    }
-  );
 
   return enrichAnswersWithQuestionMetadata(result);
 };
