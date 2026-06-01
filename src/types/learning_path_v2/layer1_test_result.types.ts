@@ -22,6 +22,16 @@ export type NormalizedTestResultSourceV2 =
   | "lesson_mini_test"
   | "manual";
 
+export type ToeicSkillGroupV2 = "basic" | "core" | "advanced";
+
+export interface NormalizedToeicSkillV2 {
+  key: string;
+  label_vi: string;
+  raw_tag: string;
+  part_type: number;
+  skill_group: ToeicSkillGroupV2;
+}
+
 // Dạng câu trả lời đã được chuẩn hóa sau Layer 1.
 export interface NormalizedTestAnswerV2 {
   question_id: string;
@@ -30,6 +40,9 @@ export interface NormalizedTestAnswerV2 {
   is_correct?: boolean;
   part_type?: number;
   tags?: string[];
+  raw_tags?: string[];
+  skills?: NormalizedToeicSkillV2[];
+  skill_keys?: string[];
   response_time_seconds?: number;
 }
 
