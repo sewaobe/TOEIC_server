@@ -18,6 +18,12 @@ import type {
 } from "../types/user_skill.type";
 import { getRecentUserSkillHistories } from "./user_skill_history.service";
 
+export interface GetUserSkillSnapshotInput {
+  user_id: string;
+  context_type: "learning_path" | "free_practice";
+  learning_path_id?: string | null;
+}
+
 export interface CalculateAbilityByEWMAInput {
   previousAbility?: number | null;
   signalAbility: number;
@@ -49,6 +55,20 @@ type UserSkillHistoryLike = Pick<
   | "submitted_at"
   | "created_at"
 >;
+
+/**
+ * UserSkill snapshot là ability state hiện tại sau khi đã gộp từ history.
+ * Orchestrator dùng hàm này để lấy snapshot trước khi update, giúp Layer 3 so old/new focus skill.
+ */
+export const getUserSkillSnapshot = async (
+  input: GetUserSkillSnapshotInput
+): Promise<IUserSkill | null> => {
+  return UserSkill.findOne({
+    user_id: input.user_id,
+    context_type: input.context_type,
+    learning_path_id: input.learning_path_id ?? null,
+  }).lean<IUserSkill | null>();
+};
 
 const clampAbility = (value: number): number => Math.min(1, Math.max(0, value));
 

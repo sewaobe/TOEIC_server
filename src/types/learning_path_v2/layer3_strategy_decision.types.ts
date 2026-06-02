@@ -1,35 +1,38 @@
-import { SchedulerScenario, SchedulerStrategy } from "../../models";
-import type { AbilityProfileV2 } from "./layer2_ability_profile.types";
+import type { IUserSkill } from "../../models/user_skill.model";
+import type { LearningPathV2Layer1TriggerType } from "./layer1_test_result.types";
 
-export interface StrategyOptionV2 {
-  strategy: SchedulerStrategy;
-  title: string;
-  reasons: string[];
-  warnings: string[];
+export type LearningPathScenarioV2 =
+  | "ONBOARDING"
+  | "NORMAL_PROGRESS"
+  | "PLATEAU"
+  | "BEHIND_SCHEDULE"
+  | "PRE_DEADLINE"
+  | "FULLTEST_MONTHLY";
+
+export type LearningPaceStatusV2 = "ahead" | "on_track" | "late";
+
+export interface EvaluateLearningPathScenarioInput {
+  trigger_type: LearningPathV2Layer1TriggerType;
+  user_id: string;
+  learning_path_id: string;
+  learning_path_created_at: Date;
+  target_completion_date: Date;
+  old_user_skill?: IUserSkill | null;
+  new_user_skill?: IUserSkill | null;
+  week_study_id?: string;
+  source_user_test_id?: string;
+  actual_submit_at?: Date;
 }
 
-export interface StrategyDecisionContextV2 {
-  options: StrategyOptionV2[];
-  reasons: string[];
-  warnings: string[];
-}
-
-export interface MiniTestScenarioDecisionV2 {
-  scenario: SchedulerScenario;
-  active_strategy?: SchedulerStrategy;
-  reasons: string[];
-  warnings: string[];
-}
-
-export interface DecideInitialStrategyOptionsInput {
-  ability_profile: AbilityProfileV2;
-}
-
-export interface DecideFullTestStrategyOptionsInput {
-  ability_profile: AbilityProfileV2;
-}
-
-export interface DecideMiniTestScenarioInput {
-  ability_profile: AbilityProfileV2;
-  active_strategy?: SchedulerStrategy;
+export interface LearningScenarioDecisionV2 {
+  trigger_type: LearningPathV2Layer1TriggerType;
+  scenario: LearningPathScenarioV2;
+  pre_deadline: boolean;
+  pace_status?: LearningPaceStatusV2;
+  delay_days?: number;
+  focus_delta?: number;
+  comparable_focus_skill_count?: number;
+  newly_measured_focus_skill_count?: number;
+  focus_skill_keys?: string[];
+  focus_part_types?: number[];
 }

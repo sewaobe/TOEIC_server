@@ -1,9 +1,6 @@
 import { SchedulerScenario, SchedulerStrategy } from "../../models";
 import type { AbilityProfileV2 } from "./layer2_ability_profile.types";
-import type {
-  MiniTestScenarioDecisionV2,
-  StrategyDecisionContextV2,
-} from "./layer3_strategy_decision.types";
+import type { LearningScenarioDecisionV2 } from "./layer3_strategy_decision.types";
 
 export type DayOfWeekV2 = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
@@ -62,12 +59,12 @@ export interface PlannedWeekV2 {
 
 export interface BuildInitialWeekPlanInput {
   ability_profile: AbilityProfileV2;
-  strategy_context: StrategyDecisionContextV2;
+  scenario_decision: LearningScenarioDecisionV2;
 }
 
 export interface BuildFullTestStrategyPlansInput {
   ability_profile: AbilityProfileV2;
-  strategy_context: StrategyDecisionContextV2;
+  scenario_decision: LearningScenarioDecisionV2;
 }
 
 export interface FullTestStrategyPlansV2 {
@@ -81,5 +78,5 @@ export interface FullTestStrategyPlansV2 {
 
 export interface BuildMiniTestNextWeekPlanSchedulerInput {
   ability_profile: AbilityProfileV2;
-  scenario_decision: MiniTestScenarioDecisionV2;
+  scenario_decision: LearningScenarioDecisionV2;
 }
