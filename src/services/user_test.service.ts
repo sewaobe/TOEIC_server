@@ -4,6 +4,89 @@ import { TestStatus } from "../models/enums/TestStatus";
 import { IUserRecentTest } from "../dto/IUserRecentTest";
 import { IUserTestHistory } from "../dto/IUserTestHistory";
 import { PaginationResult } from "../dto/PaginationResult";
+import type { NormalizedTestResultV2 } from "../types/learning_path_v2";
+
+export interface CreateLearningPathUserTestInput {
+  user_id: string;
+  test_id: string;
+  normalized_result: NormalizedTestResultV2;
+}
+
+export const buildCompletedPartFromNormalizedResult = (
+  normalizedResult: NormalizedTestResultV2
+): string => {
+  const partTypes = new Set<number>();
+
+  for (const part of normalizedResult.part_results) {
+    if (part.part_type !== undefined) {
+      partTypes.add(part.part_type);
+    }
+  }
+
+  if (partTypes.size === 0) {
+    for (const answer of normalizedResult.answers) {
+      if (answer.part_type !== undefined) {
+        partTypes.add(answer.part_type);
+      }
+    }
+  }
+
+  return [...partTypes]
+    .sort((a, b) => a - b)
+    .map((partType) => `Part ${partType}`)
+    .join(",");
+};
+
+const countCorrectAnswers = (normalizedResult: NormalizedTestResultV2): number => {
+  return normalizedResult.answers.filter((answer) => answer.is_correct === true)
+    .length;
+};
+
+/**
+ * createLearningPathUserTestService chỉ dùng cho LearningPath v2.
+ * UserTest lưu bài test đã submit, không phải ability snapshot và không ghi UserSkill.
+ */
+export const createLearningPathUserTestService = async (
+  input: CreateLearningPathUserTestInput
+): Promise<IUserTest> => {
+  if (!input.test_id || !Types.ObjectId.isValid(input.test_id)) {
+    throw new Error("LearningPath v2 UserTest cần test_id hợp lệ.");
+  }
+
+  for (const answer of input.normalized_result.answers) {
+    if (typeof answer.is_correct !== "boolean") {
+      throw new Error(
+        "LearningPath v2 UserTest cần Layer 1 cung cấp is_correct cho mọi answer."
+      );
+    }
+  }
+
+  const testObjectId = new Types.ObjectId(input.test_id);
+  const correctCount = countCorrectAnswers(input.normalized_result);
+
+  return UserTest.create({
+    user_id: input.user_id,
+    test_id: testObjectId,
+    score: input.normalized_result.raw_score ?? correctCount,
+    answers: input.normalized_result.answers.map((answer) => ({
+      question_id: new Types.ObjectId(answer.question_id),
+      selectedOption: answer.selected_option ?? "",
+      isCorrect: answer.is_correct,
+    })),
+    parts: input.normalized_result.part_results.map((part) => ({
+      part_name:
+        part.part_name ?? (part.part_type ? `Part ${part.part_type}` : ""),
+      accuracy: part.accuracy,
+    })),
+    completedPart: buildCompletedPartFromNormalizedResult(
+      input.normalized_result
+    ),
+    duration: input.normalized_result.elapsed_seconds ?? 0,
+    submit_at: input.normalized_result.submitted_at ?? new Date(),
+    theta_overall: 0,
+    theta_parts: {},
+  });
+};
 
 export const getRecentUserTestsService = async (
   userId: string,
