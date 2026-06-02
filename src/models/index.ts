@@ -12,6 +12,8 @@ export * from "./test.model";
 export * from "./topic_vocabulary.model";
 export * from "./user_learningPath.model";
 export * from "./user_progress.model";
+export * from "./user_skill.model";
+export * from "./user_skill_history.model";
 export * from "./user_test.model";
 export * from "./user.model";
 export * from "./vocabulary";
