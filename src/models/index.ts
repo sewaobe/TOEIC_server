@@ -44,3 +44,4 @@ export * from "./scheduler_decision_log.model";
 export * from "./report.model";
 
 export * from "./user_sessions.model";
+export * from "./learning_path_strategy_option.model";
