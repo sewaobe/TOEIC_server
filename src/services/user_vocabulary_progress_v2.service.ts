@@ -1,22 +1,10 @@
 import { Types } from "mongoose";
 import {
-    FlashcardSessionLog,
-    summarizeFlashcardLogs,
-    VocabularySessionSummary,
-} from "../utils/flashcardSessionSummary.util";
-import {
-    calStartHalflife,
-    calRecallHalflife,
     calculateRecallProbability,
-    clampDifficulty,
-    resolveMemoryStatus,
-    calForgetHalflife,
     DHP_CONFIG,
-    MEMORY_SUGGESTION_POLICY,
     MemoryUiBucket,
     resolveMemoryUiBucket,
 } from "../utils/dhp.util";
-import { lookupSspMmcIntervalDays } from "../services/ssp_mmc_policy.service";
 import {
     IUserVocabularyMemoryV2,
     UserVocabularyMemoryV2,
@@ -28,52 +16,23 @@ import {
     buildSuggestionReasons,
     SuggestionReason,
 } from "../utils/suggestionReason.util";
+import { getVietnamDateBounds } from "../utils/vietnamDay.util";
 
-export interface UpdateVocabularyMemoryV2Params {
-    userId: string | Types.ObjectId;
-    logs: FlashcardSessionLog[];
-    finishedAt: string | Date;
-}
-
-export interface VocabularyMemoryV2UpdateResult {
-    vocabularyId: string;
-    isNewMemory: boolean;
-
-    previousDifficulty?: number;
-    previousHalfLifeDays?: number;
-
-    observedDifficulty: number;
-    nextDifficulty: number;
-
-    previousPRecall?: number;
-    nextHalfLifeDays: number;
-
-    nextIntervalDays: number;
-    dueAt: Date;
-    status: "learning" | "reviewing" | "mastered";
-
-    seenCount: number;
-    hardCount: number;
-    mediumCount: number;
-    easyCount: number;
-    skipCount: number;
-    learningEffort: number;
-    recallFailureScore: number;
-    dhpRecallResult: "remembered" | "forgot";
-}
-
-const OBSERVED_DIFFICULTY_WEIGHT = 0.35;
-const MAX_DIFFICULTY_STEP_PER_SESSION = 3;
 const VIETNAM_UTC_OFFSET_MS = 7 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export type SuggestionPriority = "high" | "medium" | "low";
-export type SuggestionBucket = "all" | "due_today" | MemoryUiBucket;
+export type SuggestionBucket =
+    | "all"
+    | "due_today"
+    | "due_now"
+    | "upcoming_today"
+    | MemoryUiBucket;
 
 export interface TodayReviewSummary {
     total: number;
     dueToday: number;
-    atRisk: number;
+    dueNow: number;
+    upcomingToday: number;
     overdue: number;
     primaryReviewCount: number;
     overdueReviewCount: number;
@@ -101,8 +60,6 @@ export interface SuggestedVocabularyItem {
     type?: string;
     topic?: string;
     level?: string;
-    priority: SuggestionPriority;
-    priorityLabel: string;
     pRecallNow: number;
     dueAt: Date | null;
     dueLabel: string;
@@ -125,8 +82,9 @@ export interface PaginatedSuggestions {
     counters: {
         all: number;
         dueToday: number;
+        dueNow: number;
+        upcomingToday: number;
         activeReviewing: number;
-        atRisk: number;
         overdue: number;
         mastered: number;
     };
@@ -143,7 +101,7 @@ export interface SuggestionDetail {
     }[];
     topic_title?: string;
     level?: string;
-    priority: SuggestionPriority;
+    difficulty: number;
     p_recall: number;
     half_life_days: number;
     last_reviewed_at: Date | null;
@@ -160,56 +118,6 @@ export interface SuggestionFilterOption {
 export interface SuggestionFilterOptions {
     topics: SuggestionFilterOption[];
     levels: SuggestionFilterOption[];
-    priorities: Array<SuggestionFilterOption & { value: SuggestionPriority }>;
-}
-
-export async function updateVocabularyMemoryV2AfterFlashcardSession(
-    params: UpdateVocabularyMemoryV2Params
-): Promise<VocabularyMemoryV2UpdateResult[]> {
-    const userObjectId = toObjectId(params.userId, "userId");
-    const finishedAt = toValidDate(params.finishedAt, "finishedAt");
-
-    if (!Array.isArray(params.logs) || params.logs.length === 0) {
-        return [];
-    }
-
-    const summaries = summarizeFlashcardLogs(params.logs);
-
-    const results: VocabularyMemoryV2UpdateResult[] = [];
-
-    for (const summary of summaries) {
-        const vocabularyObjectId = toObjectId(
-            summary.vocabularyId,
-            "vocabularyId"
-        );
-
-        const existingMemory = await UserVocabularyMemoryV2.findOne({
-            user_id: userObjectId,
-            vocabulary_id: vocabularyObjectId,
-        });
-
-        if (!existingMemory) {
-            const created = await createInitialMemory({
-                userObjectId,
-                vocabularyObjectId,
-                summary,
-                finishedAt,
-            });
-
-            results.push(created);
-            continue;
-        }
-
-        const updated = await updateExistingMemory({
-            memory: existingMemory,
-            summary,
-            finishedAt,
-        });
-
-        results.push(updated);
-    }
-
-    return results;
 }
 
 export async function getSuggestionFilterOptions(
@@ -250,11 +158,6 @@ export async function getSuggestionFilterOptions(
     return {
         topics: sortOptions(Array.from(topicByTitle.values())),
         levels: sortOptions(Array.from(levelByValue.values())),
-        priorities: [
-            { value: "high", label: "Cao" },
-            { value: "medium", label: "Trung bình" },
-            { value: "low", label: "Thấp" },
-        ],
     };
 }
 
@@ -266,9 +169,9 @@ export async function getTodayReviewSummary(
     const bounds = getVietnamDateBounds(now);
     const memories = await getScopedMemoryRecords(userObjectId);
 
-    let dueToday = 0;
-    let atRisk = 0;
     let overdue = 0;
+    let dueNow = 0;
+    let upcomingToday = 0;
 
     for (const memory of memories) {
         if (memory.status === "mastered") {
@@ -276,8 +179,6 @@ export async function getTodayReviewSummary(
         }
 
         const dueAt = memory.due_at ?? null;
-        const pRecallNow = calculateMemoryPRecall(memory, now);
-
         if (dueAt && dueAt < bounds.startOfToday) {
             overdue += 1;
             continue;
@@ -286,28 +187,31 @@ export async function getTodayReviewSummary(
         if (
             dueAt &&
             dueAt >= bounds.startOfToday &&
-            dueAt < bounds.startOfTomorrow
+            dueAt <= now
         ) {
-            dueToday += 1;
+            dueNow += 1;
             continue;
         }
 
         if (
             dueAt &&
-            dueAt >= bounds.startOfTomorrow &&
-            dueAt <= bounds.endOfAtRiskWindow &&
-            pRecallNow < MEMORY_SUGGESTION_POLICY.AT_RISK_P_RECALL_THRESHOLD
+            dueAt > now &&
+            dueAt < bounds.startOfTomorrow
         ) {
-            atRisk += 1;
+            upcomingToday += 1;
+            continue;
         }
     }
 
+    const dueToday = dueNow + upcomingToday;
+
     return {
-        total: dueToday + atRisk + overdue,
+        total: overdue + dueNow + upcomingToday,
         dueToday,
-        atRisk,
+        dueNow,
+        upcomingToday,
         overdue,
-        primaryReviewCount: dueToday + atRisk,
+        primaryReviewCount: dueNow,
         overdueReviewCount: overdue,
     };
 }
@@ -355,19 +259,14 @@ export async function getMemoryStatusSummary(
     const counts: Record<MemoryUiBucket, number> = {
         mastered: 0,
         active_reviewing: 0,
-        at_risk: 0,
         overdue: 0,
     };
 
     for (const memory of memories) {
-        const pRecallNow = calculateMemoryPRecall(memory, now);
         const bucket = resolveMemoryUiBucket({
             status: memory.status,
             dueAt: memory.due_at ?? null,
-            pRecallNow,
             startOfToday: bounds.startOfToday,
-            startOfTomorrow: bounds.startOfTomorrow,
-            endOfAtRiskWindow: bounds.endOfAtRiskWindow,
         });
 
         counts[bucket] += 1;
@@ -383,7 +282,6 @@ export async function getMemoryStatusSummary(
             counts.active_reviewing,
             total
         ),
-        toMemoryStatusSummaryItem("at_risk", "Sắp quên", counts.at_risk, total),
         toMemoryStatusSummaryItem("overdue", "Quá hạn", counts.overdue, total),
     ];
 }
@@ -396,7 +294,6 @@ export async function getSuggestedVocabulary(
         search?: string;
         topic?: string;
         level?: string;
-        priority?: SuggestionPriority | "all";
         bucket?: SuggestionBucket;
         sortBy?: "due_at" | "p_recall" | "word";
         sortOrder?: "asc" | "desc";
@@ -432,8 +329,8 @@ export async function getSuggestedVocabulary(
         })
         .filter((item): item is SuggestedVocabularyItem => Boolean(item));
 
-    const counters = buildSuggestionCounters(allItems, bounds);
-    const filtered = filterSuggestionItems(allItems, options, bounds);
+    const counters = buildSuggestionCounters(allItems, bounds, now);
+    const filtered = filterSuggestionItems(allItems, options, bounds, now);
     const sorted = sortSuggestionItems(filtered, options.sortBy ?? "due_at", options.sortOrder ?? "asc");
     const total = sorted.length;
     const totalPages = Math.max(1, Math.ceil(total / limit));
@@ -480,7 +377,6 @@ export async function getSuggestionDetail(
     }
 
     const pRecallNow = calculateMemoryPRecall(memory as any, now);
-    const priority = resolveSuggestionPriority(pRecallNow);
     const topicMeta = scope.vocabularyTopicMap.get(vocabularyKey);
 
     return {
@@ -491,7 +387,7 @@ export async function getSuggestionDetail(
         examples: (vocabulary as any).examples,
         topic_title: topicMeta?.title ?? (vocabulary as any).tags?.[0],
         level: topicMeta?.level,
-        priority,
+        difficulty: (memory as any).difficulty,
         p_recall: pRecallNow,
         half_life_days: roundNumber((memory as any).half_life_days, 6),
         last_reviewed_at: (memory as any).last_reviewed_at ?? null,
@@ -503,226 +399,14 @@ export async function getSuggestionDetail(
             lastReviewedAt: (memory as any).last_reviewed_at ?? null,
             pRecallNow,
             difficulty: (memory as any).difficulty,
-            lastHardCount: (memory as any).last_hard_count,
+            lastRecallFailureCount:
+                ((memory as any).last_unknown_count ?? 0) +
+                ((memory as any).last_forgot_count ?? 0),
             lastSeenCount: (memory as any).last_seen_count,
             lastDhpRecallResult: (memory as any).last_dhp_recall_result,
             lastResponseTimeAvgMs: (memory as any).last_response_time_avg,
         }),
     };
-}
-
-async function createInitialMemory(input: {
-    userObjectId: Types.ObjectId;
-    vocabularyObjectId: Types.ObjectId;
-    summary: VocabularySessionSummary;
-    finishedAt: Date;
-}): Promise<VocabularyMemoryV2UpdateResult> {
-    const { userObjectId, vocabularyObjectId, summary, finishedAt } = input;
-
-    const difficulty = clampDifficulty(summary.initialDifficulty);
-
-    const halfLifeDays = calStartHalflife(difficulty);
-
-    const nextIntervalDays = lookupSspMmcIntervalDays(
-        difficulty,
-        halfLifeDays
-    );
-
-    const dueAt = addDays(finishedAt, nextIntervalDays);
-
-    const status = resolveMemoryStatus(halfLifeDays);
-
-    await UserVocabularyMemoryV2.create({
-        user_id: userObjectId,
-        vocabulary_id: vocabularyObjectId,
-
-        difficulty,
-        half_life_days: halfLifeDays,
-
-        last_reviewed_at: finishedAt,
-        due_at: dueAt,
-        status,
-
-        review_count: summary.seenCount,
-        session_count: 1,
-
-        last_p_recall: undefined,
-        last_interval_days: nextIntervalDays,
-
-        last_seen_count: summary.seenCount,
-        last_hard_count: summary.hardCount,
-        last_medium_count: summary.mediumCount,
-        last_easy_count: summary.easyCount,
-        last_skip_count: summary.skipCount,
-        last_learning_effort: summary.learningEffort,
-        last_response_time_avg: summary.avgResponseTimeMs,
-        last_recall_failure_score: summary.recallFailureScore,
-        last_dhp_recall_result: summary.dhpRecallResult,
-    });
-
-    return {
-        vocabularyId: summary.vocabularyId,
-        isNewMemory: true,
-
-        observedDifficulty: difficulty,
-        nextDifficulty: difficulty,
-
-        nextHalfLifeDays: roundNumber(halfLifeDays, 6),
-        nextIntervalDays,
-        dueAt,
-        status,
-
-        seenCount: summary.seenCount,
-        hardCount: summary.hardCount,
-        mediumCount: summary.mediumCount,
-        easyCount: summary.easyCount,
-        skipCount: summary.skipCount,
-        learningEffort: roundNumber(summary.learningEffort, 4),
-        recallFailureScore: roundNumber(summary.recallFailureScore, 4),
-        dhpRecallResult: summary.dhpRecallResult,
-    };
-}
-
-async function updateExistingMemory(input: {
-    memory: any;
-    summary: VocabularySessionSummary;
-    finishedAt: Date;
-}): Promise<VocabularyMemoryV2UpdateResult> {
-    const { memory, summary, finishedAt } = input;
-
-    const previousDifficulty = memory.difficulty;
-    const previousHalfLifeDays = memory.half_life_days;
-
-    const lastReviewedAt: Date | null = memory.last_reviewed_at ?? null;
-
-    const previousPRecall = lastReviewedAt
-        ? calculateRecallProbability(previousHalfLifeDays, lastReviewedAt, finishedAt)
-        : undefined;
-
-    /**
-     * Vì session của bạn bắt user học tới khi bấm skip / I remember this,
-     * v1 coi session hoàn thành là remembered.
-     */
-    let nextHalfLifeDays = previousHalfLifeDays;
-
-    if (previousPRecall !== undefined) {
-        if (summary.dhpRecallResult === "forgot") {
-            nextHalfLifeDays = calForgetHalflife(
-                previousDifficulty,
-                previousHalfLifeDays,
-                previousPRecall
-            );
-        } else {
-            const rawRecallHalfLifeDays = calRecallHalflife(
-                previousDifficulty,
-                previousHalfLifeDays,
-                previousPRecall
-            );
-
-            nextHalfLifeDays = applySessionQualityToRecallGain(
-                previousHalfLifeDays,
-                rawRecallHalfLifeDays,
-                summary
-            );
-        }
-    }
-
-    /**
-     * observedDifficulty lấy từ logs hiện tại.
-     * Không thay difficulty nhảy mạnh ngay lập tức,
-     * mà smooth để tránh 1 session bất thường làm memory dao động quá nhiều.
-     */
-    const observedDifficulty = clampDifficulty(summary.initialDifficulty);
-
-    const nextDifficulty = calculateSmoothedDifficulty(
-        previousDifficulty,
-        observedDifficulty
-    );
-
-    const nextIntervalDays = lookupSspMmcIntervalDays(
-        nextDifficulty,
-        nextHalfLifeDays
-    );
-
-    const dueAt = addDays(finishedAt, nextIntervalDays);
-
-    const status = resolveMemoryStatus(nextHalfLifeDays);
-
-    memory.difficulty = nextDifficulty;
-    memory.half_life_days = nextHalfLifeDays;
-
-    memory.last_reviewed_at = finishedAt;
-    memory.due_at = dueAt;
-    memory.status = status;
-
-    memory.review_count = (memory.review_count ?? 0) + summary.seenCount;
-    memory.session_count = (memory.session_count ?? 0) + 1;
-
-    memory.last_p_recall =
-        previousPRecall === undefined ? undefined : previousPRecall;
-    memory.last_interval_days = nextIntervalDays;
-
-    memory.last_seen_count = summary.seenCount;
-    memory.last_hard_count = summary.hardCount;
-    memory.last_medium_count = summary.mediumCount;
-    memory.last_easy_count = summary.easyCount;
-    memory.last_skip_count = summary.skipCount;
-    memory.last_learning_effort = summary.learningEffort;
-    memory.last_response_time_avg = summary.avgResponseTimeMs;
-    memory.last_recall_failure_score = summary.recallFailureScore;
-    memory.last_dhp_recall_result = summary.dhpRecallResult;
-
-    await memory.save();
-
-    return {
-        vocabularyId: summary.vocabularyId,
-        isNewMemory: false,
-
-        previousDifficulty,
-        previousHalfLifeDays: roundNumber(previousHalfLifeDays, 6),
-
-        observedDifficulty,
-        nextDifficulty,
-
-        previousPRecall:
-            previousPRecall === undefined ? undefined : roundNumber(previousPRecall, 6),
-
-        nextHalfLifeDays: roundNumber(nextHalfLifeDays, 6),
-
-        nextIntervalDays,
-        dueAt,
-        status,
-
-        seenCount: summary.seenCount,
-        hardCount: summary.hardCount,
-        mediumCount: summary.mediumCount,
-        easyCount: summary.easyCount,
-        skipCount: summary.skipCount,
-        learningEffort: roundNumber(summary.learningEffort, 4),
-        recallFailureScore: roundNumber(summary.recallFailureScore, 4),
-        dhpRecallResult: summary.dhpRecallResult,
-    };
-}
-
-function calculateSmoothedDifficulty(
-    currentDifficulty: number,
-    observedDifficulty: number
-): number {
-    const current = clampDifficulty(currentDifficulty);
-    const observed = clampDifficulty(observedDifficulty);
-
-    const raw =
-        current * (1 - OBSERVED_DIFFICULTY_WEIGHT) +
-        observed * OBSERVED_DIFFICULTY_WEIGHT;
-
-    const delta = raw - current;
-
-    const limitedDelta = Math.max(
-        -MAX_DIFFICULTY_STEP_PER_SESSION,
-        Math.min(MAX_DIFFICULTY_STEP_PER_SESSION, delta)
-    );
-
-    return clampDifficulty(current + limitedDelta);
 }
 
 async function getLearnedVocabularyScope(userObjectId: Types.ObjectId): Promise<{
@@ -731,7 +415,12 @@ async function getLearnedVocabularyScope(userObjectId: Types.ObjectId): Promise<
 }> {
     const topicIds = await FlashCardProgress.distinct("topic_vocabulary_id", {
         user_id: userObjectId,
-        archive_reason: "completed"
+        archive_reason: "completed",
+        topic_vocabulary_id: { $exists: true, $ne: null },
+        $or: [
+            { source_type: { $exists: false } },
+            { source_type: "TOPIC_PRACTICE" },
+        ],
     });
 
     if (topicIds.length === 0) {
@@ -804,28 +493,6 @@ function calculateMemoryPRecall(
     );
 }
 
-function getVietnamDateBounds(now: Date): {
-    startOfToday: Date;
-    startOfTomorrow: Date;
-    endOfAtRiskWindow: Date;
-} {
-    const vietnamNow = new Date(now.getTime() + VIETNAM_UTC_OFFSET_MS);
-    const year = vietnamNow.getUTCFullYear();
-    const month = vietnamNow.getUTCMonth();
-    const date = vietnamNow.getUTCDate();
-    const startOfTodayUtcMs =
-        Date.UTC(year, month, date, 0, 0, 0, 0) - VIETNAM_UTC_OFFSET_MS;
-    const startOfToday = new Date(startOfTodayUtcMs);
-    const startOfTomorrow = new Date(startOfTodayUtcMs + DAY_MS);
-    const endOfAtRiskWindow = new Date(startOfTodayUtcMs + 8 * DAY_MS - 1);
-
-    return {
-        startOfToday,
-        startOfTomorrow,
-        endOfAtRiskWindow,
-    };
-}
-
 function formatVietnamDateKey(date: Date): string {
     const vietnamDate = new Date(date.getTime() + VIETNAM_UTC_OFFSET_MS);
     const year = vietnamDate.getUTCFullYear();
@@ -870,14 +537,10 @@ function toSuggestedVocabularyItem(input: {
 }): SuggestedVocabularyItem {
     const { memory, vocabulary, topicMeta, now, bounds } = input;
     const pRecallNow = calculateMemoryPRecall(memory, now);
-    const priority = resolveSuggestionPriority(pRecallNow);
     const memoryBucket = resolveMemoryUiBucket({
         status: memory.status,
         dueAt: memory.due_at ?? null,
-        pRecallNow,
         startOfToday: bounds.startOfToday,
-        startOfTomorrow: bounds.startOfTomorrow,
-        endOfAtRiskWindow: bounds.endOfAtRiskWindow,
     });
 
     return {
@@ -889,8 +552,6 @@ function toSuggestedVocabularyItem(input: {
         type: vocabulary.type,
         topic: topicMeta?.title ?? vocabulary.tags?.[0],
         level: topicMeta?.level,
-        priority,
-        priorityLabel: resolvePriorityLabel(priority),
         pRecallNow,
         dueAt: memory.due_at ?? null,
         dueLabel: resolveDueLabel(memory.due_at ?? null, bounds),
@@ -901,30 +562,6 @@ function toSuggestedVocabularyItem(input: {
         reviewCount: memory.review_count,
         sessionCount: memory.session_count,
     };
-}
-
-function resolveSuggestionPriority(pRecallNow: number): SuggestionPriority {
-    if (pRecallNow < MEMORY_SUGGESTION_POLICY.PRIORITY_HIGH_P_RECALL_THRESHOLD) {
-        return "high";
-    }
-
-    if (pRecallNow < MEMORY_SUGGESTION_POLICY.PRIORITY_MEDIUM_P_RECALL_THRESHOLD) {
-        return "medium";
-    }
-
-    return "low";
-}
-
-function resolvePriorityLabel(priority: SuggestionPriority): string {
-    if (priority === "high") {
-        return "Cao";
-    }
-
-    if (priority === "medium") {
-        return "Trung bình";
-    }
-
-    return "Thấp";
 }
 
 function resolveDueLabel(
@@ -956,7 +593,8 @@ function resolveDueLabel(
 
 function buildSuggestionCounters(
     items: SuggestedVocabularyItem[],
-    bounds: ReturnType<typeof getVietnamDateBounds>
+    bounds: ReturnType<typeof getVietnamDateBounds>,
+    now: Date
 ): PaginatedSuggestions["counters"] {
     return items.reduce(
         (counters, item) => {
@@ -981,10 +619,12 @@ function buildSuggestionCounters(
                 item.status !== "mastered"
             ) {
                 counters.dueToday += 1;
-            }
 
-            if (item.memoryBucket === "at_risk") {
-                counters.atRisk += 1;
+                if (item.dueAt <= now) {
+                    counters.dueNow += 1;
+                } else {
+                    counters.upcomingToday += 1;
+                }
             }
 
             return counters;
@@ -992,8 +632,9 @@ function buildSuggestionCounters(
         {
             all: 0,
             dueToday: 0,
+            dueNow: 0,
+            upcomingToday: 0,
             activeReviewing: 0,
-            atRisk: 0,
             overdue: 0,
             mastered: 0,
         }
@@ -1006,10 +647,10 @@ function filterSuggestionItems(
         search?: string;
         topic?: string;
         level?: string;
-        priority?: SuggestionPriority | "all";
         bucket?: SuggestionBucket;
     },
-    bounds: ReturnType<typeof getVietnamDateBounds>
+    bounds: ReturnType<typeof getVietnamDateBounds>,
+    now: Date
 ): SuggestedVocabularyItem[] {
     const search = options.search?.trim().toLowerCase();
 
@@ -1030,22 +671,26 @@ function filterSuggestionItems(
             return false;
         }
 
-        if (
-            options.priority &&
-            options.priority !== "all" &&
-            item.priority !== options.priority
-        ) {
-            return false;
-        }
-
         if (options.bucket && options.bucket !== "all") {
-            if (options.bucket === "due_today") {
+            if (
+                options.bucket === "due_today" ||
+                options.bucket === "due_now" ||
+                options.bucket === "upcoming_today"
+            ) {
                 if (
                     !item.dueAt ||
                     item.status === "mastered" ||
                     item.dueAt < bounds.startOfToday ||
                     item.dueAt >= bounds.startOfTomorrow
                 ) {
+                    return false;
+                }
+
+                if (options.bucket === "due_now" && item.dueAt > now) {
+                    return false;
+                }
+
+                if (options.bucket === "upcoming_today" && item.dueAt <= now) {
                     return false;
                 }
             } else if (item.memoryBucket !== options.bucket) {
@@ -1115,6 +760,7 @@ function roundNumber(value: number, digits: number): number {
     return Math.round(value * factor) / factor;
 }
 
+/*
 function applySessionQualityToRecallGain(
     previousHalfLifeDays: number,
     rawRecallHalfLifeDays: number,
@@ -1143,3 +789,4 @@ function calculateRecallQualityMultiplier(
 
     return 1.0;
 }
+*/

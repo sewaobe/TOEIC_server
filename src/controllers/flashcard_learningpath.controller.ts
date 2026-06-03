@@ -73,8 +73,10 @@ export const submitFlashCardController = async (
     const resultsArray = Array.isArray(results)
       ? results.map((r: any) => ({
         vocabulary_id: new Types.ObjectId(r.vocabulary_id),
-        eval_type: r.eval_type,
+        answer_event_id: r.answer_event_id || new Types.ObjectId().toString(),
+        action: r.action,
         response_time: Number(r.response_time || 0),
+        attempted_at: r.attempted_at ? new Date(r.attempted_at) : new Date(),
       }))
       : [];
 

@@ -3,7 +3,7 @@ export type SuggestionReasonCode =
     | "DUE_TODAY"
     | "UPCOMING_DUE"
     | "LOW_RECALL_PROBABILITY"
-    | "LAST_SESSION_HARD"
+    | "LAST_SESSION_RECALL_FAILURE"
     | "LAST_DHP_FORGOT"
     | "HIGH_DIFFICULTY"
     | "REPEATED_IN_LAST_SESSION"
@@ -24,7 +24,7 @@ export interface BuildSuggestionReasonsInput {
     lastReviewedAt?: Date | null;
     pRecallNow?: number | null;
     difficulty?: number | null;
-    lastHardCount?: number | null;
+    lastRecallFailureCount?: number | null;
     lastSeenCount?: number | null;
     lastDhpRecallResult?: "remembered" | "forgot" | null;
     lastResponseTimeAvgMs?: number | null;
@@ -42,7 +42,7 @@ const REASON_RANK: Record<SuggestionReasonCode, number> = {
     DUE_TODAY: 95,
     LOW_RECALL_PROBABILITY: 90,
     LAST_DHP_FORGOT: 85,
-    LAST_SESSION_HARD: 80,
+    LAST_SESSION_RECALL_FAILURE: 80,
     HIGH_DIFFICULTY: 70,
     REPEATED_IN_LAST_SESSION: 65,
     LONG_RESPONSE_TIME: 55,
@@ -104,11 +104,11 @@ export function buildSuggestionReasons(
         });
     }
 
-    if ((input.lastHardCount ?? 0) > 0) {
+    if ((input.lastRecallFailureCount ?? 0) > 0) {
         reasons.push({
-            code: "LAST_SESSION_HARD",
+            code: "LAST_SESSION_RECALL_FAILURE",
             title: "Bạn từng gặp khó với từ này",
-            description: "Trong lần ôn gần nhất, bạn đã đánh giá từ này là Hard.",
+            description: "Trong lần ôn gần nhất, phản hồi của bạn cho thấy khả năng nhớ chưa chắc.",
             severity: "medium",
         });
     }

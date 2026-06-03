@@ -93,7 +93,6 @@ import ctvPracticeTopicVocabularyRouter from "./routes/ctv/ctv_practice_topic_vo
 import practice_definition_router from "./routes/practice_definition.route";
 import irtRouter from "./routes/irt.route";
 import adjustmentRequestRouter from "./routes/adjustment_request.route";
-import hlrRouter from "./routes/hlr.route";
 import { errorLogger } from "./middlewares/logger.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
 import { verifyAccessToken } from "./middlewares/verifyAccessToken.middleware";
@@ -121,7 +120,7 @@ app.use(
   cors({
     origin: allowOrigins,
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'sentry-trace', 'baggage', 'sentry-sample-rate'], // Thêm các header của Sentry
+    allowedHeaders: ['Content-Type', 'Authorization', 'sentry-trace', 'baggage', 'sentry-sample-rate', 'Idempotency-Key'], // Thêm các header của Sentry
   })
 );
 
@@ -196,7 +195,6 @@ app.use("/api/flashcards-learningpath", flashcardLearningPathRouter);
 app.use("/api/shadowing-learningpath", shadowingLearningPathRouter);
 app.use("/api/adjustment-requests", adjustmentRequestRouter);
 app.use("/api/irt", verifyAccessToken, irtRouter);
-app.use("/api/hlr", verifyAccessToken, hlrRouter);
 
 // User study general routes
 app.use("/api/history", historyRouter);

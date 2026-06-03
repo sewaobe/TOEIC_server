@@ -1,22 +1,14 @@
 export const DHP_CONFIG = {
     DIFFICULTY_MIN: 1,
     DIFFICULTY_MAX: 18,
-    MASTERED_HALF_LIFE_DAYS: 90,
+    MASTERED_HALF_LIFE_DAYS: 360,
     MIN_P_RECALL: 0.0001,
     MAX_P_RECALL: 0.9999,
-} as const;
-
-export const MEMORY_SUGGESTION_POLICY = {
-    AT_RISK_P_RECALL_THRESHOLD: 0.5,
-    PRIORITY_HIGH_P_RECALL_THRESHOLD: 0.25,
-    PRIORITY_MEDIUM_P_RECALL_THRESHOLD: 0.65,
-    AT_RISK_WINDOW_DAYS: 7,
 } as const;
 
 export type MemoryUiBucket =
     | "mastered"
     | "active_reviewing"
-    | "at_risk"
     | "overdue";
 
 export function clampDifficulty(difficulty: number): number {
@@ -110,10 +102,7 @@ export function resolveMemoryStatus(
 export function resolveMemoryUiBucket(input: {
     status: "learning" | "reviewing" | "mastered";
     dueAt: Date | null;
-    pRecallNow: number;
     startOfToday: Date;
-    startOfTomorrow: Date;
-    endOfAtRiskWindow: Date;
 }): MemoryUiBucket {
     if (input.status === "mastered") {
         return "mastered";
@@ -121,15 +110,6 @@ export function resolveMemoryUiBucket(input: {
 
     if (input.dueAt && input.dueAt < input.startOfToday) {
         return "overdue";
-    }
-
-    if (
-        input.dueAt &&
-        input.dueAt >= input.startOfTomorrow &&
-        input.dueAt <= input.endOfAtRiskWindow &&
-        input.pRecallNow < MEMORY_SUGGESTION_POLICY.AT_RISK_P_RECALL_THRESHOLD
-    ) {
-        return "at_risk";
     }
 
     return "active_reviewing";

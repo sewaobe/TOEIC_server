@@ -3,6 +3,7 @@ import { verifyAccessToken } from "../../middlewares/verifyAccessToken.middlewar
 import {
   createLessonManagerController,
   deleteLessonManagerController,
+  getActivityOptionsController,
   getAllLessonManagerController,
   getAllTopicTitlesController,
   getLessonManagerByIdController,
@@ -90,6 +91,12 @@ router.get("/search", verifyAccessToken, searchLessonManagerController);
  *                   example: "Fetched topic titles successfully."
  */
 router.get("/titles", verifyAccessToken, getAllTopicTitlesController);
+
+router.get(
+  "/activity-options",
+  verifyAccessToken,
+  getActivityOptionsController
+);
 
 /**
  * @openapi

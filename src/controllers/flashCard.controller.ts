@@ -13,11 +13,6 @@ import {
 import { ApiResponse } from "../utils/ApiResponse";
 import { completeActivityAndUnlockNext } from "../services/day_study.service";
 import { Types } from "mongoose";
-import {
-  updateHLRFromFlashcardLogs,
-  updateHLRFromMatchingGame,
-  updateHLRFromWordRecall,
-} from "../services/hlr_integration.service";
 
 export const getFlashCardById = async (
   req: Request,
@@ -57,9 +52,11 @@ export const submitFlashCard = async (
 
     // Chuyển logs về đúng cấu trúc của field "results"
     const results = logs.map((log: any) => ({
+      answer_event_id: log.answer_event_id || new Types.ObjectId().toString(),
       vocabulary_id: new Types.ObjectId(log.vocab_id),
-      eval_type: log.eval_type,
+      action: log.action,
       response_time: log.response_time,
+      attempted_at: log.attempted_at ? new Date(log.attempted_at) : new Date(),
     }));
 
     // Gom dữ liệu đúng theo IFlashCardAttempt
@@ -78,12 +75,6 @@ export const submitFlashCard = async (
 
     if (!result)
       res.status(404).json(ApiResponse.fail("Submit Flash card thất bại"));
-
-    // ★ Tích hợp HLR: Cập nhật spaced repetition data
-    // Chạy async, không block response, không ảnh hưởng logic cũ
-    updateHLRFromFlashcardLogs(user_id.toString(), logs).catch((err) => {
-      console.error("[HLR] Error in flashcard submit:", err.message);
-    });
 
     // Unlock bài tiếp theo
     // await completeActivityAndUnlockNext(dayStudyId, activityId)
@@ -159,29 +150,6 @@ export const submitFlashCardGame = async (
       return res
         .status(500)
         .json(ApiResponse.fail("Submit game result thất bại"));
-    }
-
-    // ★ Tích hợp HLR: Cập nhật spaced repetition data cho game
-    // Chạy async, không block response
-    if (game_type === "matching" && game_result.vocabularyIds?.length > 0) {
-      updateHLRFromMatchingGame(user_id.toString(), {
-        vocabularyIds: game_result.vocabularyIds,
-        correctPairIds: game_result.correctPairIds || [],
-        wrongAttemptCounts: game_result.wrongAttemptCounts || {}, // Số lần sai cho từng từ
-      }).catch((err) => {
-        console.error("[HLR] Error in matching game submit:", err.message);
-      });
-    } else if (game_type === "word_recall") {
-      const correctWordIds = game_result.correctWordIds || [];
-      const wrongWordIds = game_result.wrongWordIds || [];
-      if (correctWordIds.length > 0 || wrongWordIds.length > 0) {
-        updateHLRFromWordRecall(user_id.toString(), {
-          correctWordIds,
-          wrongWordIds,
-        }).catch((err) => {
-          console.error("[HLR] Error in word recall submit:", err.message);
-        });
-      }
     }
 
     res

@@ -25,6 +25,7 @@ export * from "./dictation.model";
 export * from "./flashcard_attempt.model";
 export * from "./flashcard_plan.model";
 export * from "./flashcard_progress.model";
+export * from "./idempotency_record.model";
 export * from "./quiz_attempt.model";
 export * from "./quiz_plan.model";
 export * from "./shadowing_attempt.model";
@@ -40,6 +41,4 @@ export * from "./quiz.model";
 export * from "./lesson_manager.model";
 export * from "./report.model";
 
-// HLR (Half-Life Regression) - Spaced Repetition
-export * from "./user_vocabulary_progress.model";
 export * from "./user_sessions.model";
