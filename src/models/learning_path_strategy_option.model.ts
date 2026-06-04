@@ -156,6 +156,16 @@ export interface ILearningPathStrategyOption extends Document {
    */
   ability_highlights: IStrategyAbilityHighlight[];
 
+  /**
+   * Index tiếp theo trong route_units mà Layer 4 tầng C sẽ dùng để tạo cycle mới.
+   * Field này được update ngay khi tạo WeekStudy/cycle thành công.
+   *
+   * Ví dụ:
+   * - 0: chưa cấp phát unit nào từ route.
+   * - 3: các route_units[0..2] đã được cấp phát vào cycle trước.
+   */
+  next_route_unit_index: number;
+
   selected_at?: Date;
   created_at: Date;
   updated_at?: Date;
@@ -404,6 +414,12 @@ const LearningPathStrategyOptionSchema =
 
       selected_at: {
         type: Date,
+      },
+      next_route_unit_index: {
+        type: Number,
+        required: true,
+        default: 0,
+        min: 0,
       },
     },
     {

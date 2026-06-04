@@ -39,6 +39,35 @@ export interface IWeekStudy extends Document {
    * Field này giúp scheduler/debug biết cycle đang nhắm vào Part nào.
    */
   focus_part_types: number[];
+
+  /**
+ * Strategy option đang được dùng để tạo cycle này.
+ * Từ field này + route_unit_start_index/end_index có thể trace lại route_units gốc.
+ */
+  learning_path_strategy_option_id?: Types.ObjectId | null;
+
+  /**
+   * Index bắt đầu của đoạn route_units được cắt cho cycle này.
+   */
+  route_unit_start_index?: number | null;
+
+  /**
+   * Index kết thúc, inclusive, của đoạn route_units được cắt cho cycle này.
+   */
+  route_unit_end_index?: number | null;
+
+  /**
+   * Assessment cuối cycle.
+   * Cycle 1/2/3 thường là mini_test.
+   * Cycle 4 là full_test.
+   */
+  assessment_type?: "mini_test" | "full_test" | null;
+
+  /**
+   * Thời lượng dự kiến của assessment cuối cycle.
+   * MVP: mini_test = 100 phút, full_test = 200 phút.
+   */
+  assessment_estimated_minutes?: number;
   created_at: Date;
   updated_at?: Date;
 }
@@ -95,6 +124,38 @@ const WeekStudySchema = new Schema<IWeekStudy>(
           values.every((part) => part >= 1 && part <= 7),
         message: "focus_part_types chỉ được chứa TOEIC Part từ 1 đến 7.",
       },
+    },
+
+    learning_path_strategy_option_id: {
+      type: Schema.Types.ObjectId,
+      ref: "LearningPathStrategyOption",
+      default: null,
+      index: true,
+    },
+
+    route_unit_start_index: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+
+    route_unit_end_index: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+
+    assessment_type: {
+      type: String,
+      enum: ["mini_test", "full_test"],
+      default: null,
+      index: true,
+    },
+
+    assessment_estimated_minutes: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
   },
   {
