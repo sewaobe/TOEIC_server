@@ -22,6 +22,23 @@ export interface IWeekStudy extends Document {
   }[];
 
   days: Types.ObjectId[];        // liên kết tới DayStudy
+  /**
+ * Thời điểm dự kiến user hoàn thành WeekCycle này.
+ * Layer 3 dùng field này để so với submit_at của mini test.
+ */
+  expected_completion_at: Date;
+
+  /**
+   * Các skill chính mà WeekCycle này được thiết kế để luyện.
+   * Mini test cuối cycle sẽ được đánh giá chủ yếu dựa trên nhóm skill này.
+   */
+  focus_skill_keys: string[];
+
+  /**
+   * Các TOEIC part chính mà WeekCycle này tập trung.
+   * Field này giúp scheduler/debug biết cycle đang nhắm vào Part nào.
+   */
+  focus_part_types: number[];
   created_at: Date;
   updated_at?: Date;
 }
@@ -56,6 +73,29 @@ const WeekStudySchema = new Schema<IWeekStudy>(
     ],
 
     days: [{ type: Schema.Types.ObjectId, ref: "DayStudy" }],
+    // Deadline dự kiến của WeekCycle. Layer 3 bắt buộc dùng field này để tính ahead/on_track/late.
+    expected_completion_at: {
+      type: Date,
+      required: true,
+      index: true,
+    },
+
+    // Skill trọng tâm của cycle, do Layer 4 scheduler ghi khi tạo WeekStudy.
+    focus_skill_keys: {
+      type: [String],
+      default: [],
+    },
+
+    // TOEIC Part trọng tâm của cycle, dùng để debug và hỗ trợ scenario/scheduler.
+    focus_part_types: {
+      type: [Number],
+      default: [],
+      validate: {
+        validator: (values: number[]) =>
+          values.every((part) => part >= 1 && part <= 7),
+        message: "focus_part_types chỉ được chứa TOEIC Part từ 1 đến 7.",
+      },
+    },
   },
   {
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },

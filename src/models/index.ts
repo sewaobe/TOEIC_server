@@ -12,6 +12,8 @@ export * from "./test.model";
 export * from "./topic_vocabulary.model";
 export * from "./user_learningPath.model";
 export * from "./user_progress.model";
+export * from "./user_skill.model";
+export * from "./user_skill_history.model";
 export * from "./user_test.model";
 export * from "./user.model";
 export * from "./vocabulary";
@@ -39,6 +41,8 @@ export * from "./user_activity.model";
 export * from "./group_user.model";
 export * from "./quiz.model";
 export * from "./lesson_manager.model";
+export * from "./scheduler_decision_log.model";
 export * from "./report.model";
 
 export * from "./user_sessions.model";
+export * from "./learning_path_strategy_option.model";

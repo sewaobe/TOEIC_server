@@ -61,8 +61,8 @@ export function estimateThetaRasch(
 
   // Xử lý trường hợp đặc biệt: tất cả đúng hoặc tất cả sai
   const totalCorrect = items.reduce((sum, item) => sum + item.correct, 0);
-  if (totalCorrect === 0) return -4; // Tất cả sai → theta thấp nhất
-  if (totalCorrect === items.length) return 4; // Tất cả đúng → theta cao nhất
+  if (totalCorrect === 0) return -3; // Tất cả sai → theta thấp nhất
+  if (totalCorrect === items.length) return 3; // Tất cả đúng → theta cao nhất
 
   // Newton-Raphson MLE
   let theta = 0; // Khởi tạo theta = 0 (trung bình)
@@ -97,10 +97,41 @@ export function estimateThetaRasch(
     }
 
     // Giới hạn theta trong khoảng hợp lý
-    theta = Math.max(-4, Math.min(4, theta));
+    theta = Math.max(-3, Math.min(3, theta));
   }
 
   return theta;
+}
+
+export interface RaschV2Item {
+  question_id: string;
+  is_correct: boolean;
+  irt_difficulty: number;
+}
+
+export interface RaschV2Result {
+  ability: number;
+  item_count: number;
+  correct_count: number;
+}
+
+const clamp = (value: number, min: number, max: number): number =>
+  Math.max(min, Math.min(max, value));
+
+export function calculateThetaRaschV2(items: RaschV2Item[]): RaschV2Result {
+  // Rasch 1PL dùng irt_difficulty, không dùng discrimination.
+  const raschItems = items.map((item) => ({
+    b: item.irt_difficulty,
+    correct: item.is_correct ? 1 : 0,
+  }));
+  const theta = estimateThetaRasch(raschItems);
+  const ability = clamp((theta + 3) / 6, 0, 1);
+
+  return {
+    ability,
+    item_count: items.length,
+    correct_count: items.filter((item) => item.is_correct).length,
+  };
 }
 
 /************************************************************
