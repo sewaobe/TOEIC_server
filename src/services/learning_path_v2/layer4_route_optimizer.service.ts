@@ -4,11 +4,14 @@ import {
   TOEIC_SKILL_DEFINITIONS,
 } from "../../utils/toeic_skill.util";
 import type {
+  BuildNextCyclePlanInputV2,
   BuildStrategyRoutePlanInputV2,
   BuildStrategyRoutePlanOutputV2,
+  CycleCutConfigV2,
   LearningPathScenarioV2,
   LearningPathStrategyV2,
   LessonManagerRouteNodeV2,
+  NextCyclePlanV2,
   OptimizedPartPathV2,
   PartAbilityInputV2,
   PartBudgetAllocationV2,
@@ -72,12 +75,39 @@ type BuildRuntimeStartPathsInput = {
   strategy: LearningPathStrategyV2;
 };
 
+type CloseCycleScoreDetailV2 = {
+  score: number;
+  time_score: number;
+  skill_count_score: number;
+  boundary_score: number;
+  cycle_minutes: number;
+  focus_skill_count: number;
+  next_skill_overlap_ratio: number;
+};
+
+type CutLearningCycleResultV2 = {
+  route_units: PlannedRouteUnitV2[];
+  route_unit_start_index: number;
+  route_unit_end_index: number;
+  next_route_unit_index: number;
+  close_score_detail: CloseCycleScoreDetailV2;
+};
+
 const PART_TYPES = [1, 2, 3, 4, 5, 6, 7];
 
 const STRATEGY_QUOTAS: Record<LearningPathStrategyV2, AllocationQuota> = {
   recommended: { weak: 0.6, medium: 0.3, strong: 0.1 },
   balanced: { weak: 0.45, medium: 0.35, strong: 0.2 },
   opportunity: { weak: 0.3, medium: 0.5, strong: 0.2 },
+};
+
+export const DEFAULT_CYCLE_CUT_CONFIG: CycleCutConfigV2 = {
+  min_cycle_minutes: 120,
+  ideal_cycle_minutes: 300,
+  max_cycle_minutes: 600,
+  close_score_threshold: 0.7,
+  mini_test_estimated_minutes: 100,
+  full_test_estimated_minutes: 200,
 };
 
 const SCENARIO_UNIT_TYPE_MULTIPLIER: Record<
@@ -471,7 +501,7 @@ export const buildRuntimeStartPaths = (
       if (a.distance !== b.distance) return a.distance - b.distance;
       if (a.node.weight !== b.node.weight) return a.node.weight - b.node.weight;
       return a.node.id.localeCompare(b.node.id);
-    })
+    });
 
   /*
    * weight là numeric signal chính để match ability hiện tại.
@@ -773,6 +803,251 @@ export const mergePartPathsToRoute = (
   }
 
   return route;
+};
+
+const mergeCycleCutConfig = (
+  config?: Partial<CycleCutConfigV2>
+): CycleCutConfigV2 => ({
+  ...DEFAULT_CYCLE_CUT_CONFIG,
+  ...config,
+});
+
+export const sumPlannedMinutes = (units: PlannedRouteUnitV2[]): number =>
+  units.reduce((sum, unit) => sum + unit.planned_minutes, 0);
+
+export const getCycleFocusSkillKeys = (
+  units: PlannedRouteUnitV2[]
+): string[] => {
+  const seenSkillKeys = new Set<string>();
+  const skillKeys: string[] = [];
+
+  for (const unit of units) {
+    const normalizedSkills = normalizeToeicSkillTags(
+      unit.target_tags,
+      unit.part_type
+    );
+
+    for (const skill of normalizedSkills) {
+      if (seenSkillKeys.has(skill.key)) continue;
+      seenSkillKeys.add(skill.key);
+      skillKeys.push(skill.key);
+    }
+  }
+
+  return skillKeys;
+};
+
+export const getCycleFocusPartTypes = (
+  units: PlannedRouteUnitV2[]
+): number[] =>
+  Array.from(new Set(units.map((unit) => unit.part_type))).sort(
+    (a, b) => a - b
+  );
+
+export const calculateSkillOverlapRatio = (
+  cycleSkillKeys: string[],
+  nextUnit: PlannedRouteUnitV2 | null
+): number => {
+  if (!nextUnit) return 0;
+
+  const nextSkillKeys = normalizeToeicSkillTags(
+    nextUnit.target_tags,
+    nextUnit.part_type
+  ).map((skill) => skill.key);
+
+  if (nextSkillKeys.length === 0) return 0;
+
+  const cycleSkillKeySet = new Set(cycleSkillKeys);
+  const overlapCount = nextSkillKeys.filter((skillKey) =>
+    cycleSkillKeySet.has(skillKey)
+  ).length;
+
+  return overlapCount / nextSkillKeys.length;
+};
+
+export const calculateTimeScore = (
+  cycleMinutes: number,
+  config: CycleCutConfigV2
+): number => clamp(cycleMinutes / config.ideal_cycle_minutes, 0, 1);
+
+export const calculateSkillCountScore = (skillCount: number): number => {
+  /*
+   * Mini test cần focus đủ rộng để đo được tiến bộ, nhưng không quá loãng khiến assessment mất trọng tâm.
+   */
+  if (skillCount <= 1) return 0.2;
+  if (skillCount === 2) return 0.6;
+  if (skillCount <= 6) return 1;
+  if (skillCount <= 8) return 0.75;
+  return 0.4;
+};
+
+export const calculateBoundaryScore = (overlapRatio: number): number =>
+  clamp(1 - overlapRatio, 0, 1);
+
+export const calculateCloseCycleScore = (input: {
+  cycle_units: PlannedRouteUnitV2[];
+  next_unit: PlannedRouteUnitV2 | null;
+  config: CycleCutConfigV2;
+}): CloseCycleScoreDetailV2 => {
+  const cycleMinutes = sumPlannedMinutes(input.cycle_units);
+  const focusSkillKeys = getCycleFocusSkillKeys(input.cycle_units);
+  const nextSkillOverlapRatio = calculateSkillOverlapRatio(
+    focusSkillKeys,
+    input.next_unit
+  );
+  const timeScore = calculateTimeScore(cycleMinutes, input.config);
+  const skillCountScore = calculateSkillCountScore(focusSkillKeys.length);
+  const boundaryScore = calculateBoundaryScore(nextSkillOverlapRatio);
+
+  /*
+   * Tầng C chỉ là heuristic cắt cycle, không phải công thức điểm TOEIC.
+   * Tầng C không chọn lại node, không tính lại weak/medium/strong và không duyệt graph.
+   * Boundary tốt khi node tiếp theo ít overlap skill với cycle hiện tại, nghĩa là có thể kết thúc topic hiện tại.
+   */
+  const score =
+    0.45 * timeScore + 0.3 * skillCountScore + 0.25 * boundaryScore;
+
+  return {
+    score: roundToTwo(score),
+    time_score: roundToTwo(timeScore),
+    skill_count_score: roundToTwo(skillCountScore),
+    boundary_score: roundToTwo(boundaryScore),
+    cycle_minutes: cycleMinutes,
+    focus_skill_count: focusSkillKeys.length,
+    next_skill_overlap_ratio: roundToTwo(nextSkillOverlapRatio),
+  };
+};
+
+export const cutLearningCycle = (input: {
+  route_units: PlannedRouteUnitV2[];
+  next_route_unit_index: number;
+  config?: Partial<CycleCutConfigV2>;
+}): CutLearningCycleResultV2 | null => {
+  const config = mergeCycleCutConfig(input.config);
+  const startIndex = input.next_route_unit_index;
+  if (startIndex >= input.route_units.length) return null;
+
+  const cycleUnits: PlannedRouteUnitV2[] = [];
+  let closeScoreDetail: CloseCycleScoreDetailV2 = {
+    score: 0,
+    time_score: 0,
+    skill_count_score: 0,
+    boundary_score: 0,
+    cycle_minutes: 0,
+    focus_skill_count: 0,
+    next_skill_overlap_ratio: 0,
+  };
+
+  /*
+   * Tầng C chỉ cắt route_units đã có thành learning cycle.
+   * Hàm luôn lấy nguyên LessonManager route unit, không cắt giữa một unit và không tạo mini/full test thật.
+   */
+  for (let index = startIndex; index < input.route_units.length; index += 1) {
+    const currentUnit = input.route_units[index];
+    const currentMinutes = sumPlannedMinutes(cycleUnits);
+    const nextUnitAfterCurrent = input.route_units[index + 1] ?? null;
+
+    if (
+      cycleUnits.length > 0 &&
+      currentMinutes + currentUnit.planned_minutes > config.max_cycle_minutes
+    ) {
+      break;
+    }
+
+    cycleUnits.push(currentUnit);
+    closeScoreDetail = calculateCloseCycleScore({
+      cycle_units: cycleUnits,
+      next_unit: nextUnitAfterCurrent,
+      config,
+    });
+
+    const cycleMinutes = closeScoreDetail.cycle_minutes;
+    const hasReachedRouteEnd = !nextUnitAfterCurrent;
+
+    if (hasReachedRouteEnd) break;
+    if (cycleMinutes < config.min_cycle_minutes) continue;
+    if (
+      cycleMinutes + nextUnitAfterCurrent.planned_minutes >
+      config.max_cycle_minutes
+    ) {
+      break;
+    }
+    if (closeScoreDetail.score >= config.close_score_threshold) break;
+  }
+
+  const endIndex = startIndex + cycleUnits.length - 1;
+
+  return {
+    route_units: cycleUnits,
+    route_unit_start_index: startIndex,
+    route_unit_end_index: endIndex,
+    next_route_unit_index: endIndex + 1,
+    close_score_detail: closeScoreDetail,
+  };
+};
+
+export const buildNextCyclePlan = (
+  input: BuildNextCyclePlanInputV2
+): NextCyclePlanV2 => {
+  const config = mergeCycleCutConfig(input.config);
+
+  if (input.next_route_unit_index >= input.route_units.length) {
+    return {
+      plan_type: "route_completed",
+      next_route_unit_index: input.next_route_unit_index,
+      route_units: [],
+      assessment: null,
+      reason: "Route hiện tại đã hết bài học để tạo learning cycle.",
+    };
+  }
+
+  const cutResult = cutLearningCycle({
+    route_units: input.route_units,
+    next_route_unit_index: input.next_route_unit_index,
+    config,
+  });
+
+  if (!cutResult) {
+    return {
+      plan_type: "route_completed",
+      next_route_unit_index: input.next_route_unit_index,
+      route_units: [],
+      assessment: null,
+      reason: "Route hiện tại đã hết bài học để tạo learning cycle.",
+    };
+  }
+
+  const focusSkillKeys = getCycleFocusSkillKeys(cutResult.route_units);
+  const focusPartTypes = getCycleFocusPartTypes(cutResult.route_units);
+  const shouldUseFullTest =
+    input.mini_tests_completed_since_last_full_test >= 3;
+
+  /*
+   * Full test không phải checkpoint rỗng; full test là assessment cuối cycle thứ 4.
+   * Cursor sẽ được update khi tạo cycle thành công, nhưng checkpoint này chỉ trả next_route_unit_index, chưa persist.
+   * Mini/full test generation là service khác; tầng C chỉ trả assessment metadata.
+   */
+  return {
+    plan_type: "learning_cycle",
+    route_unit_start_index: cutResult.route_unit_start_index,
+    route_unit_end_index: cutResult.route_unit_end_index,
+    next_route_unit_index: cutResult.next_route_unit_index,
+    route_units: cutResult.route_units,
+    focus_skill_keys: focusSkillKeys,
+    focus_part_types: focusPartTypes,
+    estimated_learning_minutes: sumPlannedMinutes(cutResult.route_units),
+    assessment: shouldUseFullTest
+      ? {
+          type: "full_test",
+          estimated_minutes: config.full_test_estimated_minutes,
+        }
+      : {
+          type: "mini_test",
+          estimated_minutes: config.mini_test_estimated_minutes,
+          focus_skill_keys: focusSkillKeys,
+          focus_part_types: focusPartTypes,
+        },
+  };
 };
 
 const groupNodesByPart = (

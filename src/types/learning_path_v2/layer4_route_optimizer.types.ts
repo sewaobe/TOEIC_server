@@ -101,3 +101,53 @@ export interface SkillGroupDistributionV2 {
   core: number;
   advanced: number;
 }
+
+export type CycleAssessmentV2 =
+  | {
+      type: "mini_test";
+      estimated_minutes: number;
+      focus_skill_keys: string[];
+      focus_part_types: number[];
+    }
+  | {
+      type: "full_test";
+      estimated_minutes: number;
+    };
+
+export type LearningCyclePlanV2 = {
+  plan_type: "learning_cycle";
+  route_unit_start_index: number;
+  route_unit_end_index: number;
+  next_route_unit_index: number;
+  route_units: PlannedRouteUnitV2[];
+  focus_skill_keys: string[];
+  focus_part_types: number[];
+  estimated_learning_minutes: number;
+  assessment: CycleAssessmentV2;
+};
+
+export type RouteCompletedPlanV2 = {
+  plan_type: "route_completed";
+  next_route_unit_index: number;
+  route_units: [];
+  assessment: null;
+  reason: string;
+};
+
+export type NextCyclePlanV2 = LearningCyclePlanV2 | RouteCompletedPlanV2;
+
+export type CycleCutConfigV2 = {
+  min_cycle_minutes: number;
+  ideal_cycle_minutes: number;
+  max_cycle_minutes: number;
+  close_score_threshold: number;
+  mini_test_estimated_minutes: number;
+  full_test_estimated_minutes: number;
+};
+
+export type BuildNextCyclePlanInputV2 = {
+  route_units: PlannedRouteUnitV2[];
+  next_route_unit_index: number;
+  mini_tests_completed_since_last_full_test: number;
+  config?: Partial<CycleCutConfigV2>;
+};

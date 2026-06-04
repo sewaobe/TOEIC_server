@@ -2,9 +2,13 @@ import { describe, expect, it } from "@jest/globals";
 import {
   allocatePartBudgets,
   buildStrategyRoutePlan,
+  buildNextCyclePlan,
+  calculateCloseCycleScore,
   calculateNodeGain,
   calculateSkillGroupDistribution,
   calculateTargetSkillGroupDistribution,
+  cutLearningCycle,
+  getCycleFocusSkillKeys,
   mergePartPathsToRoute,
   optimizePartPath,
 } from "../../src/services/learning_path_v2/layer4_route_optimizer.service";
@@ -718,5 +722,302 @@ describe("layer4_route_optimizer.service", () => {
     // Kiểm tra
     expect(result.nodes.map((node) => node.lesson_manager_id)).toEqual(["valid"]);
     expect(result.total_minutes).toBeLessThanOrEqual(30);
+  });
+
+  it("calculateCloseCycleScore -> ideal minutes and good skill count and low next overlap -> returns high score", () => {
+    // Chuẩn bị
+    const cycleUnits = [
+      createRouteUnit("u1", {
+        part_type: 5,
+        planned_minutes: 100,
+        target_tags: ["Word form"],
+      }),
+      createRouteUnit("u2", {
+        part_type: 5,
+        planned_minutes: 100,
+        target_tags: ["Vocabulary"],
+      }),
+      createRouteUnit("u3", {
+        part_type: 5,
+        planned_minutes: 100,
+        target_tags: ["Relative clause"],
+      }),
+    ];
+    const nextUnit = createRouteUnit("next", {
+      part_type: 5,
+      target_tags: ["Tense"],
+    });
+
+    // Thực thi
+    const result = calculateCloseCycleScore({
+      cycle_units: cycleUnits,
+      next_unit: nextUnit,
+      config: {
+        min_cycle_minutes: 120,
+        ideal_cycle_minutes: 300,
+        max_cycle_minutes: 600,
+        close_score_threshold: 0.7,
+        mini_test_estimated_minutes: 100,
+        full_test_estimated_minutes: 200,
+      },
+    });
+
+    // Kiểm tra
+    expect(result.score).toBeGreaterThanOrEqual(0.7);
+  });
+
+  it("calculateCloseCycleScore -> next unit has high skill overlap -> lower boundary score", () => {
+    // Chuẩn bị
+    const cycleUnits = [
+      createRouteUnit("u1", {
+        part_type: 5,
+        planned_minutes: 120,
+        target_tags: ["Word form"],
+      }),
+    ];
+    const nextUnit = createRouteUnit("next", {
+      part_type: 5,
+      target_tags: ["Word form"],
+    });
+
+    // Thực thi
+    const result = calculateCloseCycleScore({
+      cycle_units: cycleUnits,
+      next_unit: nextUnit,
+      config: {
+        min_cycle_minutes: 120,
+        ideal_cycle_minutes: 300,
+        max_cycle_minutes: 600,
+        close_score_threshold: 0.7,
+        mini_test_estimated_minutes: 100,
+        full_test_estimated_minutes: 200,
+      },
+    });
+
+    // Kiểm tra
+    expect(result.boundary_score).toBe(0);
+  });
+
+  it("cutLearningCycle -> cycle below min minutes -> keeps adding units", () => {
+    // Chuẩn bị
+    const routeUnits = [
+      createRouteUnit("u1", { planned_minutes: 60, target_tags: ["Word form"] }),
+      createRouteUnit("u2", { planned_minutes: 70, target_tags: ["Vocabulary"] }),
+      createRouteUnit("u3", { planned_minutes: 80, target_tags: ["Tense"] }),
+    ];
+
+    // Thực thi
+    const result = cutLearningCycle({
+      route_units: routeUnits,
+      next_route_unit_index: 0,
+      config: { min_cycle_minutes: 120, close_score_threshold: 0.1 },
+    });
+
+    // Kiểm tra
+    expect(result?.route_units.map((unit) => unit.lesson_manager_id)).toEqual([
+      "u1",
+      "u2",
+    ]);
+  });
+
+  it("cutLearningCycle -> no next unit -> cuts at route end", () => {
+    // Chuẩn bị
+    const routeUnits = [
+      createRouteUnit("u1", { planned_minutes: 60, target_tags: ["Word form"] }),
+    ];
+
+    // Thực thi
+    const result = cutLearningCycle({
+      route_units: routeUnits,
+      next_route_unit_index: 0,
+    });
+
+    // Kiểm tra
+    expect(result?.route_units).toHaveLength(1);
+    expect(result?.route_unit_end_index).toBe(0);
+    expect(result?.next_route_unit_index).toBe(1);
+  });
+
+  it("cutLearningCycle -> adding next unit exceeds max minutes -> cuts before next unit", () => {
+    // Chuẩn bị
+    const routeUnits = [
+      createRouteUnit("u1", { planned_minutes: 260, target_tags: ["Word form"] }),
+      createRouteUnit("u2", { planned_minutes: 260, target_tags: ["Vocabulary"] }),
+      createRouteUnit("u3", { planned_minutes: 120, target_tags: ["Tense"] }),
+    ];
+
+    // Thực thi
+    const result = cutLearningCycle({
+      route_units: routeUnits,
+      next_route_unit_index: 0,
+      config: { max_cycle_minutes: 600, close_score_threshold: 1.1 },
+    });
+
+    // Kiểm tra
+    expect(result?.route_units.map((unit) => unit.lesson_manager_id)).toEqual([
+      "u1",
+      "u2",
+    ]);
+    expect(result?.next_route_unit_index).toBe(2);
+  });
+
+  it("cutLearningCycle -> high close score -> cuts cycle and returns cursor", () => {
+    // Chuẩn bị
+    const routeUnits = [
+      createRouteUnit("u1", {
+        part_type: 5,
+        planned_minutes: 150,
+        target_tags: ["Word form"],
+      }),
+      createRouteUnit("u2", {
+        part_type: 5,
+        planned_minutes: 150,
+        target_tags: ["Vocabulary"],
+      }),
+      createRouteUnit("u3", { planned_minutes: 150, target_tags: ["Tense"] }),
+    ];
+
+    // Thực thi
+    const result = cutLearningCycle({
+      route_units: routeUnits,
+      next_route_unit_index: 0,
+      config: { close_score_threshold: 0.7 },
+    });
+
+    // Kiểm tra
+    expect(result).not.toBeNull();
+    expect(result!.next_route_unit_index).toBe(result!.route_unit_end_index + 1);
+  });
+
+  it("buildNextCyclePlan -> mini count 0 -> returns learning cycle with mini test", () => {
+    // Chuẩn bị
+    const routeUnits = [
+      createRouteUnit("u1", {
+        part_type: 5,
+        planned_minutes: 150,
+        target_tags: ["Word form"],
+      }),
+      createRouteUnit("u2", {
+        part_type: 5,
+        planned_minutes: 150,
+        target_tags: ["Vocabulary"],
+      }),
+    ];
+
+    // Thực thi
+    const result = buildNextCyclePlan({
+      route_units: routeUnits,
+      next_route_unit_index: 0,
+      mini_tests_completed_since_last_full_test: 0,
+    });
+
+    // Kiểm tra
+    expect(result.plan_type).toBe("learning_cycle");
+    if (result.plan_type !== "learning_cycle") throw new Error("Expected learning_cycle");
+    expect(result.assessment.type).toBe("mini_test");
+    expect(result.route_units.length).toBeGreaterThan(0);
+    if (result.assessment.type !== "mini_test") throw new Error("Expected mini_test");
+    expect(result.assessment.focus_skill_keys.length).toBeGreaterThan(0);
+    expect(result.assessment.focus_part_types.length).toBeGreaterThan(0);
+  });
+
+  it("buildNextCyclePlan -> mini count 2 -> still mini test", () => {
+    // Chuẩn bị
+    const routeUnits = [
+      createRouteUnit("u1", { planned_minutes: 150, target_tags: ["Word form"] }),
+    ];
+
+    // Thực thi
+    const result = buildNextCyclePlan({
+      route_units: routeUnits,
+      next_route_unit_index: 0,
+      mini_tests_completed_since_last_full_test: 2,
+    });
+
+    // Kiểm tra
+    expect(result.plan_type).toBe("learning_cycle");
+    if (result.plan_type !== "learning_cycle") throw new Error("Expected learning_cycle");
+    expect(result.assessment.type).toBe("mini_test");
+  });
+
+  it("buildNextCyclePlan -> mini count 3 -> returns learning cycle with full test", () => {
+    // Chuẩn bị
+    const routeUnits = [
+      createRouteUnit("u1", { planned_minutes: 150, target_tags: ["Word form"] }),
+      createRouteUnit("u2", { planned_minutes: 150, target_tags: ["Vocabulary"] }),
+    ];
+
+    // Thực thi
+    const result = buildNextCyclePlan({
+      route_units: routeUnits,
+      next_route_unit_index: 0,
+      mini_tests_completed_since_last_full_test: 3,
+    });
+
+    // Kiểm tra
+    expect(result.plan_type).toBe("learning_cycle");
+    if (result.plan_type !== "learning_cycle") throw new Error("Expected learning_cycle");
+    expect(result.route_units.length).toBeGreaterThan(0);
+    expect(result.assessment.type).toBe("full_test");
+    expect(result.next_route_unit_index).toBeGreaterThan(0);
+  });
+
+  it("buildNextCyclePlan -> route exhausted -> returns route_completed", () => {
+    // Chuẩn bị
+    const routeUnits = [
+      createRouteUnit("u1", { planned_minutes: 150, target_tags: ["Word form"] }),
+    ];
+
+    // Thực thi
+    const result = buildNextCyclePlan({
+      route_units: routeUnits,
+      next_route_unit_index: 1,
+      mini_tests_completed_since_last_full_test: 0,
+    });
+
+    // Kiểm tra
+    expect(result).toEqual({
+      plan_type: "route_completed",
+      next_route_unit_index: 1,
+      route_units: [],
+      assessment: null,
+      reason: "Route hiện tại đã hết bài học để tạo learning cycle.",
+    });
+  });
+
+  it("getCycleFocusSkillKeys -> unknown tags -> ignores unknown without crash", () => {
+    // Chuẩn bị
+    const routeUnits = [
+      createRouteUnit("u1", {
+        part_type: 5,
+        target_tags: ["Word form", "unknown-skill-tag"],
+      }),
+    ];
+
+    // Thực thi
+    const result = getCycleFocusSkillKeys(routeUnits);
+
+    // Kiểm tra
+    expect(result).toEqual(["part5_word_form_question"]);
+  });
+
+  it("buildNextCyclePlan -> full test cycle does not return empty checkpoint", () => {
+    // Chuẩn bị
+    const routeUnits = [
+      createRouteUnit("u1", { planned_minutes: 150, target_tags: ["Word form"] }),
+    ];
+
+    // Thực thi
+    const result = buildNextCyclePlan({
+      route_units: routeUnits,
+      next_route_unit_index: 0,
+      mini_tests_completed_since_last_full_test: 3,
+    });
+
+    // Kiểm tra
+    expect(result.plan_type).toBe("learning_cycle");
+    if (result.plan_type !== "learning_cycle") throw new Error("Expected learning_cycle");
+    expect(result.assessment.type).toBe("full_test");
+    expect(result.route_units.length).toBeGreaterThan(0);
   });
 });
