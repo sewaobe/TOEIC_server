@@ -40,6 +40,10 @@ export interface IRouteUnitSnapshot {
     to: number;
   };
   unit_type: LessonManagerUnitType;
+  /**
+   * node_role chỉ còn normal/support trong snapshot route.
+   * Entry/target là khái niệm runtime, không phải trạng thái cố định của LessonManager.
+   */
   node_role: LessonManagerNodeRole;
   target_tags: string[];
 
@@ -196,7 +200,7 @@ const RouteUnitSnapshotSchema = new Schema<IRouteUnitSnapshot>(
 
     node_role: {
       type: String,
-      enum: ["entry", "normal", "target", "support"],
+      enum: ["normal", "support"],
       required: true,
     },
 

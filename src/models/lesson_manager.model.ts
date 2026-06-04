@@ -10,9 +10,7 @@ export type LessonManagerUnitType =
     | "remedial";
 
 export type LessonManagerNodeRole =
-    | "entry"
     | "normal"
-    | "target"
     | "support";
 
 export type ActivityType =
@@ -56,7 +54,9 @@ export interface ILessonManager extends Document {
     unit_type: LessonManagerUnitType;
 
     /**
-     * Vai trò của node trong graph.
+     * node_role không còn dùng để đánh dấu entry/target cố định.
+     * Start/target node được scheduler tính runtime theo ability, target_score, score_band, progress và graph edges.
+     * support được giữ lại vì vẫn biểu diễn các unit remedial/auxiliary.
      */
     node_role: LessonManagerNodeRole;
 
@@ -200,8 +200,9 @@ const LessonManagerSchema = new Schema<ILessonManager>(
 
         node_role: {
             type: String,
-            enum: ["entry", "normal", "target", "support"],
+            enum: ["normal", "support"],
             required: true,
+            default: "normal",
             index: true,
         },
 
