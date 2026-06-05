@@ -19,6 +19,12 @@ jest.mock("../../src/models", () => ({
   WeekStudy: mockWeekStudy,
 }));
 
+const mockCreateDayStudiesForWeekStudyCycle = jest.fn<(...args: any[]) => any>();
+
+jest.mock("../../src/services/day_study.service", () => ({
+  createDayStudiesForWeekStudyCycle: mockCreateDayStudiesForWeekStudyCycle,
+}));
+
 import {
   calculateExpectedCompletionAt,
   createNextLearningPathCycle,
@@ -89,6 +95,15 @@ describe("week_study.service", () => {
         ...payload,
       })
     );
+    mockCreateDayStudiesForWeekStudyCycle.mockImplementation((input: any) =>
+      Promise.resolve({
+        week_study: { _id: new Types.ObjectId(input.week_study_id) },
+        day_studies: [
+          { _id: new Types.ObjectId(), dayOfWeek: 1 },
+          { _id: new Types.ObjectId(), dayOfWeek: 2 },
+        ],
+      })
+    );
   });
 
   it("createNextLearningPathCycle -> selected option and mini count 0 -> creates WeekStudy with mini_test", async () => {
@@ -130,6 +145,13 @@ describe("week_study.service", () => {
     expect(selectedOption.save).toHaveBeenCalled();
     expect(learningPath.week_study_ids).toHaveLength(1);
     expect(learningPath.save).toHaveBeenCalled();
+    if (result.status !== "cycle_created") throw new Error("Expected cycle_created");
+    expect(mockCreateDayStudiesForWeekStudyCycle).toHaveBeenCalledWith({
+      user_id: userId,
+      learning_path_id: learningPathId,
+      week_study_id: String(result.week_study._id),
+    });
+    expect(result.day_studies.length).toBeGreaterThan(0);
   });
 
   it("createNextLearningPathCycle -> mini count 3 -> creates WeekStudy with full_test", async () => {
@@ -162,6 +184,8 @@ describe("week_study.service", () => {
       })
     );
     expect(selectedOption.next_route_unit_index).toBeGreaterThan(0);
+    expect(mockCreateDayStudiesForWeekStudyCycle).toHaveBeenCalledTimes(1);
+    expect(result.day_studies.length).toBeGreaterThan(0);
   });
 
   it("createNextLearningPathCycle -> route exhausted -> returns route_completed and does not create WeekStudy", async () => {
@@ -184,6 +208,8 @@ describe("week_study.service", () => {
     // Kiểm tra
     expect(result.status).toBe("route_completed");
     expect(mockWeekStudy.create).not.toHaveBeenCalled();
+    expect(mockCreateDayStudiesForWeekStudyCycle).not.toHaveBeenCalled();
+    expect(result.day_studies).toEqual([]);
     expect(selectedOption.save).not.toHaveBeenCalled();
     expect(learningPath.save).not.toHaveBeenCalled();
   });
@@ -317,5 +343,19 @@ describe("week_study.service", () => {
     expect(learningPath.mini_tests_completed_since_last_full_test).toBe(3);
     expect(learningPath.last_full_test_user_test_id).toBe(lastFullTestUserTestId);
     expect(learningPath.last_full_test_submitted_at).toBe(lastFullTestSubmittedAt);
+  });
+
+  it("createNextLearningPathCycle -> DayStudy generation throws -> propagates error", async () => {
+    // Chuẩn bị
+    mockCreateDayStudiesForWeekStudyCycle.mockRejectedValue(new Error("DayStudy failed"));
+
+    // Thực thi
+    const action = createNextLearningPathCycle({
+      user_id: userId,
+      learning_path_id: learningPathId,
+    });
+
+    // Kiểm tra
+    await expect(action).rejects.toThrow("DayStudy failed");
   });
 });

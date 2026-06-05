@@ -9,11 +9,13 @@ import type {
   ILearningPathStrategyOption,
   IRouteUnitSnapshot,
 } from "../models/learning_path_strategy_option.model";
+import type { IDayStudy } from "../models/day_study.model";
 import type { IWeekStudy } from "../models/week_study.model";
 import { WeekStudyStatus } from "../models/enums/WeekStudyStatus";
 import {
   buildNextCyclePlan,
 } from "./learning_path_v2/layer4_route_optimizer.service";
+import { createDayStudiesForWeekStudyCycle } from "./day_study.service";
 import type {
   LearningCyclePlanV2,
   PlannedRouteUnitV2,
@@ -28,17 +30,19 @@ type CreateNextLearningPathCycleInput = {
 
 type CreateNextLearningPathCycleResult =
   | {
-      status: "cycle_created";
-      plan: LearningCyclePlanV2;
-      week_study: IWeekStudy;
-      strategy_option: ILearningPathStrategyOption;
-    }
+    status: "cycle_created";
+    plan: LearningCyclePlanV2;
+    week_study: IWeekStudy;
+    strategy_option: ILearningPathStrategyOption;
+    day_studies: IDayStudy[];
+  }
   | {
-      status: "route_completed";
-      plan: RouteCompletedPlanV2;
-      week_study: null;
-      strategy_option: ILearningPathStrategyOption;
-    };
+    status: "route_completed";
+    plan: RouteCompletedPlanV2;
+    week_study: null;
+    strategy_option: ILearningPathStrategyOption;
+    day_studies: [];
+  };
 
 export const calculateExpectedCompletionAt = (input: {
   now: Date;
@@ -142,17 +146,17 @@ export const createNextLearningPathCycle = async (
       plan,
       week_study: null,
       strategy_option: selectedOption,
+      day_studies: [],
     };
   }
 
   const weekNo = getWeekStudyNo(learningPath);
   const weekStudyPayload = {
     no: weekNo,
-    description: `Cycle ${weekNo}: ${
-      plan.assessment.type === "full_test"
+    description: `Cycle ${weekNo}: ${plan.assessment.type === "full_test"
         ? "Học và làm full test"
         : "Học và làm mini test"
-    }`,
+      }`,
     status: WeekStudyStatus.IN_PROGRESS,
     accuracy_overall: 0,
     days: [],
@@ -173,15 +177,11 @@ export const createNextLearningPathCycle = async (
   };
 
   /*
-   * Full test không phải checkpoint rỗng; full test là assessment cuối cycle thứ 4.
-   * Checkpoint này không tạo DayStudy, không generate mini/full test thật, chỉ lưu metadata assessment.
-   *
-   * Ở MongoDB standalone chưa dùng transaction. Service này ghi theo thứ tự:
-   * tạo WeekStudy, update cursor option, rồi append vào LearningPath.
-   * Idempotency/API retry sẽ xử lý ở checkpoint sau nếu cần.
-   *
-   * TODO: Duplicate guard sẽ hoàn thiện khi wire API idempotency.
-   */
+  * Full test không phải checkpoint rỗng; full test là assessment cuối cycle thứ 4.
+  * Service này tạo WeekStudy cycle, cập nhật cursor, append vào LearningPath,
+  * sau đó gọi DayStudy service để tạo các stage Ngày 1..N.
+  * Service này vẫn chưa generate mini/full test thật, chỉ lưu assessment metadata.
+  */
   const weekStudy = await WeekStudy.create(weekStudyPayload);
 
   selectedOption.next_route_unit_index = plan.next_route_unit_index;
@@ -190,10 +190,23 @@ export const createNextLearningPathCycle = async (
   appendWeekStudyId(learningPath, weekStudy._id);
   await learningPath.save();
 
+  /*
+   * DayStudy được tạo sau khi WeekStudy cycle đã persist xong. WeekStudy service không
+   * tự chia activity; nó gọi DayStudy service để biến cycle thành các stage Ngày 1..N.
+   * Nếu bước tạo DayStudy lỗi, cycle đã được tạo nhưng FE chưa có lịch stage; checkpoint
+   * sau có thể thêm recovery endpoint nếu cần.
+   */
+  const dayStudyResult = await createDayStudiesForWeekStudyCycle({
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    week_study_id: String(weekStudy._id),
+  });
+
   return {
     status: "cycle_created",
     plan,
     week_study: weekStudy,
     strategy_option: selectedOption,
+    day_studies: dayStudyResult.day_studies,
   };
 };
