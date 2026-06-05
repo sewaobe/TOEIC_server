@@ -16,6 +16,7 @@ import {
   buildNextCyclePlan,
 } from "./learning_path_v2/layer4_route_optimizer.service";
 import { createDayStudiesForWeekStudyCycle } from "./day_study.service";
+import { generateAssessmentTestFromWeekCycle } from "./learning_path_v2/learning_path_assessment.service";
 import type {
   LearningCyclePlanV2,
   PlannedRouteUnitV2,
@@ -35,6 +36,9 @@ type CreateNextLearningPathCycleResult =
     week_study: IWeekStudy;
     strategy_option: ILearningPathStrategyOption;
     day_studies: IDayStudy[];
+    assessment_result: Awaited<
+      ReturnType<typeof generateAssessmentTestFromWeekCycle>
+    >;
   }
   | {
     status: "route_completed";
@@ -180,7 +184,8 @@ export const createNextLearningPathCycle = async (
   * Full test không phải checkpoint rỗng; full test là assessment cuối cycle thứ 4.
   * Service này tạo WeekStudy cycle, cập nhật cursor, append vào LearningPath,
   * sau đó gọi DayStudy service để tạo các stage Ngày 1..N.
-  * Service này vẫn chưa generate mini/full test thật, chỉ lưu assessment metadata.
+  * Service này vẫn chưa generate mini/full test thật
+  * Nó chỉ gọi assessment service để tạo placeholder test_id và gắn vào DayStudy assessment item.
   */
   const weekStudy = await WeekStudy.create(weekStudyPayload);
 
@@ -202,11 +207,18 @@ export const createNextLearningPathCycle = async (
     week_study_id: String(weekStudy._id),
   });
 
+  const assessmentResult = await generateAssessmentTestFromWeekCycle({
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    week_study_id: String(weekStudy._id),
+  });
+
   return {
     status: "cycle_created",
     plan,
     week_study: weekStudy,
     strategy_option: selectedOption,
     day_studies: dayStudyResult.day_studies,
+    assessment_result: assessmentResult,
   };
 };
