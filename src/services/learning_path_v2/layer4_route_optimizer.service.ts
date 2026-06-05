@@ -102,9 +102,9 @@ const STRATEGY_QUOTAS: Record<LearningPathStrategyV2, AllocationQuota> = {
 };
 
 export const DEFAULT_CYCLE_CUT_CONFIG: CycleCutConfigV2 = {
-  min_cycle_minutes: 120,
-  ideal_cycle_minutes: 300,
-  max_cycle_minutes: 600,
+  min_cycle_minutes: 480,
+  ideal_cycle_minutes: 900,
+  max_cycle_minutes: 1500,
   close_score_threshold: 0.7,
   mini_test_estimated_minutes: 100,
   full_test_estimated_minutes: 200,
@@ -1001,10 +1001,42 @@ export const buildNextCyclePlan = (
     };
   }
 
+  const shouldUseFullTest =
+    input.mini_tests_completed_since_last_full_test >= 3;
+
+  const assessmentEstimatedMinutes = shouldUseFullTest
+    ? config.full_test_estimated_minutes
+    : config.mini_test_estimated_minutes;
+
+  /*
+   * Các mốc cycle config là tổng thời gian cycle = learning + assessment.
+   * Vì mini/full test cũng tốn thời gian học của user, Layer 4 phải trừ assessment
+   * trước khi cắt route_units learning.
+   *
+   * Ví dụ max_cycle_minutes = 1500:
+   * - mini_test 100p -> learning max = 1400p
+   * - full_test 200p -> learning max = 1300p
+   */
+  const learningOnlyConfig: CycleCutConfigV2 = {
+    ...config,
+    min_cycle_minutes: Math.max(
+      240,
+      config.min_cycle_minutes - assessmentEstimatedMinutes
+    ),
+    ideal_cycle_minutes: Math.max(
+      360,
+      config.ideal_cycle_minutes - assessmentEstimatedMinutes
+    ),
+    max_cycle_minutes: Math.max(
+      480,
+      config.max_cycle_minutes - assessmentEstimatedMinutes
+    ),
+  };
+
   const cutResult = cutLearningCycle({
     route_units: input.route_units,
     next_route_unit_index: input.next_route_unit_index,
-    config,
+    config: learningOnlyConfig,
   });
 
   if (!cutResult) {
@@ -1019,14 +1051,7 @@ export const buildNextCyclePlan = (
 
   const focusSkillKeys = getCycleFocusSkillKeys(cutResult.route_units);
   const focusPartTypes = getCycleFocusPartTypes(cutResult.route_units);
-  const shouldUseFullTest =
-    input.mini_tests_completed_since_last_full_test >= 3;
 
-  /*
-   * Full test không phải checkpoint rỗng; full test là assessment cuối cycle thứ 4.
-   * Cursor sẽ được update khi tạo cycle thành công, nhưng checkpoint này chỉ trả next_route_unit_index, chưa persist.
-   * Mini/full test generation là service khác; tầng C chỉ trả assessment metadata.
-   */
   return {
     plan_type: "learning_cycle",
     route_unit_start_index: cutResult.route_unit_start_index,

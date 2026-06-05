@@ -1020,4 +1020,56 @@ describe("layer4_route_optimizer.service", () => {
     expect(result.assessment.type).toBe("full_test");
     expect(result.route_units.length).toBeGreaterThan(0);
   });
+
+  it("buildNextCyclePlan -> mini test cycle cuts learning budget after reserving mini test minutes", () => {
+    const routeUnits = [
+      createRouteUnit("u1", { planned_minutes: 600 }),
+      createRouteUnit("u2", { planned_minutes: 850 }),
+    ];
+
+    const result = buildNextCyclePlan({
+      route_units: routeUnits,
+      next_route_unit_index: 0,
+      mini_tests_completed_since_last_full_test: 0,
+      config: {
+        min_cycle_minutes: 480,
+        ideal_cycle_minutes: 900,
+        max_cycle_minutes: 1500,
+        mini_test_estimated_minutes: 100,
+        full_test_estimated_minutes: 200,
+      },
+    });
+
+    expect(result.plan_type).toBe("learning_cycle");
+    if (result.plan_type !== "learning_cycle") return;
+
+    expect(result.assessment.type).toBe("mini_test");
+    expect(result.estimated_learning_minutes).toBeLessThanOrEqual(1400);
+  });
+
+  it("buildNextCyclePlan -> full test cycle cuts learning budget after reserving full test minutes", () => {
+    const routeUnits = [
+      createRouteUnit("u1", { planned_minutes: 600 }),
+      createRouteUnit("u2", { planned_minutes: 850 }),
+    ];
+
+    const result = buildNextCyclePlan({
+      route_units: routeUnits,
+      next_route_unit_index: 0,
+      mini_tests_completed_since_last_full_test: 3,
+      config: {
+        min_cycle_minutes: 480,
+        ideal_cycle_minutes: 900,
+        max_cycle_minutes: 1500,
+        mini_test_estimated_minutes: 100,
+        full_test_estimated_minutes: 200,
+      },
+    });
+
+    expect(result.plan_type).toBe("learning_cycle");
+    if (result.plan_type !== "learning_cycle") return;
+
+    expect(result.assessment.type).toBe("full_test");
+    expect(result.estimated_learning_minutes).toBeLessThanOrEqual(1300);
+  });
 });
