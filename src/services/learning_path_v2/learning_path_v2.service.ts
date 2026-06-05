@@ -4,14 +4,12 @@ import type {
   BuildFullTestLearningPathPlanInput,
   BuildInitialLearningPathPlanInput,
   BuildMiniTestNextWeekPlanInput,
-  FullTestStrategyPlansV2,
   LearningPathScenarioV2,
   LearningPathStrategyV2,
   LessonManagerRouteNodeV2,
   LearningScenarioDecisionV2,
   NormalizedTestResultV2,
   PartAbilityInputV2,
-  PlannedWeekV2,
   RawUserTestLikeInput,
 } from "../../types/learning_path_v2";
 import { Types } from "mongoose";
@@ -38,6 +36,11 @@ import {
 import { createNextLearningPathCycle } from "../week_study.service";
 import { evaluateLearningPathScenario } from "./layer3_strategy_decision.service";
 import { buildStrategyRoutePlan } from "./layer4_route_optimizer.service";
+
+import { DayStudy, WeekStudy } from "../../models";
+import type { IDayStudy } from "../../models/day_study.model";
+import type { IWeekStudy } from "../../models/week_study.model";
+import { WeekStudyStatus } from "../../models/enums/WeekStudyStatus";
 
 export type LearningPathV2AbilityPipelineInput =
   | BuildInitialLearningPathPlanInput
@@ -555,26 +558,154 @@ export const runLearningPathV2AbilityPipeline = async (
   };
 };
 
-// Future full planning function. runLearningPathV2AbilityPipeline is the current implemented pipeline up to ability/user skill.
-export const buildInitialLearningPathPlan = async (
-  input: BuildInitialLearningPathPlanInput
-): Promise<PlannedWeekV2> => {
-  void input;
-  return notImplemented("LearningPath v2 initial generation pipeline");
+
+type LearningPathV2ReadInput = {
+  user_id: string;
+  learning_path_id: string;
 };
 
-// Future full planning function for strategy options; persistence of a selected path remains separate.
-export const buildFullTestLearningPathPlan = async (
-  input: BuildFullTestLearningPathPlanInput
-): Promise<FullTestStrategyPlansV2> => {
-  void input;
-  return notImplemented("LearningPath v2 full test review pipeline");
+type CurrentCycleResponse = {
+  week_study: IWeekStudy;
+  day_studies: IDayStudy[];
 };
 
-// Future full planning function for mini-test adjustment. Ability snapshot is already handled by runLearningPathV2AbilityPipeline.
-export const buildMiniTestNextWeekPlan = async (
-  input: BuildMiniTestNextWeekPlanInput
-): Promise<PlannedWeekV2> => {
-  void input;
-  return notImplemented("LearningPath v2 mini test completion pipeline");
+type CurrentLearningPathCycleV2Result = {
+  learning_path: ILearningPath;
+  selected_strategy_option: ILearningPathStrategyOption | null;
+  current_cycle: CurrentCycleResponse | null;
+};
+
+type LearningPathV2OverviewResult = CurrentLearningPathCycleV2Result & {
+  pending_strategy_options: ILearningPathStrategyOption[];
+  week_studies: IWeekStudy[];
+};
+
+const loadActiveLearningPath = async (
+  input: LearningPathV2ReadInput
+): Promise<ILearningPath> => {
+  const learningPath = await LearningPath.findOne({
+    _id: input.learning_path_id,
+    user_id: input.user_id,
+    isActive: true,
+  });
+
+  if (!learningPath) {
+    throw new Error("Không tìm thấy LearningPath.");
+  }
+
+  return learningPath;
+};
+
+const findCurrentWeekStudy = async (
+  learningPath: ILearningPath
+): Promise<IWeekStudy | null> => {
+  const weekStudyIds = learningPath.week_study_ids ?? [];
+
+  if (weekStudyIds.length === 0) {
+    return null;
+  }
+
+  const currentWeekStudy = await WeekStudy.findOne({
+    _id: { $in: weekStudyIds },
+    status: WeekStudyStatus.IN_PROGRESS,
+  }).sort({ no: -1 });
+
+  if (currentWeekStudy) {
+    return currentWeekStudy;
+  }
+
+  return WeekStudy.findOne({
+    _id: { $in: weekStudyIds },
+  }).sort({ no: -1 });
+};
+
+const loadDayStudiesForWeek = (weekStudy: IWeekStudy): Promise<IDayStudy[]> =>
+  DayStudy.find({ week_id: weekStudy._id }).sort({ dayOfWeek: 1 });
+
+const loadSelectedStrategyOptionForWeek = async (input: {
+  user_id: string;
+  learning_path_id: string;
+  week_study: IWeekStudy | null;
+}): Promise<ILearningPathStrategyOption | null> => {
+  if (!input.week_study?.learning_path_strategy_option_id) {
+    return null;
+  }
+
+  return LearningPathStrategyOption.findOne({
+    _id: input.week_study.learning_path_strategy_option_id,
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+  });
+};
+
+export const getCurrentLearningPathCycleV2 = async (
+  input: LearningPathV2ReadInput
+): Promise<CurrentLearningPathCycleV2Result> => {
+  const learningPath = await loadActiveLearningPath(input);
+  const weekStudy = await findCurrentWeekStudy(learningPath);
+  const dayStudies = weekStudy ? await loadDayStudiesForWeek(weekStudy) : [];
+  const selectedStrategyOption = await loadSelectedStrategyOptionForWeek({
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    week_study: weekStudy,
+  });
+
+  return {
+    learning_path: learningPath,
+    selected_strategy_option: selectedStrategyOption,
+    current_cycle: weekStudy
+      ? {
+          week_study: weekStudy,
+          day_studies: dayStudies,
+        }
+      : null,
+  };
+};
+
+export const getLearningPathV2Overview = async (
+  input: LearningPathV2ReadInput
+): Promise<LearningPathV2OverviewResult> => {
+  const learningPath = await loadActiveLearningPath(input);
+  const weekStudyIds = learningPath.week_study_ids ?? [];
+
+  const selectedOption = await LearningPathStrategyOption.findOne({
+    learning_path_id: input.learning_path_id,
+    user_id: input.user_id,
+    status: "selected",
+  }).sort({ created_at: -1 });
+
+  const pendingOptions = await LearningPathStrategyOption.find({
+    learning_path_id: input.learning_path_id,
+    user_id: input.user_id,
+    status: "pending_selection",
+  }).sort({ created_at: -1 });
+
+  const weekStudies =
+    weekStudyIds.length > 0
+      ? await WeekStudy.find({ _id: { $in: weekStudyIds } }).sort({ no: 1 })
+      : [];
+
+  const currentWeekStudy =
+    [...weekStudies]
+      .reverse()
+      .find((week) => week.status === WeekStudyStatus.IN_PROGRESS) ??
+    weekStudies[weekStudies.length - 1] ??
+    null;
+
+  const dayStudies = currentWeekStudy
+    ? await loadDayStudiesForWeek(currentWeekStudy)
+    : [];
+
+  return {
+    learning_path: learningPath,
+    selected_strategy_option: selectedOption,
+    pending_strategy_options: pendingOptions,
+    week_studies: weekStudies,
+    current_cycle: currentWeekStudy
+      ? {
+          week_study: currentWeekStudy,
+          day_studies: dayStudies,
+        }
+      : null,
+  };
 };
