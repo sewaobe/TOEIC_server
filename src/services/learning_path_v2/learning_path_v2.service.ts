@@ -346,6 +346,20 @@ const createFullTestPendingOptions = async (input: {
   input.learningPath.last_full_test_submitted_at = input.userTest.submit_at;
   await input.learningPath.save();
 
+  /*
+ * Sau full test, route cũ không còn là active route nữa.
+ * User phải chọn 1 trong 3 option pending mới rồi hệ thống mới tạo cycle tiếp theo.
+ * Vì vậy selected cũ và pending cũ đều chuyển expired trước khi tạo batch mới.
+ */
+  await LearningPathStrategyOption.updateMany(
+    {
+      learning_path_id: input.originalInput.learning_path_id,
+      user_id: input.originalInput.user_id,
+      status: { $in: ["selected", "pending_selection"] },
+    },
+    { $set: { status: "expired" } }
+  );
+
   const scenario = toStrategyOptionScenario(input.scenarioDecision.scenario);
   const strategies: LearningPathStrategyV2[] = [
     "recommended",
@@ -383,18 +397,6 @@ const createFullTestPendingOptions = async (input: {
    * option mới tạo cycle tiếp theo.
    */
   const strategyOptions = await LearningPathStrategyOption.create(payloads);
-  
-  /**
-   * Expired active graph cũ
-   */
-  await LearningPathStrategyOption.updateMany(
-    {
-      learning_path_id: input.originalInput.learning_path_id,
-      user_id: input.originalInput.user_id,
-      status: { $in: ["selected", "pending_selection"] },
-    },
-    { $set: { status: "expired" } }
-  );
 
   return {
     strategy_options: Array.isArray(strategyOptions)

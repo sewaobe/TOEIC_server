@@ -11,6 +11,7 @@ import type {
   LessonManagerNodeRole,
   LessonManagerUnitType,
 } from "../models/lesson_manager.model";
+import { createNextLearningPathCycle } from "./week_study.service";
 
 type StrategyAbilityStatus = "weak" | "medium" | "strong";
 type StrategyAbilityTrend = "improving" | "stable" | "declining";
@@ -92,9 +93,19 @@ type GetPendingStrategyOptionsInput = {
 };
 
 type SelectLearningPathStrategyOptionInput = {
-  learning_path_id: string;
-  option_id: string;
   user_id?: string;
+  learning_path_id: string;
+  strategy_option_id?: string;
+  option_id?: string;
+  now?: Date;
+};
+
+type SelectLearningPathStrategyOptionResult = {
+  selected_strategy_option: ILearningPathStrategyOption;
+  dismissed_strategy_options_count: number;
+  expired_previous_selected_count: number;
+  cycle_result: Awaited<ReturnType<typeof createNextLearningPathCycle>>;
+  status?: string;
 };
 
 type GetActiveLearningPathStrategyOptionInput = {
@@ -287,16 +298,22 @@ export const createFullTestStrategyOptions = async (
   const learningPathId = toObjectId(input.learning_path_id, "learning_path_id");
   validateThreeStrategies(input.options);
 
+  const userId = toObjectId(input.user_id, "user_id");
+
   /**
-   * FULLTEST_MONTHLY tạo 3 option pending để user chọn sau. Khi tạo batch mới, chỉ expire
-   * pending cũ; selected option hiện tại vẫn active để mini test tiếp tục đúng main path
-   * cho tới khi user thật sự chọn option mới.
+   * FULLTEST_MONTHLY tạo batch route mới sau full test.
+   * Route selected cũ không còn active nữa, còn pending cũ là batch lỗi thời.
+   * Vì vậy cả selected/pending cũ đều chuyển expired trước khi tạo 3 option mới.
    */
   await LearningPathStrategyOption.updateMany(
-    { learning_path_id: learningPathId, status: "pending_selection" },
+    {
+      user_id: userId,
+      learning_path_id: learningPathId,
+      status: { $in: ["selected", "pending_selection"] },
+    },
     { $set: { status: "expired" } }
   );
-
+  
   const createPayloads = sortOptionsByStrategy(input.options).map((option) =>
     buildCreatePayload(
       {
@@ -343,23 +360,30 @@ export const getPendingStrategyOptions = async (
 
 export const selectLearningPathStrategyOption = async (
   input: SelectLearningPathStrategyOptionInput
-): Promise<ILearningPathStrategyOption> => {
+): Promise<SelectLearningPathStrategyOptionResult> => {
+  const now = input.now ?? new Date();
   const learningPathId = toObjectId(input.learning_path_id, "learning_path_id");
-  const optionId = toObjectId(input.option_id, "option_id");
-  const query: Record<string, unknown> = {
-    _id: optionId,
-    learning_path_id: learningPathId,
-  };
-  if (input.user_id) {
-    query.user_id = toObjectId(input.user_id, "user_id");
+  if (!input.user_id) {
+    throw new Error("user_id là bắt buộc khi chọn strategy option.");
   }
+  const strategyOptionId = input.strategy_option_id ?? input.option_id;
+  if (!strategyOptionId) {
+    throw new Error("strategy_option_id là bắt buộc khi chọn strategy option.");
+  }
+  const userId = toObjectId(input.user_id, "user_id");
+  const optionId = toObjectId(strategyOptionId, "strategy_option_id");
 
-  const option = await LearningPathStrategyOption.findOne(query);
+  const option = await LearningPathStrategyOption.findOne({
+    _id: optionId,
+    user_id: userId,
+    learning_path_id: learningPathId,
+    status: "pending_selection",
+  });
   if (!option) {
-    throw new Error("Không tìm thấy strategy option cần chọn.");
+    throw new Error("Không tìm thấy strategy option pending để chọn.");
   }
-  if (option.status === "selected") {
-    return option;
+  if (option.trigger_type !== "full_test_review") {
+    throw new Error("Chỉ strategy option sau full test mới cần user chọn.");
   }
   if (option.status !== "pending_selection") {
     throw new Error("Chỉ có thể chọn option đang pending_selection.");
@@ -370,39 +394,60 @@ export const selectLearningPathStrategyOption = async (
    * option mới thành selected. Mini test dùng selected option gần nhất để đi tiếp active
    * main path, còn sibling pending cùng source test được dismissed vì user đã chọn xong.
    */
-  await LearningPathStrategyOption.updateMany(
+  /*
+   * expired = route cũ không còn active sau khi user chọn route mới.
+   * MongoDB standalone hiện chưa dùng transaction; service ghi tuần tự và tầng gọi
+   * API sẽ cần guard active cycle nếu expose endpoint sau này.
+   */
+  const expiredResult = await LearningPathStrategyOption.updateMany(
     {
+      user_id: userId,
       learning_path_id: learningPathId,
       status: "selected",
-      _id: { $ne: optionId },
+      _id: { $ne: option._id },
     },
     { $set: { status: "expired" } }
   );
 
-  const selectedOption = await LearningPathStrategyOption.findOneAndUpdate(
-    { _id: optionId, learning_path_id: learningPathId },
-    { $set: { status: "selected", selected_at: new Date() } },
-    { new: true }
+  /*
+   * selected = option user chọn để tiếp tục active route.
+   * Service này không tạo DayStudy và không generate test thật.
+   */
+  option.status = "selected";
+  option.selected_at = now;
+  option.next_route_unit_index = option.next_route_unit_index ?? 0;
+  await option.save();
+
+  /*
+   * dismissed = option cùng batch full test nhưng user không chọn.
+   */
+  const dismissedResult = await LearningPathStrategyOption.updateMany(
+    {
+      user_id: userId,
+      learning_path_id: learningPathId,
+      status: "pending_selection",
+      trigger_type: option.trigger_type,
+      source_user_test_id: option.source_user_test_id,
+      _id: { $ne: option._id },
+    },
+    { $set: { status: "dismissed" } }
   );
 
-  if (!selectedOption) {
-    throw new Error("Không thể cập nhật strategy option đã chọn.");
-  }
+  /*
+   * createNextLearningPathCycle chỉ chạy sau khi target option đã selected.
+   */
+  const cycleResult = await createNextLearningPathCycle({
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    now,
+  });
 
-  const sourceUserTestId = option.source_user_test_id;
-  if (sourceUserTestId) {
-    await LearningPathStrategyOption.updateMany(
-      {
-        learning_path_id: learningPathId,
-        source_user_test_id: sourceUserTestId,
-        status: "pending_selection",
-        _id: { $ne: optionId },
-      },
-      { $set: { status: "dismissed" } }
-    );
-  }
-
-  return selectedOption;
+  return {
+    selected_strategy_option: option,
+    dismissed_strategy_options_count: getModifiedCount(dismissedResult),
+    expired_previous_selected_count: getModifiedCount(expiredResult),
+    cycle_result: cycleResult,
+  };
 };
 
 export const getActiveLearningPathStrategyOption = async (
