@@ -1,11 +1,19 @@
 import type { NextFunction, Request, Response } from "express";
 import { ApiResponse } from "../utils/ApiResponse";
-import { runLearningPathV2AbilityPipeline } from "../services/learning_path_v2/learning_path_v2.service";
 import {
+  ensureLearningPathV2MentorAssigned,
   getCurrentLearningPathCycleV2,
+  getLearningPathV2GenerationContext,
   getLearningPathV2Overview,
+  runLearningPathV2AbilityPipeline,
+  upsertLearningPathV2Setup,
 } from "../services/learning_path_v2/learning_path_v2.service";
-import type { RawUserTestLikeInput } from "../types/learning_path_v2";
+import {
+  buildRawUserTestLikeInputFromUserTest,
+  getLatestUserTestBySubmitType,
+} from "../services/user_test.service";
+import { UserTestSubmitType } from "../models/enums/UserTestSubmitType";
+import { LearningPath } from "../models";
 
 const toDateOrUndefined = (value: unknown): Date | undefined => {
   if (!value) {
@@ -62,28 +70,60 @@ export const initialGenerateLearningPathV2Controller = async (
 ): Promise<void> => {
   try {
     const { learningPathId } = req.params;
-    const userId = req.user._id;
+    const userId = req.user?._id;
 
     if (!userId) {
       res.status(401).json(ApiResponse.fail("Không tìm thấy user_id."));
       return;
     }
 
-    if (!req.body?.initial_assessment) {
-      res
-        .status(400)
-        .json(ApiResponse.fail("Thiếu initial_assessment để tạo lộ trình."));
+    const learningPath = await LearningPath.findOne({
+      _id: learningPathId,
+      user_id: userId,
+      isActive: true,
+    });
+
+    if (!learningPath) {
+      res.status(404).json(ApiResponse.fail("Không tìm thấy LearningPath."));
       return;
     }
 
-    const targetCompletionDate = toDateOrUndefined(req.body.target_completion_date);
+    if ((learningPath.week_study_ids?.length ?? 0) > 0) {
+      res
+        .status(400)
+        .json(ApiResponse.fail("Lộ trình đã được tạo, không thể tạo lại."));
+      return;
+    }
+
+    const latestInitialTest = await getLatestUserTestBySubmitType({
+      user_id: userId,
+      submit_type: UserTestSubmitType.INITIAL_ASSESSMENT,
+    });
+
+    if (!latestInitialTest) {
+      res
+        .status(400)
+        .json(ApiResponse.fail("Chưa có bài entry test để tạo lộ trình."));
+      return;
+    }
+
+    const rawResult =
+      await buildRawUserTestLikeInputFromUserTest(latestInitialTest);
+    const targetCompletionDate =
+      toDateOrUndefined(req.body.target_completion_date) ??
+      learningPath.target_completion_date;
 
     if (!targetCompletionDate || Number.isNaN(targetCompletionDate.getTime())) {
       res
         .status(400)
-        .json(ApiResponse.fail("target_completion_date không hợp lệ."));
+        .json(ApiResponse.fail("LearningPath chưa có target_completion_date."));
       return;
     }
+
+    await ensureLearningPathV2MentorAssigned({
+      user_id: userId,
+      learning_path_id: learningPathId,
+    });
 
     /*
      * API này là replacement path cho flow tạo lộ trình cũ dùng Gemini:
@@ -94,9 +134,12 @@ export const initialGenerateLearningPathV2Controller = async (
       trigger_type: "initial_generation",
       user_id: userId,
       learning_path_id: learningPathId,
-      initial_assessment: req.body.initial_assessment as RawUserTestLikeInput,
+      source_user_test: latestInitialTest,
+      raw_result: rawResult,
       learning_path_created_at:
-        toDateOrUndefined(req.body.learning_path_created_at) ?? new Date(),
+        learningPath.created_at ??
+        toDateOrUndefined(req.body.learning_path_created_at) ??
+        new Date(),
       target_completion_date: targetCompletionDate,
     });
 
@@ -119,6 +162,86 @@ export const initialGenerateLearningPathV2Controller = async (
     );
   } catch (error) {
     handleLearningPathV2ControllerError(error, res, next);
+  }
+};
+
+export const upsertLearningPathV2SetupController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const userId = req.user?._id;
+
+    if (!userId) {
+      res.status(401).json(ApiResponse.fail("Không tìm thấy user_id."));
+      return;
+    }
+
+    const {
+      target_score,
+      target_completion_date,
+      time_per_day,
+      days_per_week,
+    } = req.body ?? {};
+
+    const targetCompletionDate = toDateOrUndefined(target_completion_date);
+    const targetScore = Number(target_score);
+    const timePerDay = Number(time_per_day);
+    const daysPerWeek = Number(days_per_week);
+
+    if (
+      !Number.isFinite(targetScore) ||
+      !targetCompletionDate ||
+      Number.isNaN(targetCompletionDate.getTime()) ||
+      !Number.isFinite(timePerDay) ||
+      !Number.isFinite(daysPerWeek)
+    ) {
+      res.status(400).json(ApiResponse.fail("Payload setup không hợp lệ."));
+      return;
+    }
+
+    const result = await upsertLearningPathV2Setup({
+      user_id: userId,
+      target_score: targetScore,
+      target_completion_date: targetCompletionDate,
+      time_per_day: timePerDay,
+      days_per_week: daysPerWeek,
+    });
+
+    res
+      .status(200)
+      .json(
+        ApiResponse.success(
+          result,
+          "Lưu thiết lập LearningPath v2 thành công."
+        )
+      );
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getLearningPathV2GenerationContextController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const userId = req.user?._id;
+
+    if (!userId) {
+      res.status(401).json(ApiResponse.fail("Không tìm thấy user_id."));
+      return;
+    }
+
+    const result = await getLearningPathV2GenerationContext({
+      user_id: userId,
+    });
+
+    res.status(200).json(ApiResponse.success(result));
+  } catch (error) {
+    next(error);
   }
 };
 

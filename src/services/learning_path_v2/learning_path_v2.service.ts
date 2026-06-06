@@ -10,12 +10,18 @@ import type {
   LearningScenarioDecisionV2,
   NormalizedTestResultV2,
   PartAbilityInputV2,
-  RawUserTestLikeInput,
 } from "../../types/learning_path_v2";
 import { Types } from "mongoose";
-import { LearningPath, LearningPathStrategyOption, LessonManager } from "../../models";
+import {
+  GroupUser,
+  LearningPath,
+  LearningPathStrategyOption,
+  LessonManager,
+  UserProgress,
+} from "../../models";
 import type { IUserTest } from "../../models";
 import type { ILearningPath } from "../../models/learning_path.model";
+import { CERFLevel } from "../../models/topic_vocabulary.model";
 import type {
   ILearningPathStrategyOption,
   LearningPathScenarioSnapshot,
@@ -27,7 +33,9 @@ import type { IUserSkill } from "../../models/user_skill.model";
 import type { IUserSkillHistory } from "../../models/user_skill_history.model";
 import { normalizeTestResult } from "./layer1_test_result.service";
 import { buildAbilityProfile } from "./layer2_ability_profile.service";
-import { createLearningPathUserTestService } from "../user_test.service";
+import { getLatestUserTestBySubmitType } from "../user_test.service";
+import { UserTestSubmitType } from "../../models/enums/UserTestSubmitType";
+import { ensureMentorAssignedForUser } from "../mentor_assignment.service";
 import { createUserSkillHistory } from "../user_skill_history.service";
 import {
   getUserSkillSnapshot,
@@ -81,25 +89,199 @@ type StrategyOptionPayloadInput = {
 const PART_TYPES = [1, 2, 3, 4, 5, 6, 7];
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
-const notImplemented = (methodName: string): never => {
-  throw new Error(
-    `Not implemented: ${methodName} will be added in a later LearningPath v2 checkpoint`
-  );
+const toValidUserObjectId = (userId: string): Types.ObjectId => {
+  if (!Types.ObjectId.isValid(userId)) {
+    throw new Error("user_id khong hop le.");
+  }
+
+  return new Types.ObjectId(userId);
 };
 
-const getRawResultFromPipelineInput = (
-  input: LearningPathV2AbilityPipelineInput
-): RawUserTestLikeInput => {
-  switch (input.trigger_type) {
-    case "initial_generation":
-      return input.initial_assessment;
-    case "full_test_review":
-      return input.full_test_result;
-    case "mini_test_completion":
-      return input.mini_test_result;
-    default:
-      return notImplemented("Unknown LearningPath v2 trigger");
+const getLatestActiveLearningPathForUser = async (
+  userId: string
+): Promise<ILearningPath | null> => {
+  return LearningPath.findOne({
+    user_id: toValidUserObjectId(userId),
+    isActive: true,
+  }).sort({ created_at: -1 });
+};
+
+export const upsertLearningPathV2Setup = async (input: {
+  user_id: string;
+  target_score: number;
+  target_completion_date: Date;
+  time_per_day: number;
+  days_per_week: number;
+}): Promise<{ learning_path: ILearningPath }> => {
+  const userObjectId = toValidUserObjectId(input.user_id);
+
+  if (!Number.isFinite(input.target_score) || input.target_score <= 0) {
+    throw new Error("target_score khong hop le.");
   }
+
+  if (
+    !(input.target_completion_date instanceof Date) ||
+    Number.isNaN(input.target_completion_date.getTime())
+  ) {
+    throw new Error("target_completion_date khong hop le.");
+  }
+
+  if (!Number.isFinite(input.time_per_day) || input.time_per_day <= 0) {
+    throw new Error("time_per_day khong hop le.");
+  }
+
+  if (
+    !Number.isFinite(input.days_per_week) ||
+    input.days_per_week < 1 ||
+    input.days_per_week > 7
+  ) {
+    throw new Error("days_per_week khong hop le.");
+  }
+
+  /*
+   * Setup only stores the user's target/time configuration from /plan.
+   * WeekStudy/DayStudy are not created at this step.
+   */
+  const existing = await getLatestActiveLearningPathForUser(input.user_id);
+
+  if ((existing?.week_study_ids?.length ?? 0) > 0) {
+    throw new Error(
+      "Lo trinh da duoc tao cycle, khong the sua setup truc tiep."
+    );
+  }
+
+  const setupPayload = {
+    target_score: input.target_score,
+    target_completion_date: input.target_completion_date,
+    time_per_day: input.time_per_day,
+    days_per_week: input.days_per_week,
+    updated_at: new Date(),
+  };
+
+  if (existing) {
+    existing.set(setupPayload);
+    await existing.save();
+    return { learning_path: existing };
+  }
+
+  const learningPath = await LearningPath.create({
+    user_id: userObjectId,
+    title: "Lo trinh TOEIC Smart",
+    description: "Lo trinh ca nhan hoa bang LearningPath v2",
+    level: CERFLevel.B1,
+    isActive: true,
+    ...setupPayload,
+    current_week: 1,
+    week_study_ids: [],
+    created_by: userObjectId,
+    created_at: new Date(),
+  });
+
+  return { learning_path: learningPath };
+};
+
+export const getLearningPathV2GenerationContext = async (input: {
+  user_id: string;
+}) => {
+  const learningPath = await getLatestActiveLearningPathForUser(input.user_id);
+  const latestInitialTest = await getLatestUserTestBySubmitType({
+    user_id: input.user_id,
+    submit_type: UserTestSubmitType.INITIAL_ASSESSMENT,
+  });
+
+  const missing_requirements: string[] = [];
+
+  if (!learningPath) {
+    missing_requirements.push("learning_path_setup");
+  }
+
+  if (!latestInitialTest) {
+    missing_requirements.push("initial_assessment");
+  }
+
+  if (learningPath && !learningPath.target_completion_date) {
+    missing_requirements.push("target_completion_date");
+  }
+
+  if (
+    learningPath &&
+    (!learningPath.time_per_day || !learningPath.days_per_week)
+  ) {
+    missing_requirements.push("time_setup");
+  }
+
+  /*
+   * Used by /programs before the user clicks generate:
+   * FE can display the latest entry-test result and current LearningPath setup.
+   */
+  return {
+    learning_path: learningPath,
+    latest_initial_test: latestInitialTest,
+    can_generate: missing_requirements.length === 0,
+    missing_requirements,
+  };
+};
+
+export const ensureLearningPathV2MentorAssigned = async (input: {
+  user_id: string;
+  learning_path_id: string;
+}) => {
+  const userObjectId = toValidUserObjectId(input.user_id);
+  const learningPathObjectId = toObjectId(input.learning_path_id);
+
+  let group = await GroupUser.findOne({ students: userObjectId });
+
+  if (!group?.mentor_id) {
+    const assignedMentorId = await ensureMentorAssignedForUser(userObjectId);
+
+    if (!assignedMentorId) {
+      throw new Error(
+        "Nguoi dung chua duoc gan mentor va khong tim thay CTV phu hop."
+      );
+    }
+
+    group = await GroupUser.findOne({ students: userObjectId });
+  }
+
+  if (!group?.mentor_id) {
+    throw new Error(
+      "Nguoi dung chua duoc gan mentor va khong tim thay CTV phu hop."
+    );
+  }
+
+  await GroupUser.updateOne(
+    { students: userObjectId },
+    { $set: { learningPath_id: learningPathObjectId } }
+  );
+
+  await UserProgress.findOneAndUpdate(
+    {
+      user_id: userObjectId,
+      learningPath_id: learningPathObjectId,
+    },
+    {
+      $set: {
+        mentor_id: group.mentor_id,
+        updated_at: new Date(),
+      },
+      $setOnInsert: {
+        user_id: userObjectId,
+        learningPath_id: learningPathObjectId,
+        completed_lessons: 0,
+        total_lessons: 0,
+        completion_rate: 0,
+        total_study_time: 0,
+        streak_days: 0,
+        longest_streak: 0,
+        current_score: 0,
+        target_score: 0,
+        status: "active",
+      },
+    },
+    { upsert: true, new: true }
+  );
+
+  return { mentor_id: group.mentor_id };
 };
 
 const toObjectId = (id: string | Types.ObjectId): Types.ObjectId =>
@@ -440,12 +622,15 @@ const handleMiniTestCompletionCycle = async (input: {
  * - initial_generation: tạo selected recommended option và cycle đầu tiên.
  * - full_test_review: tạo 3 pending options để user chọn.
  * - mini_test_completion: tiếp tục selected route và tạo cycle kế tiếp.
- * Checkpoint này chưa tạo DayStudy và chưa generate mini/full test thật.
+ *
+ * WeekStudy service hiện đã tạo DayStudy và gắn placeholder assessment test.
+ * Pipeline này không tạo UserTest mới; UserTest đã được tạo ở flow submit test.
  */
 export const runLearningPathV2AbilityPipeline = async (
   input: LearningPathV2AbilityPipelineInput
 ): Promise<LearningPathV2AbilityPipelineOutput> => {
-  const rawResult = getRawResultFromPipelineInput(input);
+  const rawResult = input.raw_result;
+  const userTest = input.source_user_test;
 
   // Layer 1 chuẩn hóa test result thô thành dữ liệu answer-level để các layer sau dùng chung.
   const normalizedResult = await normalizeTestResult({
@@ -464,13 +649,6 @@ export const runLearningPathV2AbilityPipeline = async (
 
   // Layer 2 tính ability từ question-level answers, không dùng part_results làm ability.
   const abilityProfile = await buildAbilityProfile({
-    normalized_result: normalizedResult,
-  });
-
-  // UserTest lưu bài test đã submit trong LearningPath v2, không phải ability snapshot.
-  const userTest = await createLearningPathUserTestService({
-    user_id: input.user_id,
-    test_id: normalizedResult.test_id,
     normalized_result: normalizedResult,
   });
 

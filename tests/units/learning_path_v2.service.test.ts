@@ -22,7 +22,6 @@ jest.mock("../../src/models", () => ({
 
 const mockNormalizeTestResult = jest.fn<(...args: any[]) => any>();
 const mockBuildAbilityProfile = jest.fn<(...args: any[]) => any>();
-const mockCreateLearningPathUserTestService = jest.fn<(...args: any[]) => any>();
 const mockCreateUserSkillHistory = jest.fn<(...args: any[]) => any>();
 const mockGetUserSkillSnapshot = jest.fn<(...args: any[]) => any>();
 const mockUpdateUserSkillFromHistory = jest.fn<(...args: any[]) => any>();
@@ -36,10 +35,6 @@ jest.mock("../../src/services/learning_path_v2/layer1_test_result.service", () =
 
 jest.mock("../../src/services/learning_path_v2/layer2_ability_profile.service", () => ({
   buildAbilityProfile: mockBuildAbilityProfile,
-}));
-
-jest.mock("../../src/services/user_test.service", () => ({
-  createLearningPathUserTestService: mockCreateLearningPathUserTestService,
 }));
 
 jest.mock("../../src/services/user_skill_history.service", () => ({
@@ -72,6 +67,7 @@ import {
 const userId = new Types.ObjectId().toString();
 const learningPathId = new Types.ObjectId().toString();
 const userTestId = new Types.ObjectId();
+const sourceTestId = new Types.ObjectId();
 const weekStudyId = new Types.ObjectId().toString();
 const submittedAt = new Date("2026-01-15T00:00:00.000Z");
 
@@ -80,11 +76,17 @@ const createInput = (trigger_type: string, overrides: Record<string, unknown> = 
     trigger_type,
     user_id: userId,
     learning_path_id: learningPathId,
+    source_user_test: {
+      _id: userTestId,
+      test_id: sourceTestId,
+      submit_at: submittedAt,
+    },
+    raw_result: {
+      test_id: sourceTestId.toString(),
+      submitted_at: submittedAt,
+    },
     learning_path_created_at: new Date("2026-01-01T00:00:00.000Z"),
     target_completion_date: new Date("2026-03-01T00:00:00.000Z"),
-    initial_assessment: { test_id: new Types.ObjectId().toString() },
-    full_test_result: { test_id: new Types.ObjectId().toString() },
-    mini_test_result: { test_id: new Types.ObjectId().toString() },
     ...overrides,
   } as any);
 
@@ -162,6 +164,7 @@ const setupBaseMocks = (triggerType: string) => {
   const userSkill = createUserSkill();
   const userTest = {
     _id: userTestId,
+    test_id: sourceTestId,
     submit_at: submittedAt,
   };
 
@@ -172,7 +175,6 @@ const setupBaseMocks = (triggerType: string) => {
   });
   mockGetUserSkillSnapshot.mockResolvedValue(null);
   mockBuildAbilityProfile.mockResolvedValue({ parts: [] });
-  mockCreateLearningPathUserTestService.mockResolvedValue(userTest);
   mockCreateUserSkillHistory.mockResolvedValue({ _id: new Types.ObjectId() });
   mockUpdateUserSkillFromHistory.mockResolvedValue(userSkill);
   mockEvaluateLearningPathScenario.mockResolvedValue({
