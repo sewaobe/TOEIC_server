@@ -17,6 +17,7 @@ import {
 } from "./learning_path_v2/layer4_route_optimizer.service";
 import { createDayStudiesForWeekStudyCycle } from "./day_study.service";
 import { generateAssessmentTestFromWeekCycle } from "./learning_path_v2/learning_path_assessment.service";
+import { logLearningPathV2DebugSafe } from "./learning_path_v2/learning_path_v2_debug_logger";
 import type {
   LearningCyclePlanV2,
   PlannedRouteUnitV2,
@@ -104,6 +105,14 @@ export const createNextLearningPathCycle = async (
   input: CreateNextLearningPathCycleInput
 ): Promise<CreateNextLearningPathCycleResult> => {
   const now = input.now ?? new Date();
+
+  logLearningPathV2DebugSafe("cycle.create.start", {
+    stage: "cycle",
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    now,
+  });
+
   const learningPath = await LearningPath.findOne({
     _id: input.learning_path_id,
     user_id: input.user_id,
@@ -145,6 +154,15 @@ export const createNextLearningPathCycle = async (
   });
 
   if (plan.plan_type === "route_completed") {
+    logLearningPathV2DebugSafe("cycle.create.done", {
+      stage: "cycle",
+      user_id: input.user_id,
+      learning_path_id: input.learning_path_id,
+      status: "route_completed",
+      strategy_option_id: selectedOption._id,
+      next_route_unit_index: plan.next_route_unit_index,
+    });
+
     return {
       status: "route_completed",
       plan,
@@ -211,6 +229,25 @@ export const createNextLearningPathCycle = async (
     user_id: input.user_id,
     learning_path_id: input.learning_path_id,
     week_study_id: String(weekStudy._id),
+  });
+
+  logLearningPathV2DebugSafe("cycle.create.done", {
+    stage: "cycle",
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    status: "cycle_created",
+    week_study_id: weekStudy._id,
+    week_no: weekStudy.no,
+    strategy_option_id: selectedOption._id,
+    day_studies_count: dayStudyResult.day_studies.length,
+    assessment_type: plan.assessment.type,
+    assessment_estimated_minutes: plan.assessment.estimated_minutes,
+    route_unit_start_index: plan.route_unit_start_index,
+    route_unit_end_index: plan.route_unit_end_index,
+    next_route_unit_index: plan.next_route_unit_index,
+    estimated_learning_minutes: plan.estimated_learning_minutes,
+    focus_part_types: plan.focus_part_types,
+    focus_skill_keys_sample: plan.focus_skill_keys.slice(0, 10),
   });
 
   return {

@@ -9,6 +9,7 @@ import type {
 } from "../../types/learning_path_v2";
 import { Group, Question } from "../../models";
 import { normalizeToeicSkillTags } from "../../utils/toeic_skill.util";
+import { logLearningPathV2DebugSafe } from "./learning_path_v2_debug_logger";
 
 type QuestionMetadata = {
   question_id: string;
@@ -191,6 +192,8 @@ const normalizeAnswers = (answers: unknown): NormalizedTestAnswerV2[] => {
       answer.response_time_seconds ?? answer.responseTimeSeconds
     );
 
+    const irtDifficulty = toNumberValue(answer.irt_difficulty);
+
     normalized.push({
       question_id: questionId,
       selected_option: toStringValue(
@@ -202,6 +205,7 @@ const normalizeAnswers = (answers: unknown): NormalizedTestAnswerV2[] => {
         partType !== undefined && isPositiveInteger(partType) ? partType : undefined,
       tags: normalizeTags(answer.tags),
       raw_tags: normalizeTags(answer.raw_tags),
+      irt_difficulty: irtDifficulty,
       skills: [],
       skill_keys: [],
       response_time_seconds: responseTimeSeconds,
@@ -227,8 +231,8 @@ const normalizePartResults = (
     const explicitPartType = toNumberValue(part.part_type ?? part.part);
     const partType =
       explicitPartType !== undefined &&
-      Number.isInteger(explicitPartType) &&
-      explicitPartType > 0
+        Number.isInteger(explicitPartType) &&
+        explicitPartType > 0
         ? explicitPartType
         : derivePartTypeFromName(partName);
 
@@ -396,7 +400,11 @@ const applyQuestionMetadataToAnswers = (
     const rawTags = metadata.raw_tags ?? [];
     const partType = metadata.part_type ?? answer.part_type;
     if (!partType) missingPartTypeCount += 1;
-    if (metadata.irt_difficulty === undefined) missingIrtDifficultyCount += 1;
+    const finalIrtDifficulty = metadata.irt_difficulty ?? answer.irt_difficulty;
+
+    if (finalIrtDifficulty === undefined) {
+      missingIrtDifficultyCount += 1;
+    }
 
     const skills = normalizeToeicSkillTags(rawTags, partType);
     const mappedRawTags = new Set(skills.map((skill) => skill.raw_tag));
@@ -408,7 +416,7 @@ const applyQuestionMetadataToAnswers = (
       ...answer,
       part_type: partType,
       // Rasch 1PL dùng irt_difficulty ở cấp question; Layer 2 mới tính ability.
-      irt_difficulty: metadata.irt_difficulty,
+      irt_difficulty: finalIrtDifficulty,
       raw_tags: rawTags,
       skills,
       skill_keys: skills.map((skill) => skill.key),
@@ -441,7 +449,22 @@ const applyQuestionMetadataToAnswers = (
 const enrichAnswersWithQuestionMetadata = async (
   result: NormalizedTestResultV2
 ): Promise<NormalizedTestResultV2> => {
-  if (result.answers.length === 0) return result;
+  if (result.answers.length === 0) {
+    logLearningPathV2DebugSafe("layer1.enrichment_summary", {
+      stage: "layer1",
+      user_id: result.user_id,
+      trigger_type: result.trigger_type,
+      test_id: result.test_id,
+      answers_count: 0,
+      metadata_found_count: 0,
+      missing_question_metadata_count: 0,
+      missing_irt_difficulty_count: 0,
+      unmapped_tags_sample: [],
+      warnings: [],
+      sample_answers: [],
+    });
+    return result;
+  }
 
   const questionIds = result.answers.map((answer) => answer.question_id);
   const metadataMap = await loadQuestionMetadataByIds(questionIds, result.test_id);
@@ -463,6 +486,28 @@ const enrichAnswersWithQuestionMetadata = async (
       enrichment.missingIrtDifficultyCount;
   }
 
+  logLearningPathV2DebugSafe("layer1.enrichment_summary", {
+    stage: "layer1",
+    user_id: result.user_id,
+    trigger_type: result.trigger_type,
+    test_id: result.test_id,
+    answers_count: result.answers.length,
+    metadata_found_count:
+      result.answers.length - enrichment.missingQuestionMetadataCount,
+    missing_question_metadata_count:
+      enrichment.missingQuestionMetadataCount,
+    missing_irt_difficulty_count: enrichment.missingIrtDifficultyCount,
+    unmapped_tags_sample: enrichment.unmappedTags.slice(0, 10),
+    warnings: enrichment.warnings,
+    sample_answers: enrichment.answers.slice(0, 3).map((answer) => ({
+      question_id: answer.question_id,
+      part_type: answer.part_type,
+      is_correct: answer.is_correct,
+      irt_difficulty: answer.irt_difficulty,
+      skill_keys: answer.skill_keys?.slice(0, 5) ?? [],
+    })),
+  });
+
   return {
     ...result,
     answers: enrichment.answers,
@@ -479,6 +524,24 @@ export const normalizeTestResult = async (
     ...input.raw_result,
     test_id: input.raw_result.test_id ?? input.test_id,
   };
+
+  logLearningPathV2DebugSafe("layer1.raw_input_summary", {
+    stage: "layer1",
+    user_id: input.user_id,
+    trigger_type: input.trigger_type,
+    test_id: input.test_id ?? input.raw_result.test_id,
+    raw_answers_count: Array.isArray(input.raw_result.answers)
+      ? input.raw_result.answers.length
+      : 0,
+    raw_parts_count: Array.isArray(input.raw_result.parts)
+      ? input.raw_result.parts.length
+      : Array.isArray(input.raw_result.part_results)
+        ? input.raw_result.part_results.length
+        : 0,
+    raw_score: input.raw_result.raw_score ?? input.raw_result.score,
+    submitted_at: input.raw_result.submit_at ?? input.raw_result.submitted_at,
+  });
+
   const result = buildNormalizedTestResult(rawInput, {
     trigger_type: input.trigger_type,
     user_id: input.user_id,

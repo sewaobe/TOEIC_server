@@ -44,6 +44,7 @@ import {
 import { createNextLearningPathCycle } from "../week_study.service";
 import { evaluateLearningPathScenario } from "./layer3_strategy_decision.service";
 import { buildStrategyRoutePlan } from "./layer4_route_optimizer.service";
+import { logLearningPathV2DebugSafe } from "./learning_path_v2_debug_logger";
 
 import { DayStudy, WeekStudy } from "../../models";
 import type { IDayStudy } from "../../models/day_study.model";
@@ -617,6 +618,88 @@ const handleMiniTestCompletionCycle = async (input: {
   };
 };
 
+const summarizeNormalizedResultForLog = (result: NormalizedTestResultV2) => {
+  const answers = Array.isArray(result.answers) ? result.answers : [];
+  const partResults = Array.isArray(result.part_results)
+    ? result.part_results
+    : [];
+
+  return {
+    test_id: result.test_id,
+    test_result_id: result.test_result_id,
+    test_type: result.test_type,
+    source: result.source,
+    submitted_at: result.submitted_at,
+    elapsed_seconds: result.elapsed_seconds,
+    raw_score: result.raw_score,
+    accuracy: result.accuracy,
+    answers_count: answers.length,
+    part_results_count: partResults.length,
+    sample_answers: answers.slice(0, 3).map((answer) => ({
+      question_id: answer.question_id,
+      part_type: answer.part_type,
+      is_correct: answer.is_correct,
+      irt_difficulty: answer.irt_difficulty,
+      skill_keys: answer.skill_keys?.slice(0, 5) ?? [],
+    })),
+    metadata_summary: {
+      missing_question_metadata_count:
+        result.metadata?.missing_question_metadata_count,
+      missing_irt_difficulty_count: result.metadata?.missing_irt_difficulty_count,
+      skill_enrichment_warnings: result.metadata?.skill_enrichment_warnings,
+    },
+  };
+};
+
+const summarizeAbilityProfileForLog = (profile: AbilityProfileV2) => {
+  const partAbilities = Array.isArray(profile.part_abilities)
+    ? profile.part_abilities
+    : [];
+  const skillAbilities = Array.isArray(profile.skill_abilities)
+    ? profile.skill_abilities
+    : [];
+
+  return {
+    source_test_result_id: profile.source_test_result_id,
+    part_abilities_count: partAbilities.length,
+    skill_abilities_count: skillAbilities.length,
+    part_abilities: partAbilities.map((part) => ({
+      part_type: part.part_type,
+      ability: part.ability,
+      status: part.status,
+      item_count: part.item_count,
+      correct_count: part.correct_count,
+    })),
+    weak_skill_keys_sample: skillAbilities
+      .filter((skill) => skill.status === "weak")
+      .slice(0, 10)
+      .map((skill) => skill.skill_key),
+    warnings: profile.warnings,
+  };
+};
+
+const summarizeLayer4ResultForLog = (result?: Layer4PipelineResult) => {
+  const cycleResult = result?.cycle_result;
+  const cycleCreated = cycleResult?.status === "cycle_created";
+  const plan = cycleCreated ? cycleResult.plan : undefined;
+  const dayStudies = cycleCreated && Array.isArray(cycleResult.day_studies)
+    ? cycleResult.day_studies
+    : [];
+
+  return {
+    strategy_options_count: result?.strategy_options?.length ?? 0,
+    selected_strategy_option_id: result?.selected_strategy_option?._id,
+    selected_strategy: result?.selected_strategy_option?.strategy,
+    selected_status: result?.selected_strategy_option?.status,
+    cycle_status: cycleResult?.status,
+    week_study_id: cycleCreated ? cycleResult.week_study?._id : null,
+    day_studies_count: dayStudies.length,
+    assessment_type: plan?.assessment?.type,
+    route_unit_start_index: plan?.route_unit_start_index,
+    route_unit_end_index: plan?.route_unit_end_index,
+  };
+};
+
 /**
  * Pipeline chạy Layer 1/2/3 rồi nối sang Layer 4 theo trigger.
  * - initial_generation: tạo selected recommended option và cycle đầu tiên.
@@ -632,12 +715,36 @@ export const runLearningPathV2AbilityPipeline = async (
   const rawResult = input.raw_result;
   const userTest = input.source_user_test;
 
+  logLearningPathV2DebugSafe("pipeline.start", {
+    stage: "pipeline",
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    trigger_type: input.trigger_type,
+    source_user_test_id: userTest._id,
+    source_test_id: userTest.test_id,
+    source_submit_at: userTest.submit_at,
+    raw_answers_count: Array.isArray(rawResult.answers)
+      ? rawResult.answers.length
+      : 0,
+    raw_parts_count: Array.isArray(rawResult.parts) ? rawResult.parts.length : 0,
+  });
+
+  try {
+
   // Layer 1 chuẩn hóa test result thô thành dữ liệu answer-level để các layer sau dùng chung.
   const normalizedResult = await normalizeTestResult({
     trigger_type: input.trigger_type,
     user_id: input.user_id,
     test_id: typeof rawResult.test_id === "string" ? rawResult.test_id : undefined,
     raw_result: rawResult,
+  });
+
+  logLearningPathV2DebugSafe("pipeline.normalized_result", {
+    stage: "layer1",
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    trigger_type: input.trigger_type,
+    ...summarizeNormalizedResultForLog(normalizedResult),
   });
 
   // Lấy UserSkill snapshot cũ trước khi update để Layer 3 so sánh old/new focus skills.
@@ -650,6 +757,14 @@ export const runLearningPathV2AbilityPipeline = async (
   // Layer 2 tính ability từ question-level answers, không dùng part_results làm ability.
   const abilityProfile = await buildAbilityProfile({
     normalized_result: normalizedResult,
+  });
+
+  logLearningPathV2DebugSafe("pipeline.ability_profile", {
+    stage: "layer2",
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    trigger_type: input.trigger_type,
+    ...summarizeAbilityProfileForLog(abilityProfile),
   });
 
   // UserSkillHistory lưu ability signal theo từng lần submit để phục vụ trend và audit.
@@ -679,6 +794,24 @@ export const runLearningPathV2AbilityPipeline = async (
     week_study_id: input.week_study_id,
     source_user_test_id: String(userTest._id),
     actual_submit_at: userTest.submit_at,
+  });
+
+  logLearningPathV2DebugSafe("pipeline.scenario_decision", {
+    stage: "layer3",
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    trigger_type: input.trigger_type,
+    scenario: scenarioDecision.scenario,
+    pre_deadline: scenarioDecision.pre_deadline,
+    pace_status: scenarioDecision.pace_status,
+    delay_days: scenarioDecision.delay_days,
+    focus_delta: scenarioDecision.focus_delta,
+    comparable_focus_skill_count:
+      scenarioDecision.comparable_focus_skill_count,
+    newly_measured_focus_skill_count:
+      scenarioDecision.newly_measured_focus_skill_count,
+    focus_part_types: scenarioDecision.focus_part_types,
+    focus_skill_keys_sample: scenarioDecision.focus_skill_keys?.slice(0, 10),
   });
 
   const learningPath = await loadLearningPathForScheduler({
@@ -725,6 +858,14 @@ export const runLearningPathV2AbilityPipeline = async (
       layer4Result = undefined;
   }
 
+  logLearningPathV2DebugSafe("pipeline.layer4_result", {
+    stage: "layer4",
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    trigger_type: input.trigger_type,
+    ...summarizeLayer4ResultForLog(layer4Result),
+  });
+
   return {
     normalized_result: normalizedResult,
     user_test: userTest,
@@ -734,6 +875,17 @@ export const runLearningPathV2AbilityPipeline = async (
     scenario_decision: scenarioDecision,
     layer4_result: layer4Result,
   };
+  } catch (error) {
+    logLearningPathV2DebugSafe("pipeline.error", {
+      stage: "pipeline",
+      user_id: input.user_id,
+      learning_path_id: input.learning_path_id,
+      trigger_type: input.trigger_type,
+      source_user_test_id: userTest._id,
+      error,
+    });
+    throw error;
+  }
 };
 
 
@@ -833,9 +985,9 @@ export const getCurrentLearningPathCycleV2 = async (
     selected_strategy_option: selectedStrategyOption,
     current_cycle: weekStudy
       ? {
-          week_study: weekStudy,
-          day_studies: dayStudies,
-        }
+        week_study: weekStudy,
+        day_studies: dayStudies,
+      }
       : null,
   };
 };
@@ -881,9 +1033,9 @@ export const getLearningPathV2Overview = async (
     week_studies: weekStudies,
     current_cycle: currentWeekStudy
       ? {
-          week_study: currentWeekStudy,
-          day_studies: dayStudies,
-        }
+        week_study: currentWeekStudy,
+        day_studies: dayStudies,
+      }
       : null,
   };
 };

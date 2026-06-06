@@ -19,6 +19,7 @@ import type {
   RoutePartBucketV2,
   SkillGroupDistributionV2,
 } from "../../types/learning_path_v2";
+import { logLearningPathV2DebugSafe } from "./learning_path_v2_debug_logger";
 
 type AllocationQuota = Record<RoutePartBucketV2, number>;
 
@@ -992,6 +993,16 @@ export const buildNextCyclePlan = (
   const config = mergeCycleCutConfig(input.config);
 
   if (input.next_route_unit_index >= input.route_units.length) {
+    logLearningPathV2DebugSafe("layer4.next_cycle_plan", {
+      stage: "layer4",
+      plan_type: "route_completed",
+      route_units_count: input.route_units.length,
+      next_route_unit_index: input.next_route_unit_index,
+      mini_tests_completed_since_last_full_test:
+        input.mini_tests_completed_since_last_full_test,
+      reason_code: "cursor_after_route_end",
+    });
+
     return {
       plan_type: "route_completed",
       next_route_unit_index: input.next_route_unit_index,
@@ -1040,6 +1051,16 @@ export const buildNextCyclePlan = (
   });
 
   if (!cutResult) {
+    logLearningPathV2DebugSafe("layer4.next_cycle_plan", {
+      stage: "layer4",
+      plan_type: "route_completed",
+      route_units_count: input.route_units.length,
+      next_route_unit_index: input.next_route_unit_index,
+      mini_tests_completed_since_last_full_test:
+        input.mini_tests_completed_since_last_full_test,
+      reason_code: "cut_result_empty",
+    });
+
     return {
       plan_type: "route_completed",
       next_route_unit_index: input.next_route_unit_index,
@@ -1051,6 +1072,32 @@ export const buildNextCyclePlan = (
 
   const focusSkillKeys = getCycleFocusSkillKeys(cutResult.route_units);
   const focusPartTypes = getCycleFocusPartTypes(cutResult.route_units);
+  const estimatedLearningMinutes = sumPlannedMinutes(cutResult.route_units);
+
+  logLearningPathV2DebugSafe("layer4.next_cycle_plan", {
+    stage: "layer4",
+    plan_type: "learning_cycle",
+    route_units_total_count: input.route_units.length,
+    cycle_route_units_count: cutResult.route_units.length,
+    route_unit_start_index: cutResult.route_unit_start_index,
+    route_unit_end_index: cutResult.route_unit_end_index,
+    next_route_unit_index: cutResult.next_route_unit_index,
+    estimated_learning_minutes: estimatedLearningMinutes,
+    assessment_type: shouldUseFullTest ? "full_test" : "mini_test",
+    assessment_estimated_minutes: shouldUseFullTest
+      ? config.full_test_estimated_minutes
+      : config.mini_test_estimated_minutes,
+    focus_part_types: focusPartTypes,
+    focus_skill_keys_sample: focusSkillKeys.slice(0, 10),
+    close_score_detail: cutResult.close_score_detail,
+    route_units_sample: cutResult.route_units.slice(0, 5).map((unit) => ({
+      lesson_manager_id: unit.lesson_manager_id,
+      part_type: unit.part_type,
+      unit_type: unit.unit_type,
+      planned_minutes: unit.planned_minutes,
+      order: unit.order,
+    })),
+  });
 
   return {
     plan_type: "learning_cycle",
@@ -1060,7 +1107,7 @@ export const buildNextCyclePlan = (
     route_units: cutResult.route_units,
     focus_skill_keys: focusSkillKeys,
     focus_part_types: focusPartTypes,
-    estimated_learning_minutes: sumPlannedMinutes(cutResult.route_units),
+    estimated_learning_minutes: estimatedLearningMinutes,
     assessment: shouldUseFullTest
       ? {
           type: "full_test",
@@ -1153,7 +1200,7 @@ export const buildStrategyRoutePlan = (
    * buildStrategyRoutePlan chỉ tạo route tổng dạng snapshot.
    * Checkpoint này không tạo mini/full test, không persist StrategyOption, không tạo WeekStudy/DayStudy.
    */
-  return {
+  const output: BuildStrategyRoutePlanOutputV2 = {
     strategy: input.strategy,
     scenario: input.scenario,
     estimated_total_minutes: routeUnits.reduce(
@@ -1175,4 +1222,31 @@ export const buildStrategyRoutePlan = (
       target_minutes: allocation.target_minutes,
     })),
   };
+
+  logLearningPathV2DebugSafe("layer4.route_units", {
+    stage: "layer4",
+    strategy: input.strategy,
+    scenario: input.scenario,
+    target_score: input.target_score,
+    total_available_minutes: input.total_available_minutes,
+    lesson_manager_nodes_count: input.lesson_manager_nodes.length,
+    part_paths_count: partPaths.length,
+    route_units_count: output.route_units.length,
+    estimated_total_minutes: output.estimated_total_minutes,
+    estimated_gain: output.estimated_gain,
+    reaches_target: output.reaches_target,
+    focus_part_types: output.focus_part_types,
+    focus_skill_keys_sample: output.focus_skill_keys.slice(0, 10),
+    ability_highlights: output.ability_highlights,
+    route_units_sample: output.route_units.slice(0, 5).map((unit) => ({
+      lesson_manager_id: unit.lesson_manager_id,
+      part_type: unit.part_type,
+      unit_type: unit.unit_type,
+      planned_minutes: unit.planned_minutes,
+      estimated_gain: unit.estimated_gain,
+      order: unit.order,
+    })),
+  });
+
+  return output;
 };
