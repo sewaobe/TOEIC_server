@@ -28,6 +28,7 @@ const mockUpdateUserSkillFromHistory = jest.fn<(...args: any[]) => any>();
 const mockEvaluateLearningPathScenario = jest.fn<(...args: any[]) => any>();
 const mockCreateNextLearningPathCycle = jest.fn<(...args: any[]) => any>();
 const mockBuildStrategyRoutePlan = jest.fn<(...args: any[]) => any>();
+const mockCreateSchedulerDecisionLog = jest.fn<(...args: any[]) => any>();
 
 jest.mock("../../src/services/learning_path_v2/layer1_test_result.service", () => ({
   normalizeTestResult: mockNormalizeTestResult,
@@ -58,6 +59,10 @@ jest.mock("../../src/services/learning_path_v2/layer4_route_optimizer.service", 
   buildStrategyRoutePlan: mockBuildStrategyRoutePlan,
 }));
 
+jest.mock("../../src/services/learning_path_v2/scheduler_decision_log.service", () => ({
+  createSchedulerDecisionLog: mockCreateSchedulerDecisionLog,
+}));
+
 import {
   calculateTotalAvailableMinutesForRoute,
   extractPartAbilitiesForLayer4,
@@ -79,6 +84,7 @@ const createInput = (trigger_type: string, overrides: Record<string, unknown> = 
     source_user_test: {
       _id: userTestId,
       test_id: sourceTestId,
+      score: 520,
       submit_at: submittedAt,
     },
     raw_result: {
@@ -165,6 +171,7 @@ const setupBaseMocks = (triggerType: string) => {
   const userTest = {
     _id: userTestId,
     test_id: sourceTestId,
+    score: 520,
     submit_at: submittedAt,
   };
 
@@ -202,9 +209,51 @@ const setupBaseMocks = (triggerType: string) => {
   });
   mockCreateNextLearningPathCycle.mockResolvedValue({
     status: "cycle_created",
-    week_study: { _id: new Types.ObjectId() },
+    plan: {
+      route_unit_start_index: 0,
+      route_unit_end_index: 0,
+      next_route_unit_index: 1,
+      route_units: [
+        {
+          lesson_manager_id: new Types.ObjectId().toString(),
+          title: "Part 1 foundation",
+          part_type: 1,
+          unit_type: "foundation",
+          node_role: "normal",
+          target_tags: ["part_1_skill"],
+          order: 0,
+          planned_minutes: 120,
+          estimated_gain: 0.5,
+          reason: "PhÃ¹ há»£p route hiá»‡n táº¡i.",
+        },
+      ],
+      estimated_learning_minutes: 120,
+      focus_skill_keys: ["part_1_skill"],
+      focus_part_types: [1],
+      assessment: {
+        type: "mini_test",
+        estimated_minutes: 100,
+        focus_skill_keys: ["part_1_skill"],
+        focus_part_types: [1],
+      },
+    },
+    week_study: {
+      _id: new Types.ObjectId(),
+      route_unit_start_index: 0,
+      route_unit_end_index: 0,
+    },
     strategy_option: { _id: new Types.ObjectId(), status: "selected" },
+    day_studies: [
+      {
+        sessions: [
+          {
+            items: [{ kind: "lesson" }, { kind: "practice" }],
+          },
+        ],
+      },
+    ],
   });
+  mockCreateSchedulerDecisionLog.mockResolvedValue({ _id: new Types.ObjectId() });
 
   return { learningPath, userSkill, userTest };
 };
@@ -232,6 +281,42 @@ describe("learning_path_v2.service", () => {
       })
     );
     expect(mockCreateNextLearningPathCycle).toHaveBeenCalledTimes(1);
+    expect(mockCreateSchedulerDecisionLog).toHaveBeenCalledTimes(1);
+    expect(mockCreateSchedulerDecisionLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_id: userId,
+        learning_path_id: learningPathId,
+        trigger_type: "initial_generation",
+        strategy: "recommended",
+        scenario: "ONBOARDING",
+        status: "applied",
+        input_snapshot: expect.objectContaining({
+          current_score: 520,
+          target_score: 700,
+          weekly_available_minutes: 600,
+          test_type: "entry",
+        }),
+        output_summary: expect.objectContaining({
+          planned_minutes: 220,
+          selected_unit_count: 1,
+          generated_day_count: 1,
+          generated_session_count: 1,
+          generated_activity_count: 2,
+        }),
+        created_by: userId,
+      })
+    );
+    expect(
+      mockCreateSchedulerDecisionLog.mock.calls[0][0].generated_week_id
+    ).toBeTruthy();
+    expect(
+      mockCreateSchedulerDecisionLog.mock.calls[0][0]
+        .candidate_lesson_manager_ids
+    ).toHaveLength(1);
+    expect(
+      mockCreateSchedulerDecisionLog.mock.calls[0][0]
+        .selected_lesson_manager_ids
+    ).toHaveLength(1);
     expect(output.layer4_result?.selected_strategy_option).toBeTruthy();
     expect(output.layer4_result?.cycle_result).toBeTruthy();
   });
@@ -255,6 +340,7 @@ describe("learning_path_v2.service", () => {
       true
     );
     expect(mockCreateNextLearningPathCycle).not.toHaveBeenCalled();
+    expect(mockCreateSchedulerDecisionLog).not.toHaveBeenCalled();
     expect(learningPath.mini_tests_completed_since_last_full_test).toBe(0);
     expect(learningPath.last_full_test_user_test_id).toBe(userTestId);
     expect(learningPath.last_full_test_submitted_at).toBe(submittedAt);
@@ -274,6 +360,7 @@ describe("learning_path_v2.service", () => {
     expect(learningPath.save).toHaveBeenCalled();
     expect(mockCreateNextLearningPathCycle).toHaveBeenCalledTimes(1);
     expect(mockLearningPathStrategyOption.create).not.toHaveBeenCalled();
+    expect(mockCreateSchedulerDecisionLog).not.toHaveBeenCalled();
   });
 
   it("initial_generation -> missing learning path throws Vietnamese error", async () => {

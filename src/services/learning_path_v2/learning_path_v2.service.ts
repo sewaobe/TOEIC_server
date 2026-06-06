@@ -45,6 +45,7 @@ import { createNextLearningPathCycle } from "../week_study.service";
 import { evaluateLearningPathScenario } from "./layer3_strategy_decision.service";
 import { buildStrategyRoutePlan } from "./layer4_route_optimizer.service";
 import { logLearningPathV2DebugSafe } from "./learning_path_v2_debug_logger";
+import { createSchedulerDecisionLog } from "./scheduler_decision_log.service";
 
 import { DayStudy, WeekStudy } from "../../models";
 import type { IDayStudy } from "../../models/day_study.model";
@@ -226,6 +227,8 @@ export const getLearningPathV2GenerationContext = async (input: {
 export const ensureLearningPathV2MentorAssigned = async (input: {
   user_id: string;
   learning_path_id: string;
+  current_score?: number;
+  target_score?: number;
 }) => {
   const userObjectId = toValidUserObjectId(input.user_id);
   const learningPathObjectId = toObjectId(input.learning_path_id);
@@ -264,6 +267,12 @@ export const ensureLearningPathV2MentorAssigned = async (input: {
       $set: {
         mentor_id: group.mentor_id,
         updated_at: new Date(),
+        ...(Number.isFinite(input.current_score)
+          ? { current_score: input.current_score }
+          : {}),
+        ...(Number.isFinite(input.target_score)
+          ? { target_score: input.target_score }
+          : {}),
       },
       $setOnInsert: {
         user_id: userObjectId,
@@ -274,8 +283,8 @@ export const ensureLearningPathV2MentorAssigned = async (input: {
         total_study_time: 0,
         streak_days: 0,
         longest_streak: 0,
-        current_score: 0,
-        target_score: 0,
+        current_score: Number.isFinite(input.current_score) ? input.current_score : 0,
+        target_score: Number.isFinite(input.target_score) ? input.target_score : 0,
         status: "active",
       },
     },
@@ -464,6 +473,27 @@ const buildRoutePlanForStrategy = async (input: {
   });
 };
 
+const countCycleActivities = (dayStudies?: IDayStudy[]) => {
+  const days = dayStudies ?? [];
+
+  return {
+    generated_day_count: days.length,
+    generated_session_count: days.reduce(
+      (sum, day) => sum + (day.sessions?.length ?? 0),
+      0
+    ),
+    generated_activity_count: days.reduce(
+      (sum, day) =>
+        sum +
+        (day.sessions ?? []).reduce(
+          (sessionSum, session) => sessionSum + (session.items?.length ?? 0),
+          0
+        ),
+      0
+    ),
+  };
+};
+
 const createInitialSelectedOptionAndCycle = async (input: {
   originalInput: LearningPathV2AbilityPipelineInput;
   learningPath: ILearningPath;
@@ -511,6 +541,68 @@ const createInitialSelectedOptionAndCycle = async (input: {
     learning_path_id: input.originalInput.learning_path_id,
     now: input.normalizedResult.submitted_at ?? new Date(),
   });
+
+  if (cycleResult.status === "cycle_created" && selectedOption) {
+    try {
+      await createSchedulerDecisionLog({
+        user_id: input.originalInput.user_id,
+        learning_path_id: input.originalInput.learning_path_id,
+        trigger_type: "initial_generation",
+        generated_week_id: String(cycleResult.week_study._id),
+        strategy: selectedOption.strategy,
+        scenario: selectedOption.scenario,
+        status: "applied",
+        reasons: selectedOption.summary_reasons ?? [],
+        warnings: [],
+        input_snapshot: {
+          current_score: input.userTest.score,
+          target_score: input.learningPath.target_score,
+          weekly_available_minutes:
+            input.learningPath.time_per_day && input.learningPath.days_per_week
+              ? input.learningPath.time_per_day * input.learningPath.days_per_week
+              : undefined,
+          test_type: "entry",
+          extra: {
+            source_user_test_id: String(input.userTest._id),
+            source_test_id: String(input.userTest.test_id),
+            time_per_day: input.learningPath.time_per_day,
+            days_per_week: input.learningPath.days_per_week,
+            target_completion_date: input.learningPath.target_completion_date,
+            focus_part_types: selectedOption.focus_part_types,
+            focus_skill_keys_sample:
+              selectedOption.focus_skill_keys?.slice(0, 20),
+            route_unit_start_index:
+              cycleResult.week_study.route_unit_start_index,
+            route_unit_end_index: cycleResult.week_study.route_unit_end_index,
+          },
+        },
+        candidate_lesson_manager_ids: selectedOption.route_units.map(
+          (unit) => unit.lesson_manager_id
+        ),
+        selected_lesson_manager_ids: cycleResult.plan.route_units.map(
+          (unit) => unit.lesson_manager_id
+        ),
+        output_summary: {
+          planned_minutes:
+            cycleResult.plan.estimated_learning_minutes +
+            cycleResult.plan.assessment.estimated_minutes,
+          selected_unit_count: cycleResult.plan.route_units.length,
+          ...countCycleActivities(cycleResult.day_studies),
+        },
+        created_by: input.originalInput.user_id,
+      });
+    } catch (error) {
+      logLearningPathV2DebugSafe("scheduler_decision_log.create_failed", {
+        stage: "scheduler_decision_log",
+        user_id: input.originalInput.user_id,
+        learning_path_id: input.originalInput.learning_path_id,
+        trigger_type: "initial_generation",
+        selected_strategy_option_id: selectedOption._id,
+        week_study_id: cycleResult.week_study._id,
+        error,
+      });
+    }
+  }
 
   return {
     strategy_options: [selectedOption],
@@ -731,150 +823,150 @@ export const runLearningPathV2AbilityPipeline = async (
 
   try {
 
-  // Layer 1 chuẩn hóa test result thô thành dữ liệu answer-level để các layer sau dùng chung.
-  const normalizedResult = await normalizeTestResult({
-    trigger_type: input.trigger_type,
-    user_id: input.user_id,
-    test_id: typeof rawResult.test_id === "string" ? rawResult.test_id : undefined,
-    raw_result: rawResult,
-  });
+    // Layer 1 chuẩn hóa test result thô thành dữ liệu answer-level để các layer sau dùng chung.
+    const normalizedResult = await normalizeTestResult({
+      trigger_type: input.trigger_type,
+      user_id: input.user_id,
+      test_id: typeof rawResult.test_id === "string" ? rawResult.test_id : undefined,
+      raw_result: rawResult,
+    });
 
-  logLearningPathV2DebugSafe("pipeline.normalized_result", {
-    stage: "layer1",
-    user_id: input.user_id,
-    learning_path_id: input.learning_path_id,
-    trigger_type: input.trigger_type,
-    ...summarizeNormalizedResultForLog(normalizedResult),
-  });
+    logLearningPathV2DebugSafe("pipeline.normalized_result", {
+      stage: "layer1",
+      user_id: input.user_id,
+      learning_path_id: input.learning_path_id,
+      trigger_type: input.trigger_type,
+      ...summarizeNormalizedResultForLog(normalizedResult),
+    });
 
-  // Lấy UserSkill snapshot cũ trước khi update để Layer 3 so sánh old/new focus skills.
-  const oldUserSkill = await getUserSkillSnapshot({
-    user_id: input.user_id,
-    context_type: "learning_path",
-    learning_path_id: input.learning_path_id,
-  });
+    // Lấy UserSkill snapshot cũ trước khi update để Layer 3 so sánh old/new focus skills.
+    const oldUserSkill = await getUserSkillSnapshot({
+      user_id: input.user_id,
+      context_type: "learning_path",
+      learning_path_id: input.learning_path_id,
+    });
 
-  // Layer 2 tính ability từ question-level answers, không dùng part_results làm ability.
-  const abilityProfile = await buildAbilityProfile({
-    normalized_result: normalizedResult,
-  });
+    // Layer 2 tính ability từ question-level answers, không dùng part_results làm ability.
+    const abilityProfile = await buildAbilityProfile({
+      normalized_result: normalizedResult,
+    });
 
-  logLearningPathV2DebugSafe("pipeline.ability_profile", {
-    stage: "layer2",
-    user_id: input.user_id,
-    learning_path_id: input.learning_path_id,
-    trigger_type: input.trigger_type,
-    ...summarizeAbilityProfileForLog(abilityProfile),
-  });
+    logLearningPathV2DebugSafe("pipeline.ability_profile", {
+      stage: "layer2",
+      user_id: input.user_id,
+      learning_path_id: input.learning_path_id,
+      trigger_type: input.trigger_type,
+      ...summarizeAbilityProfileForLog(abilityProfile),
+    });
 
-  // UserSkillHistory lưu ability signal theo từng lần submit để phục vụ trend và audit.
-  const userSkillHistory = await createUserSkillHistory({
-    user_id: input.user_id,
-    context_type: "learning_path",
-    learning_path_id: input.learning_path_id,
-    source_user_test_id: String(userTest._id),
-    source_test_id: normalizedResult.test_id,
-    trigger_type: normalizedResult.trigger_type,
-    ability_profile: abilityProfile,
-    submitted_at: normalizedResult.submitted_at,
-  });
+    // UserSkillHistory lưu ability signal theo từng lần submit để phục vụ trend và audit.
+    const userSkillHistory = await createUserSkillHistory({
+      user_id: input.user_id,
+      context_type: "learning_path",
+      learning_path_id: input.learning_path_id,
+      source_user_test_id: String(userTest._id),
+      source_test_id: normalizedResult.test_id,
+      trigger_type: normalizedResult.trigger_type,
+      ability_profile: abilityProfile,
+      submitted_at: normalizedResult.submitted_at,
+    });
 
-  // UserSkill là snapshot đã merge bằng EWMA + trend slope từ history mới nhất.
-  const userSkill = await updateUserSkillFromHistory(userSkillHistory);
+    // UserSkill là snapshot đã merge bằng EWMA + trend slope từ history mới nhất.
+    const userSkill = await updateUserSkillFromHistory(userSkillHistory);
 
-  // Layer 3 quyết scenario dựa trên trigger, deadline, pace và focus skill delta.
-  const scenarioDecision = await evaluateLearningPathScenario({
-    trigger_type: normalizedResult.trigger_type,
-    user_id: input.user_id,
-    learning_path_id: input.learning_path_id,
-    learning_path_created_at: input.learning_path_created_at,
-    target_completion_date: input.target_completion_date,
-    old_user_skill: oldUserSkill,
-    new_user_skill: userSkill,
-    week_study_id: input.week_study_id,
-    source_user_test_id: String(userTest._id),
-    actual_submit_at: userTest.submit_at,
-  });
+    // Layer 3 quyết scenario dựa trên trigger, deadline, pace và focus skill delta.
+    const scenarioDecision = await evaluateLearningPathScenario({
+      trigger_type: normalizedResult.trigger_type,
+      user_id: input.user_id,
+      learning_path_id: input.learning_path_id,
+      learning_path_created_at: input.learning_path_created_at,
+      target_completion_date: input.target_completion_date,
+      old_user_skill: oldUserSkill,
+      new_user_skill: userSkill,
+      week_study_id: input.week_study_id,
+      source_user_test_id: String(userTest._id),
+      actual_submit_at: userTest.submit_at,
+    });
 
-  logLearningPathV2DebugSafe("pipeline.scenario_decision", {
-    stage: "layer3",
-    user_id: input.user_id,
-    learning_path_id: input.learning_path_id,
-    trigger_type: input.trigger_type,
-    scenario: scenarioDecision.scenario,
-    pre_deadline: scenarioDecision.pre_deadline,
-    pace_status: scenarioDecision.pace_status,
-    delay_days: scenarioDecision.delay_days,
-    focus_delta: scenarioDecision.focus_delta,
-    comparable_focus_skill_count:
-      scenarioDecision.comparable_focus_skill_count,
-    newly_measured_focus_skill_count:
-      scenarioDecision.newly_measured_focus_skill_count,
-    focus_part_types: scenarioDecision.focus_part_types,
-    focus_skill_keys_sample: scenarioDecision.focus_skill_keys?.slice(0, 10),
-  });
+    logLearningPathV2DebugSafe("pipeline.scenario_decision", {
+      stage: "layer3",
+      user_id: input.user_id,
+      learning_path_id: input.learning_path_id,
+      trigger_type: input.trigger_type,
+      scenario: scenarioDecision.scenario,
+      pre_deadline: scenarioDecision.pre_deadline,
+      pace_status: scenarioDecision.pace_status,
+      delay_days: scenarioDecision.delay_days,
+      focus_delta: scenarioDecision.focus_delta,
+      comparable_focus_skill_count:
+        scenarioDecision.comparable_focus_skill_count,
+      newly_measured_focus_skill_count:
+        scenarioDecision.newly_measured_focus_skill_count,
+      focus_part_types: scenarioDecision.focus_part_types,
+      focus_skill_keys_sample: scenarioDecision.focus_skill_keys?.slice(0, 10),
+    });
 
-  const learningPath = await loadLearningPathForScheduler({
-    learning_path_id: input.learning_path_id,
-    user_id: input.user_id,
-  });
+    const learningPath = await loadLearningPathForScheduler({
+      learning_path_id: input.learning_path_id,
+      user_id: input.user_id,
+    });
 
-  let layer4Result: Layer4PipelineResult | undefined;
+    let layer4Result: Layer4PipelineResult | undefined;
 
-  switch (normalizedResult.trigger_type) {
-    case "initial_generation":
-      // Entry test xong thì tự chọn recommended route và tạo cycle đầu tiên.
-      layer4Result = await createInitialSelectedOptionAndCycle({
-        originalInput: input,
-        learningPath,
-        userTest,
-        userSkill,
-        normalizedResult,
-      });
-      break;
+    switch (normalizedResult.trigger_type) {
+      case "initial_generation":
+        // Entry test xong thì tự chọn recommended route và tạo cycle đầu tiên.
+        layer4Result = await createInitialSelectedOptionAndCycle({
+          originalInput: input,
+          learningPath,
+          userTest,
+          userSkill,
+          normalizedResult,
+        });
+        break;
 
-    case "full_test_review":
-      // Full test chỉ tạo 3 option pending, không auto tạo WeekStudy.
-      layer4Result = await createFullTestPendingOptions({
-        originalInput: input,
-        learningPath,
-        userTest,
-        userSkill,
-        scenarioDecision,
-        normalizedResult,
-      });
-      break;
+      case "full_test_review":
+        // Full test chỉ tạo 3 option pending, không auto tạo WeekStudy.
+        layer4Result = await createFullTestPendingOptions({
+          originalInput: input,
+          learningPath,
+          userTest,
+          userSkill,
+          scenarioDecision,
+          normalizedResult,
+        });
+        break;
 
-    case "mini_test_completion":
-      // Mini test tiếp tục selected route hiện tại và tạo cycle kế tiếp.
-      layer4Result = await handleMiniTestCompletionCycle({
-        originalInput: input,
-        learningPath,
-        userTest,
-      });
-      break;
+      case "mini_test_completion":
+        // Mini test tiếp tục selected route hiện tại và tạo cycle kế tiếp.
+        layer4Result = await handleMiniTestCompletionCycle({
+          originalInput: input,
+          learningPath,
+          userTest,
+        });
+        break;
 
-    default:
-      layer4Result = undefined;
-  }
+      default:
+        layer4Result = undefined;
+    }
 
-  logLearningPathV2DebugSafe("pipeline.layer4_result", {
-    stage: "layer4",
-    user_id: input.user_id,
-    learning_path_id: input.learning_path_id,
-    trigger_type: input.trigger_type,
-    ...summarizeLayer4ResultForLog(layer4Result),
-  });
+    logLearningPathV2DebugSafe("pipeline.layer4_result", {
+      stage: "layer4",
+      user_id: input.user_id,
+      learning_path_id: input.learning_path_id,
+      trigger_type: input.trigger_type,
+      ...summarizeLayer4ResultForLog(layer4Result),
+    });
 
-  return {
-    normalized_result: normalizedResult,
-    user_test: userTest,
-    ability_profile: abilityProfile,
-    user_skill_history: userSkillHistory,
-    user_skill: userSkill,
-    scenario_decision: scenarioDecision,
-    layer4_result: layer4Result,
-  };
+    return {
+      normalized_result: normalizedResult,
+      user_test: userTest,
+      ability_profile: abilityProfile,
+      user_skill_history: userSkillHistory,
+      user_skill: userSkill,
+      scenario_decision: scenarioDecision,
+      layer4_result: layer4Result,
+    };
   } catch (error) {
     logLearningPathV2DebugSafe("pipeline.error", {
       stage: "pipeline",

@@ -13,13 +13,12 @@ export type SchedulerTriggerType =
 export type SchedulerStrategy = "recommended" | "balanced" | "opportunity";
 
 export type SchedulerScenario =
-  | "normal_progress"
-  | "ahead_of_plan"
-  | "behind_plan"
-  | "weak_after_mini_test"
-  | "fail_light"
-  | "fail_heavy"
-  | "plateau";
+  | "ONBOARDING"
+  | "NORMAL_PROGRESS"
+  | "PLATEAU"
+  | "BEHIND_SCHEDULE"
+  | "PRE_DEADLINE"
+  | "FULLTEST_MONTHLY";
 
 export type SchedulerDecisionStatus = "applied" | "failed";
 
@@ -63,7 +62,7 @@ export interface ISchedulerInputSnapshot {
   current_score?: number;
   target_score?: number;
   weekly_available_minutes?: number;
-  test_type?: "full" | "mini" | "manual";
+  test_type?: "entry" | "full" | "mini" | "manual";
 
   part_abilities?: ISchedulerPartAbilitySnapshot[];
   skill_abilities?: ISchedulerSkillAbilitySnapshot[];
@@ -172,7 +171,7 @@ const SchedulerInputSnapshotSchema = new Schema<ISchedulerInputSnapshot>(
     weekly_available_minutes: { type: Number },
     test_type: {
       type: String,
-      enum: ["full", "mini", "manual"],
+      enum: ["entry", "full", "mini", "manual"],
     },
 
     part_abilities: {
@@ -260,13 +259,12 @@ const SchedulerDecisionLogSchema = new Schema<ISchedulerDecisionLog>(
     scenario: {
       type: String,
       enum: [
-        "normal_progress",
-        "ahead_of_plan",
-        "behind_plan",
-        "weak_after_mini_test",
-        "fail_light",
-        "fail_heavy",
-        "plateau",
+        "ONBOARDING",
+        "NORMAL_PROGRESS",
+        "PLATEAU",
+        "BEHIND_SCHEDULE",
+        "PRE_DEADLINE",
+        "FULLTEST_MONTHLY",
       ],
     },
 

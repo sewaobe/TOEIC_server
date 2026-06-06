@@ -123,6 +123,8 @@ export const initialGenerateLearningPathV2Controller = async (
     await ensureLearningPathV2MentorAssigned({
       user_id: userId,
       learning_path_id: learningPathId,
+      current_score: latestInitialTest.score,
+      target_score: learningPath.target_score
     });
 
     /*
