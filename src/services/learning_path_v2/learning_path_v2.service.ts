@@ -258,35 +258,40 @@ export const ensureLearningPathV2MentorAssigned = async (input: {
     { $set: { learningPath_id: learningPathObjectId } }
   );
 
+  const hasCurrentScore = Number.isFinite(input.current_score);
+  const hasTargetScore = Number.isFinite(input.target_score);
+
+  const setPayload = {
+    mentor_id: group.mentor_id,
+    updated_at: new Date(),
+    ...(hasCurrentScore ? { current_score: input.current_score } : {}),
+    ...(hasTargetScore ? { target_score: input.target_score } : {}),
+  };
+
+  const setOnInsertPayload = {
+    user_id: userObjectId,
+    learningPath_id: learningPathObjectId,
+    completed_lessons: 0,
+    total_lessons: 0,
+    completion_rate: 0,
+    total_study_time: 0,
+    streak_days: 0,
+    longest_streak: 0,
+    status: "active",
+
+    // Chỉ default 0 khi field KHÔNG được set ở $set.
+    ...(!hasCurrentScore ? { current_score: 0 } : {}),
+    ...(!hasTargetScore ? { target_score: 0 } : {}),
+  };
+
   await UserProgress.findOneAndUpdate(
     {
       user_id: userObjectId,
       learningPath_id: learningPathObjectId,
     },
     {
-      $set: {
-        mentor_id: group.mentor_id,
-        updated_at: new Date(),
-        ...(Number.isFinite(input.current_score)
-          ? { current_score: input.current_score }
-          : {}),
-        ...(Number.isFinite(input.target_score)
-          ? { target_score: input.target_score }
-          : {}),
-      },
-      $setOnInsert: {
-        user_id: userObjectId,
-        learningPath_id: learningPathObjectId,
-        completed_lessons: 0,
-        total_lessons: 0,
-        completion_rate: 0,
-        total_study_time: 0,
-        streak_days: 0,
-        longest_streak: 0,
-        current_score: Number.isFinite(input.current_score) ? input.current_score : 0,
-        target_score: Number.isFinite(input.target_score) ? input.target_score : 0,
-        status: "active",
-      },
+      $set: setPayload,
+      $setOnInsert: setOnInsertPayload,
     },
     { upsert: true, new: true }
   );
