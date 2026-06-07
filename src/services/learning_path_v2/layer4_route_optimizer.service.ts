@@ -381,7 +381,20 @@ export const allocatePartBudgets = (input: {
   });
 };
 
-const isTargetNode = (
+const isNodeWithinTargetBoundary = (
+  node: LessonManagerRouteNodeV2,
+  targetScore: number
+): boolean => {
+  if (!Number.isFinite(targetScore) || targetScore <= 0) {
+    throw new Error("target_score khong hop le de toi uu route.");
+  }
+
+  if (!node.score_band) return true;
+
+  return node.score_band.from <= targetScore;
+};
+
+const isNodeCoveringTarget = (
   node: LessonManagerRouteNodeV2,
   targetScore: number
 ): boolean =>
@@ -559,7 +572,8 @@ export const optimizePartPath = (
       (node) =>
         node.part_type === input.part_type &&
         node.planned_completion_time >= 0 &&
-        !completedIds.has(node.id)
+        !completedIds.has(node.id) &&
+        isNodeWithinTargetBoundary(node, input.target_score)
     )
     .sort((a, b) => a.id.localeCompare(b.id));
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
@@ -616,7 +630,8 @@ export const optimizePartPath = (
             completed_unit_ids: input.completed_unit_ids,
           })
       );
-      reachesTarget = reachesTarget || isTargetNode(node, input.target_score);
+      reachesTarget =
+        reachesTarget || isNodeCoveringTarget(node, input.target_score);
       currentPathIds.add(node.id);
     }
 
@@ -652,10 +667,13 @@ export const optimizePartPath = (
       nodes: nextPath,
       totalMinutes: nextMinutes,
       totalGain: roundToTwo(totalGain + gain),
-      reachesTarget: reachesTarget || isTargetNode(node, input.target_score),
+      reachesTarget:
+        reachesTarget || isNodeCoveringTarget(node, input.target_score),
     };
 
     best = comparePathState(nextState, best);
+
+    if (isNodeCoveringTarget(node, input.target_score)) return;
 
     const nextVisited = new Set(visited);
     nextVisited.add(node.id);
@@ -679,6 +697,7 @@ export const optimizePartPath = (
     if (!prefixState || prefix.length === 0) continue;
 
     best = comparePathState(prefixState, best);
+    if (prefixState.reachesTarget) continue;
 
     const lastNode = prefix[prefix.length - 1];
     const visited = new Set(prefix.map((node) => node.id));

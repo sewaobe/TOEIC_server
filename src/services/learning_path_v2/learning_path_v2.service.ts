@@ -499,6 +499,29 @@ const countCycleActivities = (dayStudies?: IDayStudy[]) => {
   };
 };
 
+const sumDayStudyPlannedMinutes = (dayStudies?: IDayStudy[]): number => {
+  return (dayStudies ?? []).reduce((daySum, day) => {
+    const sessions = day.sessions ?? [];
+
+    return (
+      daySum +
+      sessions.reduce((sessionSum, session) => {
+        if (typeof session.planned_minutes === "number") {
+          return sessionSum + session.planned_minutes;
+        }
+
+        return (
+          sessionSum +
+          (session.items ?? []).reduce(
+            (itemSum, item) => itemSum + (item.estimated_minutes ?? 0),
+            0
+          )
+        );
+      }, 0)
+    );
+  }, 0);
+};
+
 const createInitialSelectedOptionAndCycle = async (input: {
   originalInput: LearningPathV2AbilityPipelineInput;
   learningPath: ILearningPath;
@@ -548,6 +571,10 @@ const createInitialSelectedOptionAndCycle = async (input: {
   });
 
   if (cycleResult.status === "cycle_created" && selectedOption) {
+    const cycleDayStudyMinutes = sumDayStudyPlannedMinutes(
+      cycleResult.day_studies
+    );
+
     try {
       await createSchedulerDecisionLog({
         user_id: input.originalInput.user_id,
@@ -562,16 +589,11 @@ const createInitialSelectedOptionAndCycle = async (input: {
         input_snapshot: {
           current_score: input.userTest.score,
           target_score: input.learningPath.target_score,
-          weekly_available_minutes:
-            input.learningPath.time_per_day && input.learningPath.days_per_week
-              ? input.learningPath.time_per_day * input.learningPath.days_per_week
-              : undefined,
+          weekly_available_minutes: cycleDayStudyMinutes,
           test_type: "entry",
           extra: {
             source_user_test_id: String(input.userTest._id),
             source_test_id: String(input.userTest.test_id),
-            time_per_day: input.learningPath.time_per_day,
-            days_per_week: input.learningPath.days_per_week,
             target_completion_date: input.learningPath.target_completion_date,
             focus_part_types: selectedOption.focus_part_types,
             focus_skill_keys_sample:
@@ -588,9 +610,7 @@ const createInitialSelectedOptionAndCycle = async (input: {
           (unit) => unit.lesson_manager_id
         ),
         output_summary: {
-          planned_minutes:
-            cycleResult.plan.estimated_learning_minutes +
-            cycleResult.plan.assessment.estimated_minutes,
+          planned_minutes: cycleDayStudyMinutes,
           selected_unit_count: cycleResult.plan.route_units.length,
           ...countCycleActivities(cycleResult.day_studies),
         },

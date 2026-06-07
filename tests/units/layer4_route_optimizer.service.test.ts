@@ -618,6 +618,74 @@ describe("layer4_route_optimizer.service", () => {
     expect(result.estimated_total_minutes).toBeLessThanOrEqual(100);
   });
 
+  it("buildStrategyRoutePlan -> target_score 510 -> route_units do not exceed target boundary", () => {
+    const nodes = partAbilities.flatMap((part) => {
+      const partType = part.part_type;
+
+      return [
+        createNode(`p${partType}-a`, {
+          part_type: partType,
+          weight: 0.1,
+          score_band: { from: 420, to: 460 },
+          next_unit_ids: [`p${partType}-b`],
+        }),
+        createNode(`p${partType}-b`, {
+          part_type: partType,
+          weight: 0.35,
+          score_band: { from: 460, to: 500 },
+          prerequisite_unit_ids: [`p${partType}-a`],
+          next_unit_ids: [`p${partType}-c`],
+        }),
+        createNode(`p${partType}-c`, {
+          part_type: partType,
+          weight: 0.5,
+          score_band: { from: 500, to: 530 },
+          prerequisite_unit_ids: [`p${partType}-b`],
+          next_unit_ids: [`p${partType}-d`],
+        }),
+        createNode(`p${partType}-d`, {
+          part_type: partType,
+          weight: 0.65,
+          score_band: { from: 530, to: 560 },
+          prerequisite_unit_ids: [`p${partType}-c`],
+          next_unit_ids: [`p${partType}-e`],
+        }),
+        createNode(`p${partType}-e`, {
+          part_type: partType,
+          weight: 0.9,
+          score_band: { from: 810, to: 830 },
+          prerequisite_unit_ids: [`p${partType}-d`],
+        }),
+      ];
+    });
+
+    const result = buildStrategyRoutePlan({
+      strategy: "recommended",
+      scenario: "ONBOARDING",
+      target_score: 510,
+      total_available_minutes: 700,
+      part_abilities: partAbilities,
+      lesson_manager_nodes: nodes,
+    });
+
+    expect(
+      result.route_units.every((unit) => {
+        if (!unit.score_band) return true;
+        return unit.score_band.from <= 510;
+      })
+    ).toBe(true);
+    expect(result.route_units.some((unit) => unit.score_band?.from === 500)).toBe(
+      true
+    );
+    expect(result.route_units.some((unit) => unit.score_band?.from === 530)).toBe(
+      false
+    );
+    expect(result.route_units.some((unit) => unit.score_band?.from === 810)).toBe(
+      false
+    );
+    expect(result.reaches_target).toBe(true);
+  });
+
   it("buildStrategyRoutePlan -> recommended strategy -> output has summary reasons and focus metadata", () => {
     // Chuẩn bị
     const nodes = partAbilities.map((part) =>

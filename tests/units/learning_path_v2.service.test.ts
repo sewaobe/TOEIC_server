@@ -247,7 +247,15 @@ const setupBaseMocks = (triggerType: string) => {
       {
         sessions: [
           {
-            items: [{ kind: "lesson" }, { kind: "practice" }],
+            planned_minutes: 120,
+            items: [
+              { kind: "lesson", estimated_minutes: 60 },
+              { kind: "practice", estimated_minutes: 60 },
+            ],
+          },
+          {
+            planned_minutes: 100,
+            items: [{ kind: "mini_test", estimated_minutes: 100 }],
           },
         ],
       },
@@ -293,19 +301,22 @@ describe("learning_path_v2.service", () => {
         input_snapshot: expect.objectContaining({
           current_score: 520,
           target_score: 700,
-          weekly_available_minutes: 600,
+          weekly_available_minutes: 220,
           test_type: "entry",
         }),
         output_summary: expect.objectContaining({
           planned_minutes: 220,
           selected_unit_count: 1,
           generated_day_count: 1,
-          generated_session_count: 1,
-          generated_activity_count: 2,
+          generated_session_count: 2,
+          generated_activity_count: 3,
         }),
         created_by: userId,
       })
     );
+    const logInput = mockCreateSchedulerDecisionLog.mock.calls[0][0];
+    expect(logInput.input_snapshot.extra).not.toHaveProperty("time_per_day");
+    expect(logInput.input_snapshot.extra).not.toHaveProperty("days_per_week");
     expect(
       mockCreateSchedulerDecisionLog.mock.calls[0][0].generated_week_id
     ).toBeTruthy();
