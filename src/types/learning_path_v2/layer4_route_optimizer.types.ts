@@ -1,4 +1,4 @@
-import type { ToeicSkillGroupV2 } from "./layer1_test_result.types";
+﻿import type { ToeicSkillGroupV2 } from "./layer1_test_result.types";
 import type { LearningPathScenarioV2 } from "./layer3_strategy_decision.types";
 
 export type LearningPathStrategyV2 =
@@ -63,6 +63,29 @@ export interface PlannedRouteUnitV2 {
   reason: string;
 }
 
+export interface LearningPathStrategyRoadmapUnitV2 {
+  lesson_manager_id: string;
+  title: string;
+  part_type: number;
+  score_band?: { from?: number; to?: number };
+  unit_type: LessonManagerRouteUnitTypeV2;
+  node_role: LessonManagerRouteNodeRoleV2;
+  target_tags: string[];
+  order: number;
+  planned_minutes: number;
+  estimated_gain: number;
+  reason: string;
+}
+
+export interface LearningPathStrategyPartRoadmapV2 {
+  part_type: number;
+  cursor_index: number;
+  target_minutes: number;
+  estimated_gain: number;
+  reaches_target: boolean;
+  units: LearningPathStrategyRoadmapUnitV2[];
+}
+
 export interface OptimizedPartPathV2 {
   part_type: number;
   target_minutes: number;
@@ -91,7 +114,7 @@ export interface BuildStrategyRoutePlanOutputV2 {
   reaches_target: boolean;
   focus_part_types: number[];
   focus_skill_keys: string[];
-  route_units: PlannedRouteUnitV2[];
+  part_roadmaps: LearningPathStrategyPartRoadmapV2[];
   summary_reasons: string[];
   ability_highlights: object[];
 }
@@ -114,40 +137,68 @@ export type CycleAssessmentV2 =
       estimated_minutes: number;
     };
 
+export interface BeamSearchCycleConfigV2 {
+  beam_width: number;
+  max_expansion_steps: number;
+  max_focus_part_types: number;
+  max_focus_skill_keys: number;
+  max_non_focus_part_types: number;
+  non_focus_part_penalty: number;
+  non_focus_unit_penalty: number;
+  min_learning_minutes: number;
+  ideal_learning_minutes: number;
+  max_learning_minutes: number;
+  mini_test_estimated_minutes: number;
+  full_test_estimated_minutes: number;
+}
+
+export interface BeamSearchCycleStateV2 {
+  selected_roadmap_units: PlannedRouteUnitV2[];
+  total_minutes: number;
+  estimated_gain: number;
+  focus_score: number;
+  time_score: number;
+  spread_penalty: number;
+  score: number;
+  part_types: number[];
+  skill_keys: string[];
+}
+
+export interface BuildNextCycleByBeamSearchInputV2 {
+  part_roadmaps: LearningPathStrategyPartRoadmapV2[];
+  strategy: LearningPathStrategyV2;
+  scenario: LearningPathScenarioV2;
+  focus_part_types: number[];
+  mini_tests_completed_since_last_full_test: number;
+  config?: Partial<BeamSearchCycleConfigV2>;
+}
+
 export type LearningCyclePlanV2 = {
   plan_type: "learning_cycle";
-  route_unit_start_index: number;
-  route_unit_end_index: number;
-  next_route_unit_index: number;
-  route_units: PlannedRouteUnitV2[];
+  selected_roadmap_units: PlannedRouteUnitV2[];
+  selected_roadmap_positions: Array<{
+    part_type: number;
+    from_cursor_index: number;
+    to_cursor_index: number;
+    selected_count: number;
+  }>;
   focus_skill_keys: string[];
   focus_part_types: number[];
   estimated_learning_minutes: number;
   assessment: CycleAssessmentV2;
+  beam_search_debug?: {
+    selected_score: number;
+    candidate_count: number;
+    reason: string;
+  };
 };
 
 export type RouteCompletedPlanV2 = {
   plan_type: "route_completed";
-  next_route_unit_index: number;
-  route_units: [];
+  selected_roadmap_units: [];
   assessment: null;
   reason: string;
 };
 
 export type NextCyclePlanV2 = LearningCyclePlanV2 | RouteCompletedPlanV2;
 
-export type CycleCutConfigV2 = {
-  min_cycle_minutes: number;
-  ideal_cycle_minutes: number;
-  max_cycle_minutes: number;
-  close_score_threshold: number;
-  mini_test_estimated_minutes: number;
-  full_test_estimated_minutes: number;
-};
-
-export type BuildNextCyclePlanInputV2 = {
-  route_units: PlannedRouteUnitV2[];
-  next_route_unit_index: number;
-  mini_tests_completed_since_last_full_test: number;
-  config?: Partial<CycleCutConfigV2>;
-};

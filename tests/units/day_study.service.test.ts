@@ -1,4 +1,4 @@
-import { Types } from "mongoose";
+﻿import { Types } from "mongoose";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { SessionType } from "../../src/models/enums/SessionType";
 import { WeekStudyStatus } from "../../src/models/enums/WeekStudyStatus";
@@ -8,10 +8,6 @@ const mockLearningPath: any = {
 };
 
 const mockWeekStudy: any = {
-  findOne: jest.fn(),
-};
-
-const mockLearningPathStrategyOption: any = {
   findOne: jest.fn(),
 };
 
@@ -28,7 +24,6 @@ const mockDayStudy: any = {
 jest.mock("../../src/models", () => ({
   DayStudy: mockDayStudy,
   LearningPath: mockLearningPath,
-  LearningPathStrategyOption: mockLearningPathStrategyOption,
   LessonManager: mockLessonManager,
   WeekStudy: mockWeekStudy,
 }));
@@ -56,8 +51,6 @@ const createLearningPath = (overrides: Record<string, unknown> = {}) => ({
 const createWeekStudy = (overrides: Record<string, unknown> = {}) => ({
   _id: new Types.ObjectId(weekStudyId),
   learning_path_strategy_option_id: optionId,
-  route_unit_start_index: 0,
-  route_unit_end_index: 1,
   assessment_type: "mini_test",
   assessment_estimated_minutes: 100,
   days: [],
@@ -65,7 +58,7 @@ const createWeekStudy = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-const createRouteUnit = (
+const createCycleUnit = (
   lessonManagerId: Types.ObjectId,
   order: number,
   overrides: Record<string, unknown> = {}
@@ -80,7 +73,7 @@ const createRouteUnit = (
   order,
   planned_minutes: 60,
   estimated_gain: 0.2,
-  reason: `Route reason ${order + 1}`,
+  reason: `Roadmap reason ${order + 1}`,
   ...overrides,
 });
 
@@ -114,22 +107,16 @@ const createLessonManager = (
 const setupValidMocks = (overrides: {
   learningPath?: Record<string, unknown>;
   weekStudy?: Record<string, unknown>;
-  routeUnits?: any[];
+  cycleUnits?: any[];
   lessonManagers?: any[];
 } = {}) => {
   const learningPath = createLearningPath(overrides.learningPath);
   const weekStudy = createWeekStudy(overrides.weekStudy);
-  const routeUnits =
-    overrides.routeUnits ?? [
-      createRouteUnit(lessonManagerId1, 0),
-      createRouteUnit(lessonManagerId2, 1),
+  const cycleUnits =
+    overrides.cycleUnits ?? [
+      createCycleUnit(lessonManagerId1, 0),
+      createCycleUnit(lessonManagerId2, 1),
     ];
-  const strategyOption = {
-    _id: optionId,
-    user_id: new Types.ObjectId(userId),
-    learning_path_id: new Types.ObjectId(learningPathId),
-    route_units: routeUnits,
-  };
   const lessonManagers =
     overrides.lessonManagers ?? [
       createLessonManager(lessonManagerId1, [
@@ -144,7 +131,6 @@ const setupValidMocks = (overrides: {
 
   mockLearningPath.findOne.mockResolvedValue(learningPath);
   mockWeekStudy.findOne.mockResolvedValue(weekStudy);
-  mockLearningPathStrategyOption.findOne.mockResolvedValue(strategyOption);
   mockLessonManager.find.mockResolvedValue(lessonManagers);
   mockDayStudy.create.mockImplementation((payloads: any[]) =>
     Promise.resolve(
@@ -155,8 +141,15 @@ const setupValidMocks = (overrides: {
     )
   );
 
-  return { learningPath, weekStudy, strategyOption, lessonManagers };
+  return { learningPath, weekStudy, cycleUnits, lessonManagers };
 };
+
+const createCycleInput = (cycleUnits: any[]) => ({
+  user_id: userId,
+  learning_path_id: learningPathId,
+  week_study_id: weekStudyId,
+  cycle_units: cycleUnits,
+});
 
 describe("day_study.service", () => {
   beforeEach(() => {
@@ -165,13 +158,9 @@ describe("day_study.service", () => {
   });
 
   it("createDayStudiesForWeekStudyCycle -> valid week cycle -> creates learning days and assessment day", async () => {
-    const { weekStudy } = setupValidMocks();
+    const { weekStudy, cycleUnits } = setupValidMocks();
 
-    const result = await createDayStudiesForWeekStudyCycle({
-      user_id: userId,
-      learning_path_id: learningPathId,
-      week_study_id: weekStudyId,
-    });
+    const result = await createDayStudiesForWeekStudyCycle(createCycleInput(cycleUnits));
 
     expect(mockDayStudy.create).toHaveBeenCalledTimes(1);
     const payloads = mockDayStudy.create.mock.calls[0][0];
@@ -192,20 +181,15 @@ describe("day_study.service", () => {
   });
 
   it("createDayStudiesForWeekStudyCycle -> activity overflow single day -> allows activity larger than daily budget", async () => {
-    setupValidMocks({
+    const { cycleUnits } = setupValidMocks({
       learningPath: { time_per_day: 30 },
-      weekStudy: { route_unit_start_index: 0, route_unit_end_index: 0 },
-      routeUnits: [createRouteUnit(lessonManagerId1, 0)],
+      cycleUnits: [createCycleUnit(lessonManagerId1, 0)],
       lessonManagers: [
         createLessonManager(lessonManagerId1, [createActivity("lesson", 45, 1)]),
       ],
     });
 
-    await createDayStudiesForWeekStudyCycle({
-      user_id: userId,
-      learning_path_id: learningPathId,
-      week_study_id: weekStudyId,
-    });
+    await createDayStudiesForWeekStudyCycle(createCycleInput(cycleUnits));
 
     const payloads = mockDayStudy.create.mock.calls[0][0];
     expect(payloads[0].sessions[0].planned_minutes).toBe(45);
@@ -213,10 +197,9 @@ describe("day_study.service", () => {
   });
 
   it("createDayStudiesForWeekStudyCycle -> same LessonManager spans multiple days", async () => {
-    setupValidMocks({
+    const { cycleUnits } = setupValidMocks({
       learningPath: { time_per_day: 50 },
-      weekStudy: { route_unit_start_index: 0, route_unit_end_index: 0 },
-      routeUnits: [createRouteUnit(lessonManagerId1, 0)],
+      cycleUnits: [createCycleUnit(lessonManagerId1, 0)],
       lessonManagers: [
         createLessonManager(lessonManagerId1, [
           createActivity("lesson", 30, 1),
@@ -226,11 +209,7 @@ describe("day_study.service", () => {
       ],
     });
 
-    await createDayStudiesForWeekStudyCycle({
-      user_id: userId,
-      learning_path_id: learningPathId,
-      week_study_id: weekStudyId,
-    });
+    await createDayStudiesForWeekStudyCycle(createCycleInput(cycleUnits));
 
     const payloads = mockDayStudy.create.mock.calls[0][0];
     expect(payloads[0].sessions[0].lesson_manager_id).toEqual(lessonManagerId1);
@@ -240,24 +219,18 @@ describe("day_study.service", () => {
   });
 
   it("createDayStudiesForWeekStudyCycle -> full_test assessment -> creates FULL_TEST day", async () => {
-    setupValidMocks({
+    const { cycleUnits } = setupValidMocks({
       weekStudy: {
-        route_unit_start_index: 0,
-        route_unit_end_index: 0,
         assessment_type: "full_test",
         assessment_estimated_minutes: 200,
       },
-      routeUnits: [createRouteUnit(lessonManagerId1, 0)],
+      cycleUnits: [createCycleUnit(lessonManagerId1, 0)],
       lessonManagers: [
         createLessonManager(lessonManagerId1, [createActivity("lesson", 20, 1)]),
       ],
     });
 
-    await createDayStudiesForWeekStudyCycle({
-      user_id: userId,
-      learning_path_id: learningPathId,
-      week_study_id: weekStudyId,
-    });
+    await createDayStudiesForWeekStudyCycle(createCycleInput(cycleUnits));
 
     const payloads = mockDayStudy.create.mock.calls[0][0];
     const assessmentDay = payloads[payloads.length - 1];
@@ -266,72 +239,34 @@ describe("day_study.service", () => {
   });
 
   it("createDayStudiesForWeekStudyCycle -> WeekStudy already has days -> throws", async () => {
-    setupValidMocks({
+    const { cycleUnits } = setupValidMocks({
       weekStudy: { days: [new Types.ObjectId()] },
     });
 
     await expect(
-      createDayStudiesForWeekStudyCycle({
-        user_id: userId,
-        learning_path_id: learningPathId,
-        week_study_id: weekStudyId,
-      })
-    ).rejects.toThrow("WeekStudy đã có DayStudy, không tạo lại.");
+      createDayStudiesForWeekStudyCycle(createCycleInput(cycleUnits))
+    ).rejects.toThrow("WeekStudy");
     expect(mockDayStudy.create).not.toHaveBeenCalled();
   });
 
   it("createDayStudiesForWeekStudyCycle -> missing LearningPath -> throws", async () => {
+    const { cycleUnits } = setupValidMocks();
     mockLearningPath.findOne.mockResolvedValue(null);
 
     await expect(
-      createDayStudiesForWeekStudyCycle({
-        user_id: userId,
-        learning_path_id: learningPathId,
-        week_study_id: weekStudyId,
-      })
-    ).rejects.toThrow("Không tìm thấy LearningPath để tạo DayStudy.");
-  });
-
-  it("createDayStudiesForWeekStudyCycle -> missing strategy option -> throws", async () => {
-    mockLearningPathStrategyOption.findOne.mockResolvedValue(null);
-
-    await expect(
-      createDayStudiesForWeekStudyCycle({
-        user_id: userId,
-        learning_path_id: learningPathId,
-        week_study_id: weekStudyId,
-      })
-    ).rejects.toThrow("Không tìm thấy strategy option của WeekStudy.");
-  });
-
-  it("createDayStudiesForWeekStudyCycle -> invalid route range -> throws", async () => {
-    setupValidMocks({
-      weekStudy: { route_unit_start_index: 2, route_unit_end_index: 1 },
-    });
-
-    await expect(
-      createDayStudiesForWeekStudyCycle({
-        user_id: userId,
-        learning_path_id: learningPathId,
-        week_study_id: weekStudyId,
-      })
-    ).rejects.toThrow("Route unit range của WeekStudy không hợp lệ.");
+      createDayStudiesForWeekStudyCycle(createCycleInput(cycleUnits))
+    ).rejects.toThrow("LearningPath");
   });
 
   it("createDayStudiesForWeekStudyCycle -> LessonManager recommended_activity_order empty -> fallback synthetic lesson item", async () => {
-    setupValidMocks({
-      weekStudy: { route_unit_start_index: 0, route_unit_end_index: 0 },
-      routeUnits: [createRouteUnit(lessonManagerId1, 0, { planned_minutes: 55 })],
+    const { cycleUnits } = setupValidMocks({
+      cycleUnits: [createCycleUnit(lessonManagerId1, 0, { planned_minutes: 55 })],
       lessonManagers: [
         createLessonManager(lessonManagerId1, [], { planned_completion_time: 40 }),
       ],
     });
 
-    await createDayStudiesForWeekStudyCycle({
-      user_id: userId,
-      learning_path_id: learningPathId,
-      week_study_id: weekStudyId,
-    });
+    await createDayStudiesForWeekStudyCycle(createCycleInput(cycleUnits));
 
     const payloads = mockDayStudy.create.mock.calls[0][0];
     expect(payloads[0].sessions[0].items[0].kind).toBe(SessionType.LESSON);
@@ -345,12 +280,11 @@ describe("day_study.service", () => {
   });
 
   it("createDayStudiesForWeekStudyCycle -> first day only unlocks first item of first session", async () => {
-    setupValidMocks({
+    const { cycleUnits } = setupValidMocks({
       learningPath: { time_per_day: 100 },
-      weekStudy: { route_unit_start_index: 0, route_unit_end_index: 1 },
-      routeUnits: [
-        createRouteUnit(lessonManagerId1, 0),
-        createRouteUnit(lessonManagerId2, 1),
+      cycleUnits: [
+        createCycleUnit(lessonManagerId1, 0),
+        createCycleUnit(lessonManagerId2, 1),
       ],
       lessonManagers: [
         createLessonManager(lessonManagerId1, [
@@ -363,11 +297,7 @@ describe("day_study.service", () => {
       ],
     });
 
-    await createDayStudiesForWeekStudyCycle({
-      user_id: userId,
-      learning_path_id: learningPathId,
-      week_study_id: weekStudyId,
-    });
+    await createDayStudiesForWeekStudyCycle(createCycleInput(cycleUnits));
 
     const payloads = mockDayStudy.create.mock.calls[0][0];
     const firstDay = payloads[0];
@@ -381,3 +311,6 @@ describe("day_study.service", () => {
     expect(firstDay.sessions[1].items[0].status).toBe(WeekStudyStatus.LOCK);
   });
 });
+
+
+

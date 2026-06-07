@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   AbilityProfileV2,
   BuildStrategyRoutePlanOutputV2,
   BuildFullTestLearningPathPlanInput,
@@ -424,25 +424,31 @@ const mapRoutePlanToStrategyOptionPayload = (input: StrategyOptionPayloadInput) 
   estimated_total_minutes: input.plan.estimated_total_minutes,
   estimated_gain: input.plan.estimated_gain,
   reaches_target: input.plan.reaches_target,
-  route_units: input.plan.route_units.map((unit) => ({
-    lesson_manager_id: toObjectId(unit.lesson_manager_id),
-    title: unit.title,
-    part_type: unit.part_type,
-    score_band: unit.score_band,
-    unit_type: unit.unit_type,
-    node_role: unit.node_role,
-    target_tags: unit.target_tags,
-    order: unit.order,
-    planned_minutes: unit.planned_minutes,
-    estimated_gain: unit.estimated_gain,
-    reason: unit.reason,
+  part_roadmaps: input.plan.part_roadmaps.map((roadmap) => ({
+    part_type: roadmap.part_type,
+    cursor_index: roadmap.cursor_index,
+    target_minutes: roadmap.target_minutes,
+    estimated_gain: roadmap.estimated_gain,
+    reaches_target: roadmap.reaches_target,
+    units: roadmap.units.map((unit) => ({
+      lesson_manager_id: toObjectId(unit.lesson_manager_id),
+      title: unit.title,
+      part_type: unit.part_type,
+      score_band: unit.score_band,
+      unit_type: unit.unit_type,
+      node_role: unit.node_role,
+      target_tags: unit.target_tags,
+      order: unit.order,
+      planned_minutes: unit.planned_minutes,
+      estimated_gain: unit.estimated_gain,
+      reason: unit.reason,
+    })),
   })),
   summary_reasons: input.plan.summary_reasons,
   ability_highlights: input.plan.ability_highlights.map((highlight) => ({
     ...highlight,
     reason: "Snapshot năng lực tại thời điểm tạo route.",
   })),
-  next_route_unit_index: 0,
   selected_at: input.status === "selected" ? new Date() : undefined,
 });
 
@@ -579,6 +585,7 @@ const createInitialSelectedOptionAndCycle = async (input: {
       await createSchedulerDecisionLog({
         user_id: input.originalInput.user_id,
         learning_path_id: input.originalInput.learning_path_id,
+        learning_path_strategy_option_id: String(selectedOption._id),
         trigger_type: "initial_generation",
         generated_week_id: String(cycleResult.week_study._id),
         strategy: selectedOption.strategy,
@@ -595,23 +602,14 @@ const createInitialSelectedOptionAndCycle = async (input: {
             source_user_test_id: String(input.userTest._id),
             source_test_id: String(input.userTest.test_id),
             target_completion_date: input.learningPath.target_completion_date,
-            focus_part_types: selectedOption.focus_part_types,
-            focus_skill_keys_sample:
-              selectedOption.focus_skill_keys?.slice(0, 20),
-            route_unit_start_index:
-              cycleResult.week_study.route_unit_start_index,
-            route_unit_end_index: cycleResult.week_study.route_unit_end_index,
           },
         },
-        candidate_lesson_manager_ids: selectedOption.route_units.map(
-          (unit) => unit.lesson_manager_id
-        ),
-        selected_lesson_manager_ids: cycleResult.plan.route_units.map(
+        selected_lesson_manager_ids: cycleResult.plan.selected_roadmap_units.map(
           (unit) => unit.lesson_manager_id
         ),
         output_summary: {
           planned_minutes: cycleDayStudyMinutes,
-          selected_unit_count: cycleResult.plan.route_units.length,
+          selected_unit_count: cycleResult.plan.selected_roadmap_units.length,
           ...countCycleActivities(cycleResult.day_studies),
         },
         created_by: input.originalInput.user_id,
@@ -812,8 +810,7 @@ const summarizeLayer4ResultForLog = (result?: Layer4PipelineResult) => {
     week_study_id: cycleCreated ? cycleResult.week_study?._id : null,
     day_studies_count: dayStudies.length,
     assessment_type: plan?.assessment?.type,
-    route_unit_start_index: plan?.route_unit_start_index,
-    route_unit_end_index: plan?.route_unit_end_index,
+    selected_roadmap_positions: plan?.selected_roadmap_positions,
   };
 };
 
@@ -1156,3 +1153,4 @@ export const getLearningPathV2Overview = async (
       : null,
   };
 };
+

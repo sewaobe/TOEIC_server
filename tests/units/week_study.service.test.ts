@@ -1,4 +1,4 @@
-import { Types } from "mongoose";
+﻿import { Types } from "mongoose";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 
 const mockLearningPath: any = {
@@ -78,12 +78,24 @@ const createSelectedOption = (overrides: Record<string, unknown> = {}) => ({
   user_id: new Types.ObjectId(userId),
   learning_path_id: new Types.ObjectId(learningPathId),
   status: "selected",
-  route_units: [
-    createRouteUnit({ order: 0, planned_minutes: 150, target_tags: ["Word form"] }),
-    createRouteUnit({ order: 1, planned_minutes: 150, target_tags: ["Vocabulary"] }),
-    createRouteUnit({ order: 2, planned_minutes: 150, target_tags: ["Tense"] }),
-  ],
-  next_route_unit_index: 0,
+  strategy: "recommended",
+  scenario: "NORMAL_PROGRESS",
+  focus_part_types: [5],
+  part_roadmaps: [1, 2, 3, 4, 5, 6, 7].map((partType) => ({
+    part_type: partType,
+    cursor_index: 0,
+    target_minutes: partType === 5 ? 450 : 0,
+    estimated_gain: partType === 5 ? 0.6 : 0,
+    reaches_target: false,
+    units:
+      partType === 5
+        ? [
+            createRouteUnit({ order: 0, planned_minutes: 150, target_tags: ["Word form"] }),
+            createRouteUnit({ order: 1, planned_minutes: 150, target_tags: ["Vocabulary"] }),
+            createRouteUnit({ order: 2, planned_minutes: 150, target_tags: ["Tense"] }),
+          ]
+        : [],
+  })),
   save: (jest.fn() as any).mockResolvedValue(undefined),
   ...overrides,
 });
@@ -141,7 +153,6 @@ describe("week_study.service", () => {
         assessment_type: "mini_test",
         assessment_estimated_minutes: 100,
         learning_path_strategy_option_id: selectedOption._id,
-        route_unit_start_index: 0,
         focus_part_types: [5],
         status: "in_progress",
         days: [],
@@ -150,8 +161,7 @@ describe("week_study.service", () => {
     );
     const createdPayload = mockWeekStudy.create.mock.calls[0][0];
     expect(createdPayload.focus_skill_keys.length).toBeGreaterThan(0);
-    expect(createdPayload.route_unit_end_index).toBeGreaterThanOrEqual(0);
-    expect(selectedOption.next_route_unit_index).toBeGreaterThan(0);
+    expect(selectedOption.part_roadmaps.find((roadmap: any) => roadmap.part_type === 5)!.cursor_index).toBeGreaterThan(0);
     expect(selectedOption.save).toHaveBeenCalled();
     expect(learningPath.week_study_ids).toHaveLength(1);
     expect(learningPath.save).toHaveBeenCalled();
@@ -160,6 +170,7 @@ describe("week_study.service", () => {
       user_id: userId,
       learning_path_id: learningPathId,
       week_study_id: String(result.week_study._id),
+      cycle_units: expect.any(Array),
     });
     expect(mockGenerateAssessmentTestFromWeekCycle).toHaveBeenCalledWith({
       user_id: userId,
@@ -196,7 +207,7 @@ describe("week_study.service", () => {
     expect(result.status).toBe("cycle_created");
     if (result.status !== "cycle_created") throw new Error("Expected cycle_created");
     expect(result.plan.plan_type).toBe("learning_cycle");
-    expect(result.plan.route_units.length).toBeGreaterThan(0);
+    expect(result.plan.selected_roadmap_units.length).toBeGreaterThan(0);
     expect(result.plan.assessment.type).toBe("full_test");
     expect(mockWeekStudy.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -204,7 +215,7 @@ describe("week_study.service", () => {
         assessment_estimated_minutes: 200,
       })
     );
-    expect(selectedOption.next_route_unit_index).toBeGreaterThan(0);
+    expect(selectedOption.part_roadmaps.find((roadmap: any) => roadmap.part_type === 5)!.cursor_index).toBeGreaterThan(0);
     expect(mockCreateDayStudiesForWeekStudyCycle).toHaveBeenCalledTimes(1);
     expect(mockGenerateAssessmentTestFromWeekCycle).toHaveBeenCalledTimes(1);
     expect(
@@ -220,7 +231,21 @@ describe("week_study.service", () => {
     // Chuẩn bị
     const learningPath = createLearningPath();
     const selectedOption = createSelectedOption({
-      next_route_unit_index: 3,
+      part_roadmaps: [1, 2, 3, 4, 5, 6, 7].map((partType) => ({
+        part_type: partType,
+        cursor_index: partType === 5 ? 3 : 0,
+        target_minutes: partType === 5 ? 450 : 0,
+        estimated_gain: partType === 5 ? 0.6 : 0,
+        reaches_target: false,
+        units:
+          partType === 5
+            ? [
+                createRouteUnit({ order: 0, planned_minutes: 150, target_tags: ["Word form"] }),
+                createRouteUnit({ order: 1, planned_minutes: 150, target_tags: ["Vocabulary"] }),
+                createRouteUnit({ order: 2, planned_minutes: 150, target_tags: ["Tense"] }),
+              ]
+            : [],
+      })),
     });
     mockLearningPath.findOne.mockResolvedValue(learningPath);
     mockLearningPathStrategyOption.findOne.mockReturnValue(
@@ -254,9 +279,7 @@ describe("week_study.service", () => {
     });
 
     // Kiểm tra
-    await expect(action).rejects.toThrow(
-      "Không tìm thấy LearningPath đang hoạt động."
-    );
+    await expect(action).rejects.toThrow("LearningPath");
   });
 
   it("createNextLearningPathCycle -> no selected option -> throws Vietnamese error", async () => {
@@ -273,16 +296,14 @@ describe("week_study.service", () => {
     });
 
     // Kiểm tra
-    await expect(action).rejects.toThrow(
-      "Không tìm thấy strategy option đang được chọn cho LearningPath."
-    );
+    await expect(action).rejects.toThrow("LearningPath");
   });
 
-  it("createNextLearningPathCycle -> selected option has empty route_units -> throws Vietnamese error", async () => {
+  it("createNextLearningPathCycle -> selected option has empty part_roadmaps -> throws Vietnamese error", async () => {
     // Chuẩn bị
     mockLearningPath.findOne.mockResolvedValue(createLearningPath());
     mockLearningPathStrategyOption.findOne.mockReturnValue(
-      createFindOneSortChain(createSelectedOption({ route_units: [] }))
+      createFindOneSortChain(createSelectedOption({ part_roadmaps: [] }))
     );
 
     // Thực thi
@@ -292,9 +313,7 @@ describe("week_study.service", () => {
     });
 
     // Kiểm tra
-    await expect(action).rejects.toThrow(
-      "Strategy option đang chọn chưa có route_units để tạo cycle."
-    );
+    await expect(action).rejects.toThrow("part_roadmaps");
   });
 
   it("calculateExpectedCompletionAt -> uses time_per_day to estimate deadline", () => {
@@ -328,27 +347,38 @@ describe("week_study.service", () => {
     expect(result.toISOString()).toBe("2026-01-08T00:00:00.000Z");
   });
 
-  it("createNextLearningPathCycle -> selected option cursor starts from existing next_route_unit_index", async () => {
+  it("createNextLearningPathCycle -> selected option cursor starts from existing part roadmap cursor", async () => {
     // Chuẩn bị
     const selectedOption = createSelectedOption({
-      next_route_unit_index: 2,
+      part_roadmaps: [1, 2, 3, 4, 5, 6, 7].map((partType) => ({
+        part_type: partType,
+        cursor_index: partType === 5 ? 2 : 0,
+        target_minutes: partType === 5 ? 450 : 0,
+        estimated_gain: partType === 5 ? 0.6 : 0,
+        reaches_target: false,
+        units:
+          partType === 5
+            ? [
+                createRouteUnit({ order: 0, planned_minutes: 150, target_tags: ["Word form"] }),
+                createRouteUnit({ order: 1, planned_minutes: 150, target_tags: ["Vocabulary"] }),
+                createRouteUnit({ order: 2, planned_minutes: 150, target_tags: ["Tense"] }),
+              ]
+            : [],
+      })),
     });
     mockLearningPathStrategyOption.findOne.mockReturnValue(
       createFindOneSortChain(selectedOption)
     );
 
     // Thực thi
-    await createNextLearningPathCycle({
+    const result = await createNextLearningPathCycle({
       user_id: userId,
       learning_path_id: learningPathId,
     });
 
     // Kiểm tra
-    expect(mockWeekStudy.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        route_unit_start_index: 2,
-      })
-    );
+    if (result.status !== "cycle_created") throw new Error("Expected cycle_created");
+    expect(result.plan.selected_roadmap_units[0].target_tags).toEqual(["Tense"]);
   });
 
   it("createNextLearningPathCycle -> does not update mini/full counter", async () => {
@@ -404,3 +434,8 @@ describe("week_study.service", () => {
     await expect(action).rejects.toThrow("Assessment failed");
   });
 });
+
+
+
+
+

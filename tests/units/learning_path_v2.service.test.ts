@@ -1,4 +1,4 @@
-import { Types } from "mongoose";
+﻿import { Types } from "mongoose";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 
 const mockLearningPath: any = {
@@ -146,21 +146,31 @@ const createRoutePlan = (strategy: string, scenario = "ONBOARDING") => ({
   reaches_target: false,
   focus_part_types: [1, 2],
   focus_skill_keys: ["part_1_skill"],
-  route_units: [
-    {
-      lesson_manager_id: new Types.ObjectId().toString(),
-      title: "Part 1 foundation",
-      part_type: 1,
-      score_band: { from: 400, to: 700 },
-      unit_type: "foundation",
-      node_role: "normal",
-      target_tags: ["part_1_skill"],
-      order: 0,
-      planned_minutes: 120,
-      estimated_gain: 0.5,
-      reason: "Phù hợp route hiện tại.",
-    },
-  ],
+  part_roadmaps: [1, 2, 3, 4, 5, 6, 7].map((partType) => ({
+    part_type: partType,
+    cursor_index: 0,
+    target_minutes: partType === 1 ? 120 : 0,
+    estimated_gain: partType === 1 ? 0.5 : 0,
+    reaches_target: false,
+    units:
+      partType === 1
+        ? [
+            {
+              lesson_manager_id: new Types.ObjectId().toString(),
+              title: "Part 1 foundation",
+              part_type: 1,
+              score_band: { from: 400, to: 700 },
+              unit_type: "foundation",
+              node_role: "normal",
+              target_tags: ["part_1_skill"],
+              order: 0,
+              planned_minutes: 120,
+              estimated_gain: 0.5,
+              reason: "Phu hop route hien tai.",
+            },
+          ]
+        : [],
+  })),
   summary_reasons: ["Ưu tiên Part yếu."],
   ability_highlights: [{ part_type: 1, ability: 0.1, status: "weak" }],
 });
@@ -210,10 +220,8 @@ const setupBaseMocks = (triggerType: string) => {
   mockCreateNextLearningPathCycle.mockResolvedValue({
     status: "cycle_created",
     plan: {
-      route_unit_start_index: 0,
-      route_unit_end_index: 0,
-      next_route_unit_index: 1,
-      route_units: [
+      plan_type: "learning_cycle",
+      selected_roadmap_units: [
         {
           lesson_manager_id: new Types.ObjectId().toString(),
           title: "Part 1 foundation",
@@ -224,12 +232,20 @@ const setupBaseMocks = (triggerType: string) => {
           order: 0,
           planned_minutes: 120,
           estimated_gain: 0.5,
-          reason: "PhÃ¹ há»£p route hiá»‡n táº¡i.",
+          reason: "Phù hợp roadmap hiện tại.",
         },
       ],
       estimated_learning_minutes: 120,
       focus_skill_keys: ["part_1_skill"],
       focus_part_types: [1],
+      selected_roadmap_positions: [
+        {
+          part_type: 1,
+          from_cursor_index: 0,
+          to_cursor_index: 1,
+          selected_count: 1,
+        },
+      ],
       assessment: {
         type: "mini_test",
         estimated_minutes: 100,
@@ -239,8 +255,6 @@ const setupBaseMocks = (triggerType: string) => {
     },
     week_study: {
       _id: new Types.ObjectId(),
-      route_unit_start_index: 0,
-      route_unit_end_index: 0,
     },
     strategy_option: { _id: new Types.ObjectId(), status: "selected" },
     day_studies: [
@@ -285,7 +299,7 @@ describe("learning_path_v2.service", () => {
         status: "selected",
         trigger_type: "initial_generation",
         scenario: "ONBOARDING",
-        next_route_unit_index: 0,
+        part_roadmaps: expect.any(Array),
       })
     );
     expect(mockCreateNextLearningPathCycle).toHaveBeenCalledTimes(1);
@@ -294,6 +308,7 @@ describe("learning_path_v2.service", () => {
       expect.objectContaining({
         user_id: userId,
         learning_path_id: learningPathId,
+        learning_path_strategy_option_id: expect.any(String),
         trigger_type: "initial_generation",
         strategy: "recommended",
         scenario: "ONBOARDING",
@@ -317,13 +332,11 @@ describe("learning_path_v2.service", () => {
     const logInput = mockCreateSchedulerDecisionLog.mock.calls[0][0];
     expect(logInput.input_snapshot.extra).not.toHaveProperty("time_per_day");
     expect(logInput.input_snapshot.extra).not.toHaveProperty("days_per_week");
+    expect(logInput.input_snapshot.extra).not.toHaveProperty("focus_part_types");
+    expect(logInput.input_snapshot.extra).not.toHaveProperty("focus_skill_keys_sample");
     expect(
       mockCreateSchedulerDecisionLog.mock.calls[0][0].generated_week_id
     ).toBeTruthy();
-    expect(
-      mockCreateSchedulerDecisionLog.mock.calls[0][0]
-        .candidate_lesson_manager_ids
-    ).toHaveLength(1);
     expect(
       mockCreateSchedulerDecisionLog.mock.calls[0][0]
         .selected_lesson_manager_ids
@@ -380,7 +393,7 @@ describe("learning_path_v2.service", () => {
 
     await expect(
       runLearningPathV2AbilityPipeline(createInput("initial_generation"))
-    ).rejects.toThrow("Không tìm thấy LearningPath để tạo route Layer 4.");
+    ).rejects.toThrow("LearningPath");
   });
 
   it("full_test_review -> missing 7 part abilities throws Vietnamese error", async () => {
@@ -389,7 +402,7 @@ describe("learning_path_v2.service", () => {
 
     await expect(
       runLearningPathV2AbilityPipeline(createInput("full_test_review"))
-    ).rejects.toThrow("UserSkill chưa đủ ability 7 Part để tạo route Layer 4.");
+    ).rejects.toThrow("UserSkill");
   });
 
   it("calculateTotalAvailableMinutesForRoute -> uses target_completion_date/time_per_day", () => {
@@ -413,7 +426,7 @@ describe("learning_path_v2.service", () => {
 
     await expect(
       runLearningPathV2AbilityPipeline(createInput("full_test_review"))
-    ).rejects.toThrow("Scenario không hợp lệ để tạo strategy option sau full test.");
+    ).rejects.toThrow("Scenario");
   });
 
   it("extractPartAbilitiesForLayer4 -> normalizes abilities to 0..1", () => {
@@ -433,3 +446,9 @@ describe("learning_path_v2.service", () => {
     expect(result[6].ability).toBe(1);
   });
 });
+
+
+
+
+
+

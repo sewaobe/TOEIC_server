@@ -91,6 +91,7 @@ export interface ISchedulerOutputSummary {
 export interface ISchedulerDecisionLog extends Document {
   user_id: Types.ObjectId;
   learning_path_id: Types.ObjectId;
+  learning_path_strategy_option_id?: Types.ObjectId;
 
   source_week_id?: Types.ObjectId;
   generated_week_id?: Types.ObjectId;
@@ -105,7 +106,6 @@ export interface ISchedulerDecisionLog extends Document {
 
   input_snapshot?: ISchedulerInputSnapshot;
 
-  candidate_lesson_manager_ids?: Types.ObjectId[];
   selected_lesson_manager_ids?: Types.ObjectId[];
 
   output_summary?: ISchedulerOutputSummary;
@@ -223,6 +223,17 @@ const SchedulerDecisionLogSchema = new Schema<ISchedulerDecisionLog>(
       index: true,
     },
 
+    /**
+     * Strategy option là nơi lưu roadmap dài hạn.
+     * Decision log chỉ tham chiếu option đã được dùng để tạo cycle,
+     * tránh duplicate toàn bộ roadmap vào log.
+     */
+    learning_path_strategy_option_id: {
+      type: Schema.Types.ObjectId,
+      ref: "LearningPathStrategyOption",
+      index: true,
+    },
+
     source_week_id: {
       type: Schema.Types.ObjectId,
       ref: "WeekStudy",
@@ -279,10 +290,6 @@ const SchedulerDecisionLogSchema = new Schema<ISchedulerDecisionLog>(
       type: SchedulerInputSnapshotSchema,
       default: undefined,
     },
-
-    candidate_lesson_manager_ids: [
-      { type: Schema.Types.ObjectId, ref: "LessonManager" },
-    ],
 
     selected_lesson_manager_ids: [
       { type: Schema.Types.ObjectId, ref: "LessonManager" },

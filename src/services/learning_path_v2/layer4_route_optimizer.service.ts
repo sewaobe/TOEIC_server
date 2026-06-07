@@ -1,14 +1,16 @@
-import {
+﻿import {
   normalizeToeicSkillTag,
   normalizeToeicSkillTags,
   TOEIC_SKILL_DEFINITIONS,
 } from "../../utils/toeic_skill.util";
 import type {
-  BuildNextCyclePlanInputV2,
+  BeamSearchCycleConfigV2,
+  BeamSearchCycleStateV2,
+  BuildNextCycleByBeamSearchInputV2,
   BuildStrategyRoutePlanInputV2,
   BuildStrategyRoutePlanOutputV2,
-  CycleCutConfigV2,
   LearningPathScenarioV2,
+  LearningPathStrategyPartRoadmapV2,
   LearningPathStrategyV2,
   LessonManagerRouteNodeV2,
   NextCyclePlanV2,
@@ -46,12 +48,6 @@ type OptimizePartPathInput = {
   start_unit_ids?: string[];
 };
 
-type MergePartPathsInput = {
-  part_paths: OptimizedPartPathV2[];
-  target_minutes_by_part: Record<number, number>;
-  total_available_minutes: number;
-  part_abilities?: PartAbilityInputV2[];
-};
 
 type RuntimeStartScoreInput = {
   node: LessonManagerRouteNodeV2;
@@ -76,24 +72,6 @@ type BuildRuntimeStartPathsInput = {
   strategy: LearningPathStrategyV2;
 };
 
-type CloseCycleScoreDetailV2 = {
-  score: number;
-  time_score: number;
-  skill_count_score: number;
-  boundary_score: number;
-  cycle_minutes: number;
-  focus_skill_count: number;
-  next_skill_overlap_ratio: number;
-};
-
-type CutLearningCycleResultV2 = {
-  route_units: PlannedRouteUnitV2[];
-  route_unit_start_index: number;
-  route_unit_end_index: number;
-  next_route_unit_index: number;
-  close_score_detail: CloseCycleScoreDetailV2;
-};
-
 const PART_TYPES = [1, 2, 3, 4, 5, 6, 7];
 
 const STRATEGY_QUOTAS: Record<LearningPathStrategyV2, AllocationQuota> = {
@@ -102,13 +80,25 @@ const STRATEGY_QUOTAS: Record<LearningPathStrategyV2, AllocationQuota> = {
   opportunity: { weak: 0.3, medium: 0.5, strong: 0.2 },
 };
 
-export const DEFAULT_CYCLE_CUT_CONFIG: CycleCutConfigV2 = {
-  min_cycle_minutes: 480,
-  ideal_cycle_minutes: 900,
-  max_cycle_minutes: 1500,
-  close_score_threshold: 0.7,
+export const DEFAULT_BEAM_SEARCH_CYCLE_CONFIG: BeamSearchCycleConfigV2 = {
+  beam_width: 8,
+  max_expansion_steps: 20,
+  max_focus_part_types: 3,
+  max_focus_skill_keys: 7,
+  min_learning_minutes: 480,
+  ideal_learning_minutes: 900,
+  max_learning_minutes: 1500,
   mini_test_estimated_minutes: 100,
   full_test_estimated_minutes: 200,
+
+  /*
+   * max_focus_part_types giới hạn độ rộng tổng của cycle.
+   * max_non_focus_part_types giới hạn số Part phụ được chen vào để duy trì kỹ năng.
+   * Nếu không có penalty này, Beam Search có thể chọn đủ 3 Part nhưng lại là 2 Part ngoài focus.
+   */
+  max_non_focus_part_types: 1,
+  non_focus_part_penalty: 1.5,
+  non_focus_unit_penalty: 0.6,
 };
 
 const SCENARIO_UNIT_TYPE_MULTIPLIER: Record<
@@ -739,394 +729,369 @@ export const optimizePartPath = (
   };
 };
 
-export const mergePartPathsToRoute = (
-  input: MergePartPathsInput
-): PlannedRouteUnitV2[] => {
-  const paths = [...input.part_paths].sort((a, b) => a.part_type - b.part_type);
-  const pointerByPart = new Map(paths.map((path) => [path.part_type, 0]));
-  const usedMinutesByPart = new Map(paths.map((path) => [path.part_type, 0]));
-  const abilityByPart = new Map(
-    input.part_abilities?.map((part) => [part.part_type, part.ability]) ?? []
-  );
-  const route: PlannedRouteUnitV2[] = [];
-  let totalMinutes = 0;
-
-  /*
-   * B chỉ merge 7 ordered paths thành snapshot route_units để FE hiển thị.
-   * B không chọn lại node, không optimize lại quota, không cắt giữa LessonManager node.
-   * route_units chưa phải WeekStudy/DayStudy; tầng C sau này mới cut cycle và persistence.
-   */
-  while (true) {
-    const remainingMinutes = input.total_available_minutes - totalMinutes;
-
-    const candidates = paths
-      .map((path) => {
-        const pointer = pointerByPart.get(path.part_type) ?? 0;
-        const node = path.nodes[pointer];
-        if (!node) return null;
-
-        const targetMinutes = Math.max(
-          1,
-          input.target_minutes_by_part[path.part_type] ?? path.target_minutes
-        );
-
-        const progressRatio =
-          (usedMinutesByPart.get(path.part_type) ?? 0) / targetMinutes;
-
-        return { path, node, progressRatio };
-      })
-      .filter(
-        (
-          item
-        ): item is {
-          path: OptimizedPartPathV2;
-          node: PlannedRouteUnitV2;
-          progressRatio: number;
-        } => Boolean(item)
-      )
-      .filter((item) => item.node.planned_minutes <= remainingMinutes)
-      .sort((a, b) => {
-        if (a.progressRatio !== b.progressRatio) {
-          return a.progressRatio - b.progressRatio;
-        }
-        if (a.node.estimated_gain !== b.node.estimated_gain) {
-          return b.node.estimated_gain - a.node.estimated_gain;
-        }
-        if (a.node.planned_minutes !== b.node.planned_minutes) {
-          return a.node.planned_minutes - b.node.planned_minutes;
-        }
-        const abilityA =
-          abilityByPart.get(a.path.part_type) ?? Number.POSITIVE_INFINITY;
-        const abilityB =
-          abilityByPart.get(b.path.part_type) ?? Number.POSITIVE_INFINITY;
-        if (abilityA !== abilityB) return abilityA - abilityB;
-        if (a.path.part_type !== b.path.part_type) {
-          return a.path.part_type - b.path.part_type;
-        }
-        return a.node.lesson_manager_id.localeCompare(b.node.lesson_manager_id);
-      });
-
-    const selected = candidates[0];
-    if (!selected) break;
-
-    route.push({ ...selected.node, order: route.length });
-    pointerByPart.set(
-      selected.path.part_type,
-      (pointerByPart.get(selected.path.part_type) ?? 0) + 1
-    );
-    usedMinutesByPart.set(
-      selected.path.part_type,
-      (usedMinutesByPart.get(selected.path.part_type) ?? 0) +
-      selected.node.planned_minutes
-    );
-    totalMinutes += selected.node.planned_minutes;
-  }
-
-  return route;
-};
-
-const mergeCycleCutConfig = (
-  config?: Partial<CycleCutConfigV2>
-): CycleCutConfigV2 => ({
-  ...DEFAULT_CYCLE_CUT_CONFIG,
-  ...config,
+const mergeBeamSearchConfig = (
+  config?: Partial<BeamSearchCycleConfigV2>
+): BeamSearchCycleConfigV2 => ({
+  ...DEFAULT_BEAM_SEARCH_CYCLE_CONFIG,
+  ...(config ?? {}),
 });
 
 export const sumPlannedMinutes = (units: PlannedRouteUnitV2[]): number =>
   units.reduce((sum, unit) => sum + unit.planned_minutes, 0);
 
-export const getCycleFocusSkillKeys = (
-  units: PlannedRouteUnitV2[]
-): string[] => {
-  const seenSkillKeys = new Set<string>();
-  const skillKeys: string[] = [];
-
-  for (const unit of units) {
-    const normalizedSkills = normalizeToeicSkillTags(
-      unit.target_tags,
-      unit.part_type
-    );
-
-    for (const skill of normalizedSkills) {
-      if (seenSkillKeys.has(skill.key)) continue;
-      seenSkillKeys.add(skill.key);
-      skillKeys.push(skill.key);
-    }
-  }
-
-  return skillKeys;
-};
-
-export const getCycleFocusPartTypes = (
-  units: PlannedRouteUnitV2[]
-): number[] =>
-  Array.from(new Set(units.map((unit) => unit.part_type))).sort(
-    (a, b) => a - b
+const getUnitSkillKeys = (unit: PlannedRouteUnitV2): string[] =>
+  normalizeToeicSkillTags(unit.target_tags, unit.part_type).map(
+    (skill) => skill.key
   );
 
-export const calculateSkillOverlapRatio = (
-  cycleSkillKeys: string[],
-  nextUnit: PlannedRouteUnitV2 | null
-): number => {
-  if (!nextUnit) return 0;
+const cloneSelectedCountsByPart = (
+  counts: Map<number, number>
+): Map<number, number> => new Map(counts);
 
-  const nextSkillKeys = normalizeToeicSkillTags(
-    nextUnit.target_tags,
-    nextUnit.part_type
-  ).map((skill) => skill.key);
+const getNextCandidatesFromRoadmaps = (input: {
+  part_roadmaps: LearningPathStrategyPartRoadmapV2[];
+  selected_counts_by_part: Map<number, number>;
+}): PlannedRouteUnitV2[] => {
+  const candidates: PlannedRouteUnitV2[] = [];
 
-  if (nextSkillKeys.length === 0) return 0;
+  for (const roadmap of input.part_roadmaps) {
+    const selectedCount = input.selected_counts_by_part.get(roadmap.part_type) ?? 0;
+    const cursor = roadmap.cursor_index + selectedCount;
+    const unit = roadmap.units[cursor];
 
-  const cycleSkillKeySet = new Set(cycleSkillKeys);
-  const overlapCount = nextSkillKeys.filter((skillKey) =>
-    cycleSkillKeySet.has(skillKey)
+    if (!unit) continue;
+
+    candidates.push({
+      ...unit,
+      part_type: roadmap.part_type,
+      order: candidates.length,
+      score_band:
+        unit.score_band?.from !== undefined && unit.score_band?.to !== undefined
+          ? { from: unit.score_band.from, to: unit.score_band.to }
+          : undefined,
+    });
+  }
+
+  return candidates;
+};
+
+const scoreBeamSearchState = (input: {
+  selectedRoadmapUnits: PlannedRouteUnitV2[];
+  focus_part_types: number[];
+  ideal_learning_minutes: number;
+  max_focus_part_types: number;
+  max_focus_skill_keys: number;
+  max_non_focus_part_types: number;
+  non_focus_part_penalty: number;
+  non_focus_unit_penalty: number;
+}): Omit<BeamSearchCycleStateV2, "selected_roadmap_units" | "total_minutes" | "estimated_gain"> => {
+  const selectedRoadmapUnits = input.selectedRoadmapUnits;
+  const totalMinutes = sumPlannedMinutes(selectedRoadmapUnits);
+  const focusSet = new Set(input.focus_part_types);
+  const focusCount = selectedRoadmapUnits.filter((unit) => focusSet.has(unit.part_type)).length;
+  const focusRatio =
+    selectedRoadmapUnits.length > 0 ? focusCount / selectedRoadmapUnits.length : 0;
+  const partTypes = Array.from(
+    new Set(selectedRoadmapUnits.map((unit) => unit.part_type))
+  ).sort((a, b) => a - b);
+  const skillKeys = Array.from(
+    new Set(selectedRoadmapUnits.flatMap((unit) => getUnitSkillKeys(unit)))
+  );
+  const nonFocusPartTypes = partTypes.filter(
+    (partType) => !focusSet.has(partType)
+  );
+  const nonFocusUnitCount = selectedRoadmapUnits.filter(
+    (unit) => !focusSet.has(unit.part_type)
   ).length;
-
-  return overlapCount / nextSkillKeys.length;
-};
-
-export const calculateTimeScore = (
-  cycleMinutes: number,
-  config: CycleCutConfigV2
-): number => clamp(cycleMinutes / config.ideal_cycle_minutes, 0, 1);
-
-export const calculateSkillCountScore = (skillCount: number): number => {
-  /*
-   * Mini test cần focus đủ rộng để đo được tiến bộ, nhưng không quá loãng khiến assessment mất trọng tâm.
-   */
-  if (skillCount <= 1) return 0.2;
-  if (skillCount === 2) return 0.6;
-  if (skillCount <= 6) return 1;
-  if (skillCount <= 8) return 0.75;
-  return 0.4;
-};
-
-export const calculateBoundaryScore = (overlapRatio: number): number =>
-  clamp(1 - overlapRatio, 0, 1);
-
-export const calculateCloseCycleScore = (input: {
-  cycle_units: PlannedRouteUnitV2[];
-  next_unit: PlannedRouteUnitV2 | null;
-  config: CycleCutConfigV2;
-}): CloseCycleScoreDetailV2 => {
-  const cycleMinutes = sumPlannedMinutes(input.cycle_units);
-  const focusSkillKeys = getCycleFocusSkillKeys(input.cycle_units);
-  const nextSkillOverlapRatio = calculateSkillOverlapRatio(
-    focusSkillKeys,
-    input.next_unit
+  const gainScore = selectedRoadmapUnits.reduce(
+    (sum, unit) => sum + unit.estimated_gain,
+    0
   );
-  const timeScore = calculateTimeScore(cycleMinutes, input.config);
-  const skillCountScore = calculateSkillCountScore(focusSkillKeys.length);
-  const boundaryScore = calculateBoundaryScore(nextSkillOverlapRatio);
-
-  /*
-   * Tầng C chỉ là heuristic cắt cycle, không phải công thức điểm TOEIC.
-   * Tầng C không chọn lại node, không tính lại weak/medium/strong và không duyệt graph.
-   * Boundary tốt khi node tiếp theo ít overlap skill với cycle hiện tại, nghĩa là có thể kết thúc topic hiện tại.
-   */
-  const score =
-    0.45 * timeScore + 0.3 * skillCountScore + 0.25 * boundaryScore;
+  const focusScore = focusRatio * 2;
+  const timeScore =
+    input.ideal_learning_minutes > 0
+      ? 1 -
+        Math.min(
+          1,
+          Math.abs(totalMinutes - input.ideal_learning_minutes) /
+            input.ideal_learning_minutes
+        )
+      : 0;
+  const partSpreadPenalty = Math.max(
+    0,
+    partTypes.length - input.max_focus_part_types
+  ) * 1.2;
+  const skillSpreadPenalty = Math.max(
+    0,
+    skillKeys.length - input.max_focus_skill_keys
+  ) * 0.5;
+  const nonFocusPartPenalty =
+    Math.max(0, nonFocusPartTypes.length - input.max_non_focus_part_types) *
+    input.non_focus_part_penalty;
+  const nonFocusUnitPenalty =
+    nonFocusUnitCount * input.non_focus_unit_penalty;
+  const spreadPenalty =
+    partSpreadPenalty +
+    skillSpreadPenalty +
+    nonFocusPartPenalty +
+    nonFocusUnitPenalty;
 
   return {
-    score: roundToTwo(score),
+    score: roundToTwo(gainScore + focusScore + timeScore - spreadPenalty),
+    focus_score: roundToTwo(focusScore),
     time_score: roundToTwo(timeScore),
-    skill_count_score: roundToTwo(skillCountScore),
-    boundary_score: roundToTwo(boundaryScore),
-    cycle_minutes: cycleMinutes,
-    focus_skill_count: focusSkillKeys.length,
-    next_skill_overlap_ratio: roundToTwo(nextSkillOverlapRatio),
+    spread_penalty: roundToTwo(spreadPenalty),
+    skill_keys: skillKeys,
+    part_types: partTypes,
   };
 };
 
-export const cutLearningCycle = (input: {
-  route_units: PlannedRouteUnitV2[];
-  next_route_unit_index: number;
-  config?: Partial<CycleCutConfigV2>;
-}): CutLearningCycleResultV2 | null => {
-  const config = mergeCycleCutConfig(input.config);
-  const startIndex = input.next_route_unit_index;
-  if (startIndex >= input.route_units.length) return null;
+type BeamSearchInternalState = BeamSearchCycleStateV2 & {
+  selected_counts_by_part: Map<number, number>;
+};
 
-  const cycleUnits: PlannedRouteUnitV2[] = [];
-  let closeScoreDetail: CloseCycleScoreDetailV2 = {
-    score: 0,
-    time_score: 0,
-    skill_count_score: 0,
-    boundary_score: 0,
-    cycle_minutes: 0,
-    focus_skill_count: 0,
-    next_skill_overlap_ratio: 0,
-  };
-
-  /*
-   * Tầng C chỉ cắt route_units đã có thành learning cycle.
-   * Hàm luôn lấy nguyên LessonManager route unit, không cắt giữa một unit và không tạo mini/full test thật.
-   */
-  for (let index = startIndex; index < input.route_units.length; index += 1) {
-    const currentUnit = input.route_units[index];
-    const currentMinutes = sumPlannedMinutes(cycleUnits);
-    const nextUnitAfterCurrent = input.route_units[index + 1] ?? null;
-
-    if (
-      cycleUnits.length > 0 &&
-      currentMinutes + currentUnit.planned_minutes > config.max_cycle_minutes
-    ) {
-      break;
-    }
-
-    cycleUnits.push(currentUnit);
-    closeScoreDetail = calculateCloseCycleScore({
-      cycle_units: cycleUnits,
-      next_unit: nextUnitAfterCurrent,
-      config,
-    });
-
-    const cycleMinutes = closeScoreDetail.cycle_minutes;
-    const hasReachedRouteEnd = !nextUnitAfterCurrent;
-
-    if (hasReachedRouteEnd) break;
-    if (cycleMinutes < config.min_cycle_minutes) continue;
-    if (
-      cycleMinutes + nextUnitAfterCurrent.planned_minutes >
-      config.max_cycle_minutes
-    ) {
-      break;
-    }
-    if (closeScoreDetail.score >= config.close_score_threshold) break;
+const toBeamSearchState = (
+  selectedRoadmapUnits: PlannedRouteUnitV2[],
+  selectedCountsByPart: Map<number, number>,
+  input: {
+    focus_part_types: number[];
+    ideal_learning_minutes: number;
+    max_focus_part_types: number;
+    max_focus_skill_keys: number;
+    max_non_focus_part_types: number;
+    non_focus_part_penalty: number;
+    non_focus_unit_penalty: number;
   }
-
-  const endIndex = startIndex + cycleUnits.length - 1;
+): BeamSearchInternalState => {
+  const orderedUnits = selectedRoadmapUnits.map((unit, index) => ({
+    ...unit,
+    order: index,
+  }));
+  const scoreDetail = scoreBeamSearchState({
+    selectedRoadmapUnits: orderedUnits,
+    focus_part_types: input.focus_part_types,
+    ideal_learning_minutes: input.ideal_learning_minutes,
+    max_focus_part_types: input.max_focus_part_types,
+    max_focus_skill_keys: input.max_focus_skill_keys,
+    max_non_focus_part_types: input.max_non_focus_part_types,
+    non_focus_part_penalty: input.non_focus_part_penalty,
+    non_focus_unit_penalty: input.non_focus_unit_penalty,
+  });
 
   return {
-    route_units: cycleUnits,
-    route_unit_start_index: startIndex,
-    route_unit_end_index: endIndex,
-    next_route_unit_index: endIndex + 1,
-    close_score_detail: closeScoreDetail,
+    selected_roadmap_units: orderedUnits,
+    total_minutes: sumPlannedMinutes(orderedUnits),
+    estimated_gain: roundToTwo(
+      orderedUnits.reduce((sum, unit) => sum + unit.estimated_gain, 0)
+    ),
+    ...scoreDetail,
+    selected_counts_by_part: selectedCountsByPart,
   };
 };
 
-export const buildNextCyclePlan = (
-  input: BuildNextCyclePlanInputV2
-): NextCyclePlanV2 => {
-  const config = mergeCycleCutConfig(input.config);
-
-  if (input.next_route_unit_index >= input.route_units.length) {
-    logLearningPathV2DebugSafe("layer4.next_cycle_plan", {
-      stage: "layer4",
-      plan_type: "route_completed",
-      route_units_count: input.route_units.length,
-      next_route_unit_index: input.next_route_unit_index,
-      mini_tests_completed_since_last_full_test:
-        input.mini_tests_completed_since_last_full_test,
-      reason_code: "cursor_after_route_end",
-    });
-
-    return {
-      plan_type: "route_completed",
-      next_route_unit_index: input.next_route_unit_index,
-      route_units: [],
-      assessment: null,
-      reason: "Route hiện tại đã hết bài học để tạo learning cycle.",
-    };
+const compareBeamSearchStates = (
+  left: BeamSearchInternalState,
+  right: BeamSearchInternalState
+): number => {
+  if (left.score !== right.score) return right.score - left.score;
+  if (left.total_minutes !== right.total_minutes) {
+    return right.total_minutes - left.total_minutes;
   }
+  return left.selected_roadmap_units
+    .map((unit) => unit.lesson_manager_id)
+    .join("|")
+    .localeCompare(
+      right.selected_roadmap_units.map((unit) => unit.lesson_manager_id).join("|")
+    );
+};
 
-  const shouldUseFullTest =
-    input.mini_tests_completed_since_last_full_test >= 3;
+const beamSearchStateKey = (state: BeamSearchInternalState): string =>
+  state.selected_roadmap_units
+    .map((unit) => unit.lesson_manager_id)
+    .join("|");
 
+/*
+ * Beam Search tạo cycle theo rolling horizon: hệ thống chỉ chọn cycle kế tiếp
+ * từ 7 Part roadmap hiện tại. Không tạo lịch cố định cho toàn bộ khóa học,
+ * vì sau mini/full test UserSkill và strategy có thể thay đổi.
+ */
+export const buildNextCycleByBeamSearch = (
+  input: BuildNextCycleByBeamSearchInputV2
+): NextCyclePlanV2 => {
+  const config = mergeBeamSearchConfig(input.config);
+  const shouldUseFullTest = input.mini_tests_completed_since_last_full_test >= 3;
   const assessmentEstimatedMinutes = shouldUseFullTest
     ? config.full_test_estimated_minutes
     : config.mini_test_estimated_minutes;
-
-  /*
-   * Các mốc cycle config là tổng thời gian cycle = learning + assessment.
-   * Vì mini/full test cũng tốn thời gian học của user, Layer 4 phải trừ assessment
-   * trước khi cắt route_units learning.
-   *
-   * Ví dụ max_cycle_minutes = 1500:
-   * - mini_test 100p -> learning max = 1400p
-   * - full_test 200p -> learning max = 1300p
-   */
-  const learningOnlyConfig: CycleCutConfigV2 = {
-    ...config,
-    min_cycle_minutes: Math.max(
-      240,
-      config.min_cycle_minutes - assessmentEstimatedMinutes
-    ),
-    ideal_cycle_minutes: Math.max(
-      360,
-      config.ideal_cycle_minutes - assessmentEstimatedMinutes
-    ),
-    max_cycle_minutes: Math.max(
-      480,
-      config.max_cycle_minutes - assessmentEstimatedMinutes
-    ),
+  const learningConfig = {
+    min: Math.max(240, config.min_learning_minutes - assessmentEstimatedMinutes),
+    ideal: Math.max(360, config.ideal_learning_minutes - assessmentEstimatedMinutes),
+    max: Math.max(480, config.max_learning_minutes - assessmentEstimatedMinutes),
   };
+  const partRoadmaps = [...input.part_roadmaps].sort(
+    (a, b) => a.part_type - b.part_type
+  );
+  const hasAvailableUnit = partRoadmaps.some(
+    (roadmap) => roadmap.cursor_index < roadmap.units.length
+  );
 
-  const cutResult = cutLearningCycle({
-    route_units: input.route_units,
-    next_route_unit_index: input.next_route_unit_index,
-    config: learningOnlyConfig,
-  });
-
-  if (!cutResult) {
-    logLearningPathV2DebugSafe("layer4.next_cycle_plan", {
-      stage: "layer4",
-      plan_type: "route_completed",
-      route_units_count: input.route_units.length,
-      next_route_unit_index: input.next_route_unit_index,
-      mini_tests_completed_since_last_full_test:
-        input.mini_tests_completed_since_last_full_test,
-      reason_code: "cut_result_empty",
-    });
-
+  if (!hasAvailableUnit) {
     return {
       plan_type: "route_completed",
-      next_route_unit_index: input.next_route_unit_index,
-      route_units: [],
+      selected_roadmap_units: [],
       assessment: null,
-      reason: "Route hiện tại đã hết bài học để tạo learning cycle.",
+      reason: "Tất cả Part roadmap đã hết bài học để tạo cycle.",
     };
   }
 
-  const focusSkillKeys = getCycleFocusSkillKeys(cutResult.route_units);
-  const focusPartTypes = getCycleFocusPartTypes(cutResult.route_units);
-  const estimatedLearningMinutes = sumPlannedMinutes(cutResult.route_units);
+  let candidateCount = 0;
+  let states: BeamSearchInternalState[] = [
+    toBeamSearchState([], new Map(), {
+      focus_part_types: input.focus_part_types,
+      ideal_learning_minutes: learningConfig.ideal,
+      max_focus_part_types: config.max_focus_part_types,
+      max_focus_skill_keys: config.max_focus_skill_keys,
+      max_non_focus_part_types: config.max_non_focus_part_types,
+      non_focus_part_penalty: config.non_focus_part_penalty,
+      non_focus_unit_penalty: config.non_focus_unit_penalty,
+    }),
+  ];
+  const completedStates: BeamSearchInternalState[] = [];
+  const completedStateKeys = new Set<string>();
+  const collectCompletedState = (state: BeamSearchInternalState): void => {
+    if (state.selected_roadmap_units.length === 0) return;
 
-  logLearningPathV2DebugSafe("layer4.next_cycle_plan", {
+    const key = beamSearchStateKey(state);
+    if (completedStateKeys.has(key)) return;
+
+    completedStateKeys.add(key);
+    completedStates.push(state);
+  };
+
+  for (let step = 0; step < config.max_expansion_steps; step += 1) {
+    const expanded: BeamSearchInternalState[] = [];
+
+    for (const state of states) {
+      /*
+       * Một state đã đủ thời lượng và focus tốt có thể là cycle tốt nhất.
+       * Vì vậy Beam Search phải giữ lại các state trung gian như terminal candidates,
+       * không được bắt buộc mở rộng đến khi hết bước hoặc hết candidate.
+       */
+      collectCompletedState(state);
+
+      const candidates = getNextCandidatesFromRoadmaps({
+        part_roadmaps: partRoadmaps,
+        selected_counts_by_part: state.selected_counts_by_part,
+      });
+
+      for (const candidate of candidates) {
+        const nextMinutes = state.total_minutes + candidate.planned_minutes;
+        if (
+          state.selected_roadmap_units.length > 0 &&
+          nextMinutes > learningConfig.max
+        ) {
+          continue;
+        }
+        const nextPartTypes = new Set([
+          ...state.part_types,
+          candidate.part_type,
+        ]);
+        const wouldExceedPartLimit =
+          nextPartTypes.size > config.max_focus_part_types;
+        if (
+          wouldExceedPartLimit &&
+          state.selected_roadmap_units.length > 0
+        ) {
+          continue;
+        }
+
+        const nextCounts = cloneSelectedCountsByPart(state.selected_counts_by_part);
+        nextCounts.set(
+          candidate.part_type,
+          (nextCounts.get(candidate.part_type) ?? 0) + 1
+        );
+        expanded.push(
+          toBeamSearchState(
+            [...state.selected_roadmap_units, candidate],
+            nextCounts,
+            {
+              focus_part_types: input.focus_part_types,
+              ideal_learning_minutes: learningConfig.ideal,
+              max_focus_part_types: config.max_focus_part_types,
+              max_focus_skill_keys: config.max_focus_skill_keys,
+              max_non_focus_part_types: config.max_non_focus_part_types,
+              non_focus_part_penalty: config.non_focus_part_penalty,
+              non_focus_unit_penalty: config.non_focus_unit_penalty,
+            }
+          )
+        );
+        candidateCount += 1;
+      }
+    }
+
+    if (expanded.length === 0) break;
+    expanded.forEach(collectCompletedState);
+    states = expanded.sort(compareBeamSearchStates).slice(0, config.beam_width);
+  }
+
+  const candidateFinalStates =
+    completedStates.length > 0
+      ? completedStates
+      : states.filter((state) => state.selected_roadmap_units.length > 0);
+  const validStates = candidateFinalStates.filter(
+    (state) => state.total_minutes >= learningConfig.min
+  );
+  const best = [...(validStates.length > 0 ? validStates : candidateFinalStates)].sort(
+    compareBeamSearchStates
+  )[0];
+
+  if (!best) {
+    return {
+      plan_type: "route_completed",
+      selected_roadmap_units: [],
+      assessment: null,
+      reason: "Không còn unit khả dụng trong các Part roadmap để tạo cycle.",
+    };
+  }
+
+  const selectedRoadmapPositions = partRoadmaps
+    .map((roadmap) => {
+      const selectedCount = best.selected_counts_by_part.get(roadmap.part_type) ?? 0;
+      return {
+        part_type: roadmap.part_type,
+        from_cursor_index: roadmap.cursor_index,
+        to_cursor_index: roadmap.cursor_index + selectedCount - 1,
+        selected_count: selectedCount,
+      };
+    })
+    .filter((item) => item.selected_count > 0);
+  const selectedSkillKeys = best.skill_keys.slice(0, config.max_focus_skill_keys);
+  const selectedPartTypes = best.part_types.slice(0, config.max_focus_part_types);
+
+  logLearningPathV2DebugSafe("layer4.beam_search_cycle", {
     stage: "layer4",
-    plan_type: "learning_cycle",
-    route_units_total_count: input.route_units.length,
-    cycle_route_units_count: cutResult.route_units.length,
-    route_unit_start_index: cutResult.route_unit_start_index,
-    route_unit_end_index: cutResult.route_unit_end_index,
-    next_route_unit_index: cutResult.next_route_unit_index,
-    estimated_learning_minutes: estimatedLearningMinutes,
-    assessment_type: shouldUseFullTest ? "full_test" : "mini_test",
-    assessment_estimated_minutes: shouldUseFullTest
-      ? config.full_test_estimated_minutes
-      : config.mini_test_estimated_minutes,
-    focus_part_types: focusPartTypes,
-    focus_skill_keys_sample: focusSkillKeys.slice(0, 10),
-    close_score_detail: cutResult.close_score_detail,
-    route_units_sample: cutResult.route_units.slice(0, 5).map((unit) => ({
-      lesson_manager_id: unit.lesson_manager_id,
-      part_type: unit.part_type,
-      unit_type: unit.unit_type,
-      planned_minutes: unit.planned_minutes,
-      order: unit.order,
-    })),
+    strategy: input.strategy,
+    scenario: input.scenario,
+    focus_part_types: input.focus_part_types,
+    selected_part_types: selectedPartTypes,
+    selected_skill_keys_sample: selectedSkillKeys.slice(0, 10),
+    selected_roadmap_units_count: best.selected_roadmap_units.length,
+    estimated_learning_minutes: best.total_minutes,
+    selected_score: best.score,
+    candidate_count: candidateCount,
+    selected_roadmap_positions: selectedRoadmapPositions,
   });
 
   return {
     plan_type: "learning_cycle",
-    route_unit_start_index: cutResult.route_unit_start_index,
-    route_unit_end_index: cutResult.route_unit_end_index,
-    next_route_unit_index: cutResult.next_route_unit_index,
-    route_units: cutResult.route_units,
-    focus_skill_keys: focusSkillKeys,
-    focus_part_types: focusPartTypes,
-    estimated_learning_minutes: estimatedLearningMinutes,
+    selected_roadmap_units: best.selected_roadmap_units.map((unit, index) => ({
+      ...unit,
+      order: index,
+    })),
+    selected_roadmap_positions: selectedRoadmapPositions,
+    focus_skill_keys: selectedSkillKeys,
+    focus_part_types: selectedPartTypes,
+    estimated_learning_minutes: best.total_minutes,
     assessment: shouldUseFullTest
       ? {
           type: "full_test",
@@ -1135,9 +1100,15 @@ export const buildNextCyclePlan = (
       : {
           type: "mini_test",
           estimated_minutes: config.mini_test_estimated_minutes,
-          focus_skill_keys: focusSkillKeys,
-          focus_part_types: focusPartTypes,
+          focus_skill_keys: selectedSkillKeys,
+          focus_part_types: selectedPartTypes,
         },
+    beam_search_debug: {
+      selected_score: best.score,
+      candidate_count: candidateCount,
+      reason:
+        "Beam Search chọn cycle từ 7 Part roadmap theo focus, gain, thời lượng và độ tập trung.",
+    },
   };
 };
 
@@ -1150,6 +1121,22 @@ const groupNodesByPart = (
     return groups;
   }, {});
 
+const mapPartPathsToRoadmaps = (
+  partPaths: OptimizedPartPathV2[]
+): LearningPathStrategyPartRoadmapV2[] =>
+  partPaths
+    .map((path) => ({
+      part_type: path.part_type,
+      cursor_index: 0,
+      target_minutes: path.target_minutes,
+      estimated_gain: path.estimated_gain,
+      reaches_target: path.reaches_target,
+      units: path.nodes.map((unit, index) => ({
+        ...unit,
+        order: index,
+      })),
+    }))
+    .sort((a, b) => a.part_type - b.part_type);
 const getSummaryReasons = (
   strategy: LearningPathStrategyV2
 ): string[] => {
@@ -1174,10 +1161,8 @@ export const buildStrategyRoutePlan = (
     part_abilities: input.part_abilities,
   });
   const nodesByPart = groupNodesByPart(input.lesson_manager_nodes);
-  const targetMinutesByPart: Record<number, number> = {};
 
   const partPaths = allocations.map((allocation) => {
-    targetMinutesByPart[allocation.part_type] = allocation.target_minutes;
     return optimizePartPath({
       part_type: allocation.part_type,
       part_budget_minutes: allocation.target_minutes,
@@ -1191,23 +1176,24 @@ export const buildStrategyRoutePlan = (
     });
   });
 
-  const routeUnits = mergePartPathsToRoute({
-    part_paths: partPaths,
-    target_minutes_by_part: targetMinutesByPart,
-    total_available_minutes: input.total_available_minutes,
-    part_abilities: input.part_abilities,
-  }).map((unit, index) => ({ ...unit, order: index }));
+  const partRoadmaps = mapPartPathsToRoadmaps(partPaths);
+  const allRoadmapUnits = partRoadmaps.flatMap((roadmap) => roadmap.units);
   const focusPartTypes = allocations
     .filter((allocation) => allocation.bucket === "weak")
     .map((allocation) => allocation.part_type)
     .sort((a, b) => a - b);
+  const focusPartTypeSet = new Set(focusPartTypes);
   const focusSkillKeys = Array.from(
     new Set(
-      routeUnits.flatMap((unit) =>
-        normalizeToeicSkillTags(unit.target_tags, unit.part_type).map(
-          (skill) => skill.key
+      partRoadmaps
+        .filter((roadmap) => focusPartTypeSet.has(roadmap.part_type))
+        .flatMap((roadmap) =>
+          roadmap.units.flatMap((unit) =>
+            normalizeToeicSkillTags(unit.target_tags, unit.part_type).map(
+              (skill) => skill.key
+            )
+          )
         )
-      )
     )
   );
 
@@ -1215,24 +1201,24 @@ export const buildStrategyRoutePlan = (
     (path) => path.reaches_target
   ).length;
 
-  /*
-   * buildStrategyRoutePlan chỉ tạo route tổng dạng snapshot.
-   * Checkpoint này không tạo mini/full test, không persist StrategyOption, không tạo WeekStudy/DayStudy.
+    /*
+   * buildStrategyRoutePlan chỉ tạo strategy snapshot gồm 7 Part roadmaps.
+   * Đây là định hướng dài hạn theo từng Part, không phải một route tổng tuyến tính.
    */
   const output: BuildStrategyRoutePlanOutputV2 = {
     strategy: input.strategy,
     scenario: input.scenario,
-    estimated_total_minutes: routeUnits.reduce(
+    estimated_total_minutes: allRoadmapUnits.reduce(
       (sum, unit) => sum + unit.planned_minutes,
       0
     ),
     estimated_gain: roundToTwo(
-      routeUnits.reduce((sum, unit) => sum + unit.estimated_gain, 0)
+      allRoadmapUnits.reduce((sum, unit) => sum + unit.estimated_gain, 0)
     ),
     reaches_target: reachedTargetPartCount === 7,
     focus_part_types: focusPartTypes,
     focus_skill_keys: focusSkillKeys,
-    route_units: routeUnits,
+    part_roadmaps: partRoadmaps,
     summary_reasons: getSummaryReasons(input.strategy),
     ability_highlights: allocations.map((allocation) => ({
       part_type: allocation.part_type,
@@ -1242,7 +1228,7 @@ export const buildStrategyRoutePlan = (
     })),
   };
 
-  logLearningPathV2DebugSafe("layer4.route_units", {
+  logLearningPathV2DebugSafe("layer4.selected_roadmap_units", {
     stage: "layer4",
     strategy: input.strategy,
     scenario: input.scenario,
@@ -1250,14 +1236,15 @@ export const buildStrategyRoutePlan = (
     total_available_minutes: input.total_available_minutes,
     lesson_manager_nodes_count: input.lesson_manager_nodes.length,
     part_paths_count: partPaths.length,
-    route_units_count: output.route_units.length,
+    part_roadmaps_count: output.part_roadmaps.length,
+    selected_roadmap_units_count: allRoadmapUnits.length,
     estimated_total_minutes: output.estimated_total_minutes,
     estimated_gain: output.estimated_gain,
     reaches_target: output.reaches_target,
     focus_part_types: output.focus_part_types,
     focus_skill_keys_sample: output.focus_skill_keys.slice(0, 10),
     ability_highlights: output.ability_highlights,
-    route_units_sample: output.route_units.slice(0, 5).map((unit) => ({
+    selected_roadmap_units_sample: allRoadmapUnits.slice(0, 5).map((unit) => ({
       lesson_manager_id: unit.lesson_manager_id,
       part_type: unit.part_type,
       unit_type: unit.unit_type,
@@ -1269,3 +1256,14 @@ export const buildStrategyRoutePlan = (
 
   return output;
 };
+
+
+
+
+
+
+
+
+
+
+

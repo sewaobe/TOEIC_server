@@ -1,4 +1,4 @@
-import { Schema, model, Document, Types } from "mongoose";
+﻿import { Schema, model, Document, Types } from "mongoose";
 import { WeekStudyStatus } from "./enums/WeekStudyStatus";
 
 export interface IWeekStudy extends Document {
@@ -39,22 +39,10 @@ export interface IWeekStudy extends Document {
    * Field này giúp scheduler/debug biết cycle đang nhắm vào Part nào.
    */
   focus_part_types: number[];
-
   /**
- * Strategy option đang được dùng để tạo cycle này.
- * Từ field này + route_unit_start_index/end_index có thể trace lại route_units gốc.
- */
+   * Strategy option đang được dùng để tạo cycle này.
+   */
   learning_path_strategy_option_id?: Types.ObjectId | null;
-
-  /**
-   * Index bắt đầu của đoạn route_units được cắt cho cycle này.
-   */
-  route_unit_start_index?: number | null;
-
-  /**
-   * Index kết thúc, inclusive, của đoạn route_units được cắt cho cycle này.
-   */
-  route_unit_end_index?: number | null;
 
   /**
    * Assessment cuối cycle.
@@ -133,18 +121,6 @@ const WeekStudySchema = new Schema<IWeekStudy>(
       index: true,
     },
 
-    route_unit_start_index: {
-      type: Number,
-      default: null,
-      min: 0,
-    },
-
-    route_unit_end_index: {
-      type: Number,
-      default: null,
-      min: 0,
-    },
-
     assessment_type: {
       type: String,
       enum: ["mini_test", "full_test"],
@@ -164,3 +140,5 @@ const WeekStudySchema = new Schema<IWeekStudy>(
 );
 
 export const WeekStudy = model<IWeekStudy>("WeekStudy", WeekStudySchema);
+
+

@@ -1,23 +1,27 @@
-// src/services/day_study.service.ts
+﻿// src/services/day_study.service.ts
 import { Types } from "mongoose";
 import {
   DayStudy,
   IDayStudy,
   LearningPath,
-  LearningPathStrategyOption,
   LessonManager,
   WeekStudy,
 } from "../models";
-import type { IRouteUnitSnapshot } from "../models/learning_path_strategy_option.model";
 import type { ILessonManager, RecommendedActivity } from "../models/lesson_manager.model";
 import type { IWeekStudy } from "../models/week_study.model";
 import { SessionType } from "../models/enums/SessionType";
 import { WeekStudyStatus } from "../models/enums/WeekStudyStatus";
+import type { PlannedRouteUnitV2 } from "../types/learning_path_v2";
 
 type CreateDayStudiesForWeekStudyCycleInput = {
   user_id: string;
   learning_path_id: string;
   week_study_id: string;
+  /**
+     * Các LessonManager unit đã được Beam Search chọn cho cycle hiện tại.
+     * DayStudy không đọc roadmap dài hạn và không phụ thuộc route tuyến tính cũ.
+     */
+  cycle_units: PlannedRouteUnitV2[];
 };
 
 type CreateDayStudiesForWeekStudyCycleResult = {
@@ -26,7 +30,7 @@ type CreateDayStudiesForWeekStudyCycleResult = {
 };
 
 type PlannedActivityTask = {
-  route_unit_index: number;
+  selected_unit_order: number;
   lesson_manager_id: Types.ObjectId;
   lesson_manager_title: string;
   part_type: number;
@@ -42,6 +46,7 @@ type DayBucket = {
   items: PlannedActivityTask[];
   plannedMinutes: number;
 };
+
 
 export const mapActivityTypeToSessionType = (
   activityType: RecommendedActivity["activity_type"]
@@ -63,21 +68,19 @@ export const mapActivityTypeToSessionType = (
 };
 
 export const buildPlannedActivityTasks = (input: {
-  route_units: IRouteUnitSnapshot[];
-  route_unit_start_index: number;
+  cycle_units: PlannedRouteUnitV2[];
   lesson_manager_by_id: Map<string, ILessonManager>;
 }): PlannedActivityTask[] => {
   const tasks: PlannedActivityTask[] = [];
 
-  input.route_units.forEach((routeUnit, offset) => {
-    const lessonManagerId = routeUnit.lesson_manager_id.toString();
+  input.cycle_units.forEach((cycleUnit, index) => {
+    const lessonManagerId = cycleUnit.lesson_manager_id.toString();
     const lessonManager = input.lesson_manager_by_id.get(lessonManagerId);
 
     if (!lessonManager) {
-      throw new Error(`Không tìm thấy LessonManager trong route unit: ${lessonManagerId}`);
+      throw new Error(`Không tìm thấy LessonManager trong selected roadmap unit: ${lessonManagerId}`);
     }
 
-    const absoluteRouteUnitIndex = input.route_unit_start_index + offset;
     const activities = [...(lessonManager.recommended_activity_order ?? [])].sort(
       (left, right) => (left.order ?? 0) - (right.order ?? 0)
     );
@@ -88,14 +91,14 @@ export const buildPlannedActivityTasks = (input: {
        * chưa có recommended_activity_order.
        */
       tasks.push({
-        route_unit_index: absoluteRouteUnitIndex,
-        lesson_manager_id: routeUnit.lesson_manager_id,
-        lesson_manager_title: routeUnit.title,
-        part_type: routeUnit.part_type,
-        scheduler_reason: routeUnit.reason ?? "",
+        selected_unit_order: index,
+        lesson_manager_id: new Types.ObjectId(cycleUnit.lesson_manager_id),
+        lesson_manager_title: cycleUnit.title,
+        part_type: cycleUnit.part_type,
+        scheduler_reason: cycleUnit.reason ?? "",
         kind: SessionType.LESSON,
         estimated_minutes:
-          routeUnit.planned_minutes || lessonManager.planned_completion_time || 0,
+          cycleUnit.planned_minutes || lessonManager.planned_completion_time || 0,
         is_required: true,
         order: 0,
       });
@@ -104,11 +107,11 @@ export const buildPlannedActivityTasks = (input: {
 
     activities.forEach((activity, activityIndex) => {
       tasks.push({
-        route_unit_index: absoluteRouteUnitIndex,
-        lesson_manager_id: routeUnit.lesson_manager_id,
-        lesson_manager_title: routeUnit.title,
-        part_type: routeUnit.part_type,
-        scheduler_reason: routeUnit.reason ?? "",
+        selected_unit_order: index,
+        lesson_manager_id: new Types.ObjectId(cycleUnit.lesson_manager_id),
+        lesson_manager_title: cycleUnit.title,
+        part_type: cycleUnit.part_type,
+        scheduler_reason: cycleUnit.reason ?? "",
         kind: mapActivityTypeToSessionType(activity.activity_type),
         activity_id: activity.activity_id,
         estimated_minutes: activity.estimated_minutes,
@@ -164,8 +167,6 @@ const buildLearningDayPayload = (input: {
   stage_no: number;
   bucket: DayBucket;
 }) => {
-  const dayStatus =
-    input.stage_no === 1 ? WeekStudyStatus.IN_PROGRESS : WeekStudyStatus.LOCK;
   const groupedTasks = new Map<string, PlannedActivityTask[]>();
   const groupOrder: string[] = [];
 
@@ -285,7 +286,7 @@ const buildAssessmentDayPayload = (input: {
 };
 
 /**
- * Lấy chi tiết DayStudy + populate lessons
+ * Lấy chi tiết DayStudy.
  */
 export const getDayStudyByIdService = async (dayId: string) => {
   const day = await DayStudy.findById(dayId).select("accuracy_overall sessions -_id");
@@ -321,15 +322,6 @@ export const createDayStudiesForWeekStudyCycle = async (
   if (weekStudy.days && weekStudy.days.length > 0) {
     throw new Error("WeekStudy đã có DayStudy, không tạo lại.");
   }
-  if (!weekStudy.learning_path_strategy_option_id) {
-    throw new Error("WeekStudy chưa có strategy option để tạo DayStudy.");
-  }
-  if (
-    typeof weekStudy.route_unit_start_index !== "number" ||
-    typeof weekStudy.route_unit_end_index !== "number"
-  ) {
-    throw new Error("WeekStudy chưa có route unit range để tạo DayStudy.");
-  }
   if (
     !weekStudy.assessment_type ||
     !weekStudy.assessment_estimated_minutes ||
@@ -338,32 +330,10 @@ export const createDayStudiesForWeekStudyCycle = async (
     throw new Error("WeekStudy chưa có assessment cuối cycle để tạo DayStudy.");
   }
 
-  const strategyOption = await LearningPathStrategyOption.findOne({
-    _id: weekStudy.learning_path_strategy_option_id,
-    user_id: input.user_id,
-    learning_path_id: input.learning_path_id,
-  });
-
-  if (!strategyOption) {
-    throw new Error("Không tìm thấy strategy option của WeekStudy.");
-  }
-
-  const startIndex = weekStudy.route_unit_start_index;
-  const endIndex = weekStudy.route_unit_end_index;
-  const routeUnits = strategyOption.route_units ?? [];
-
-  if (
-    startIndex < 0 ||
-    endIndex < 0 ||
-    startIndex > endIndex ||
-    startIndex >= routeUnits.length ||
-    endIndex >= routeUnits.length
-  ) {
-    throw new Error("Route unit range của WeekStudy không hợp lệ.");
-  }
-
-  const cycleRouteUnits = routeUnits.slice(startIndex, endIndex + 1);
-  const lessonManagerIds = cycleRouteUnits.map((unit) => unit.lesson_manager_id);
+  const cycleUnits = input.cycle_units;
+  const lessonManagerIds = cycleUnits.map(
+    (unit) => new Types.ObjectId(unit.lesson_manager_id)
+  );
   const lessonManagers = await LessonManager.find({
     _id: { $in: lessonManagerIds },
   });
@@ -375,8 +345,7 @@ export const createDayStudiesForWeekStudyCycle = async (
   );
 
   const tasks = buildPlannedActivityTasks({
-    route_units: cycleRouteUnits,
-    route_unit_start_index: startIndex,
+    cycle_units: cycleUnits,
     lesson_manager_by_id: lessonManagerById,
   });
   const dayBuckets = packActivityTasksIntoDayBuckets(
@@ -400,9 +369,9 @@ export const createDayStudiesForWeekStudyCycle = async (
   });
 
   /*
-   * DayStudy service không gọi Layer 4 và không đổi route cursor. Layer 4 đã cắt cycle;
-   * service này chỉ persist lịch học theo stage và assessment metadata.
-   */
+ * DayStudy chỉ nhận các LessonManager đã được Beam Search chọn cho cycle hiện tại.
+ * File này không biết và không phụ thuộc vào route tuyến tính cũ.
+ */
   const createdDayStudies = await DayStudy.create([
     ...learningDayPayloads,
     assessmentPayload,
@@ -500,3 +469,8 @@ export async function completeActivityAndUnlockNext(
   // Lưu lại thay đổi của ngày hiện tại
   return await currentDay.save();
 }
+
+
+
+
+

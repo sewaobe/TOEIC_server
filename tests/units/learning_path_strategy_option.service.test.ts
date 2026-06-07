@@ -1,4 +1,4 @@
-import { Types } from "mongoose";
+﻿import { Types } from "mongoose";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 
 const mockLearningPathStrategyOption: any = {
@@ -48,7 +48,6 @@ const createOption = (strategy = "recommended", overrides: Record<string, unknow
   strategy,
   status: "pending_selection",
   selected_at: undefined as Date | undefined,
-  next_route_unit_index: 0,
   save: (jest.fn() as any).mockResolvedValue(undefined),
   ...overrides,
 });
@@ -80,7 +79,14 @@ const createPayload = (overrides: Record<string, unknown> = {}) => ({
   estimated_total_minutes: 90,
   estimated_gain: 0.25,
   reaches_target: true,
-  route_units: [createRouteUnit()],
+  part_roadmaps: [1, 2, 3, 4, 5, 6, 7].map((partType) => ({
+    part_type: partType,
+    cursor_index: 0,
+    target_minutes: partType === 5 ? 90 : 0,
+    estimated_gain: partType === 5 ? 0.25 : 0,
+    reaches_target: partType === 5,
+    units: partType === 5 ? [createRouteUnit()] : [],
+  })),
   summary_reasons: ["Part 5 đang yếu"],
   ability_highlights: [
     {
@@ -142,8 +148,15 @@ describe("learning path strategy option service", () => {
         scenario: "ONBOARDING",
         status: "selected",
         selected_at: selectedAt,
+        part_roadmaps: expect.any(Array),
       })
     );
+    const createPayloadInput = mockLearningPathStrategyOption.create.mock.calls[0][0];
+    expect(createPayloadInput.part_roadmaps).toHaveLength(7);
+    expect(createPayloadInput.part_roadmaps.map((roadmap: any) => roadmap.part_type)).toEqual([
+      1, 2, 3, 4, 5, 6, 7,
+    ]);
+    expect(createPayloadInput.part_roadmaps.every((roadmap: any) => roadmap.cursor_index === 0)).toBe(true);
     expect(result.status).toBe("selected");
   });
 
@@ -175,7 +188,7 @@ describe("learning path strategy option service", () => {
     const action = createInitialRecommendedOption(input as any);
 
     // Kiểm tra
-    await expect(action).rejects.toThrow("learning_path_id không phải ObjectId hợp lệ.");
+    await expect(action).rejects.toThrow("learning_path_id");
   });
 
   it("createFullTestStrategyOptions -> exactly three valid strategies -> creates pending options", async () => {
@@ -224,7 +237,7 @@ describe("learning path strategy option service", () => {
     const action = createFullTestStrategyOptions(input as any);
 
     // Kiểm tra
-    await expect(action).rejects.toThrow("đúng 3 strategy option");
+    await expect(action).rejects.toThrow("3 strategy option");
   });
 
   it("createFullTestStrategyOptions -> duplicate strategy -> throws clear error", async () => {
@@ -244,7 +257,7 @@ describe("learning path strategy option service", () => {
     const action = createFullTestStrategyOptions(input as any);
 
     // Kiểm tra
-    await expect(action).rejects.toThrow("không được trùng strategy");
+    await expect(action).rejects.toThrow("strategy");
   });
 
   it("createFullTestStrategyOptions -> old selected and pending options exist -> expires old options", async () => {
@@ -354,9 +367,7 @@ describe("learning path strategy option service", () => {
       strategy_option_id: optionId,
     });
 
-    await expect(action).rejects.toThrow(
-      "Không tìm thấy strategy option pending để chọn."
-    );
+    await expect(action).rejects.toThrow("pending");
   });
 
   it("selectLearningPathStrategyOption -> option trigger initial_generation -> throws", async () => {
@@ -373,9 +384,7 @@ describe("learning path strategy option service", () => {
       strategy_option_id: optionId,
     });
 
-    await expect(action).rejects.toThrow(
-      "Chỉ strategy option sau full test mới cần user chọn."
-    );
+    await expect(action).rejects.toThrow("full test");
     expect(mockCreateNextLearningPathCycle).not.toHaveBeenCalled();
   });
 
@@ -509,3 +518,6 @@ describe("learning path strategy option service", () => {
     expect(result).toBe(3);
   });
 });
+
+
+

@@ -1,4 +1,4 @@
-import { Schema, model, Document, Types } from "mongoose";
+﻿import { Schema, model, Document, Types } from "mongoose";
 import { PartType } from "./enums/PartType";
 import type {
   LessonManagerNodeRole,
@@ -26,7 +26,7 @@ export type LearningPathScenarioSnapshot =
   | "PRE_DEADLINE"
   | "BEHIND_SCHEDULE";
 
-export interface IRouteUnitSnapshot {
+export interface ILearningPathStrategyRoadmapUnit {
   lesson_manager_id: Types.ObjectId;
 
   /**
@@ -70,6 +70,15 @@ export interface IRouteUnitSnapshot {
    * Ví dụ: "Part 5 đang yếu", "Phù hợp target 600", "Core skill có gain cao".
    */
   reason?: string;
+}
+
+export interface ILearningPathStrategyPartRoadmap {
+  part_type: PartType;
+  cursor_index: number;
+  target_minutes: number;
+  estimated_gain: number;
+  reaches_target: boolean;
+  units: ILearningPathStrategyRoadmapUnit[];
 }
 
 export interface IStrategyAbilityHighlight {
@@ -138,11 +147,12 @@ export interface ILearningPathStrategyOption extends Document {
   estimated_gain: number;
   reaches_target: boolean;
 
-  /**
-   * Route tổng quát mà user có thể xem trước.
-   * Đây là snapshot path, không phải WeekStudy/DayStudy đã persist.
+    /**
+   * part_roadmaps là 7 roadmap riêng cho 7 TOEIC Part tại thời điểm tạo strategy.
+   * Đây là định hướng dài hạn theo từng Part, không phải lịch học tuyến tính cố định.
+   * Beam Search sẽ chọn cycle tiếp theo từ các roadmap này.
    */
-  route_units: IRouteUnitSnapshot[];
+  part_roadmaps: ILearningPathStrategyPartRoadmap[];
 
   /**
    * Lý do tổng quan cho option.
@@ -156,22 +166,13 @@ export interface ILearningPathStrategyOption extends Document {
    */
   ability_highlights: IStrategyAbilityHighlight[];
 
-  /**
-   * Index tiếp theo trong route_units mà Layer 4 tầng C sẽ dùng để tạo cycle mới.
-   * Field này được update ngay khi tạo WeekStudy/cycle thành công.
-   *
-   * Ví dụ:
-   * - 0: chưa cấp phát unit nào từ route.
-   * - 3: các route_units[0..2] đã được cấp phát vào cycle trước.
-   */
-  next_route_unit_index: number;
-
   selected_at?: Date;
   created_at: Date;
   updated_at?: Date;
 }
 
-const RouteUnitSnapshotSchema = new Schema<IRouteUnitSnapshot>(
+const LearningPathStrategyRoadmapUnitSchema =
+  new Schema<ILearningPathStrategyRoadmapUnit>(
   {
     lesson_manager_id: {
       type: Schema.Types.ObjectId,
@@ -241,8 +242,47 @@ const RouteUnitSnapshotSchema = new Schema<IRouteUnitSnapshot>(
       default: "",
     },
   },
-  { _id: false }
-);
+    { _id: false }
+  );
+
+const LearningPathStrategyPartRoadmapSchema =
+  new Schema<ILearningPathStrategyPartRoadmap>(
+    {
+      part_type: {
+        type: Number,
+        enum: Object.values(PartType).filter((value) => typeof value === "number"),
+        required: true,
+      },
+
+      cursor_index: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      target_minutes: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      estimated_gain: {
+        type: Number,
+        default: 0,
+      },
+
+      reaches_target: {
+        type: Boolean,
+        default: false,
+      },
+
+      units: {
+        type: [LearningPathStrategyRoadmapUnitSchema],
+        default: [],
+      },
+    },
+    { _id: false }
+  );
 
 const StrategyAbilityHighlightSchema = new Schema<IStrategyAbilityHighlight>(
   {
@@ -397,8 +437,8 @@ const LearningPathStrategyOptionSchema =
         default: false,
       },
 
-      route_units: {
-        type: [RouteUnitSnapshotSchema],
+      part_roadmaps: {
+        type: [LearningPathStrategyPartRoadmapSchema],
         default: [],
       },
 
@@ -414,12 +454,6 @@ const LearningPathStrategyOptionSchema =
 
       selected_at: {
         type: Date,
-      },
-      next_route_unit_index: {
-        type: Number,
-        required: true,
-        default: 0,
-        min: 0,
       },
     },
     {
@@ -467,3 +501,5 @@ export const LearningPathStrategyOption =
     "LearningPathStrategyOption",
     LearningPathStrategyOptionSchema
   );
+
+

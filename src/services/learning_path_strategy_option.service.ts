@@ -1,4 +1,4 @@
-import { Types } from "mongoose";
+﻿import { Types } from "mongoose";
 import {
   ILearningPathStrategyOption,
   LearningPathScenarioSnapshot,
@@ -16,7 +16,7 @@ import { createNextLearningPathCycle } from "./week_study.service";
 type StrategyAbilityStatus = "weak" | "medium" | "strong";
 type StrategyAbilityTrend = "improving" | "stable" | "declining";
 
-export type RouteUnitOptionInput = {
+export type RoadmapUnitOptionInput = {
   lesson_manager_id: string;
   title: string;
   part_type: number;
@@ -28,6 +28,15 @@ export type RouteUnitOptionInput = {
   planned_minutes: number;
   estimated_gain?: number;
   reason?: string;
+};
+
+export type PartRoadmapOptionInput = {
+  part_type: number;
+  cursor_index?: number;
+  target_minutes: number;
+  estimated_gain: number;
+  reaches_target: boolean;
+  units: RoadmapUnitOptionInput[];
 };
 
 export type StrategyAbilityHighlightInput = {
@@ -56,7 +65,7 @@ export type CreateStrategyOptionPayload = {
   estimated_total_minutes: number;
   estimated_gain: number;
   reaches_target: boolean;
-  route_units: RouteUnitOptionInput[];
+  part_roadmaps: PartRoadmapOptionInput[];
   summary_reasons: string[];
   ability_highlights: StrategyAbilityHighlightInput[];
   selected_at?: Date;
@@ -142,9 +151,12 @@ export const assertObjectId = (value: string, fieldName: string): void => {
   }
 };
 
-export const normalizeRouteUnits = (routeUnits: RouteUnitOptionInput[]) => {
+const normalizeRoadmapUnits = (
+  routeUnits: RoadmapUnitOptionInput[],
+  pathPrefix: string
+) => {
   if (!Array.isArray(routeUnits)) {
-    throw new Error("route_units phải là danh sách unit hợp lệ.");
+    throw new Error(`${pathPrefix} phai la danh sach unit hop le.`);
   }
 
   return routeUnits.map((unit, index) => {
@@ -152,11 +164,11 @@ export const normalizeRouteUnits = (routeUnits: RouteUnitOptionInput[]) => {
     const plannedMinutes = Number(unit.planned_minutes);
 
     if (!Number.isFinite(order)) {
-      throw new Error(`route_units[${index}].order phải là số hợp lệ.`);
+      throw new Error(`${pathPrefix}[${index}].order phai la so hop le.`);
     }
     if (!Number.isFinite(plannedMinutes) || plannedMinutes < 0) {
       throw new Error(
-        `route_units[${index}].planned_minutes phải là số không âm.`
+        `${pathPrefix}[${index}].planned_minutes phai la so khong am.`
       );
     }
 
@@ -164,13 +176,49 @@ export const normalizeRouteUnits = (routeUnits: RouteUnitOptionInput[]) => {
       ...unit,
       lesson_manager_id: toObjectId(
         unit.lesson_manager_id,
-        `route_units[${index}].lesson_manager_id`
+        `${pathPrefix}[${index}].lesson_manager_id`
       ),
       order,
       planned_minutes: plannedMinutes,
       target_tags: Array.isArray(unit.target_tags) ? unit.target_tags : [],
     };
   });
+};
+
+export const normalizePartRoadmaps = (
+  partRoadmaps: PartRoadmapOptionInput[]
+) => {
+  if (!Array.isArray(partRoadmaps)) {
+    throw new Error("part_roadmaps phai la danh sach roadmap hop le.");
+  }
+
+  return partRoadmaps
+    .map((roadmap, index) => {
+      const partType = Number(roadmap.part_type);
+      const cursorIndex = Number(roadmap.cursor_index ?? 0);
+
+      if (!Number.isInteger(partType) || partType < 1 || partType > 7) {
+        throw new Error(`part_roadmaps[${index}].part_type phai tu 1 den 7.`);
+      }
+
+      if (!Number.isInteger(cursorIndex) || cursorIndex < 0) {
+        throw new Error(`part_roadmaps[${index}].cursor_index phai khong am.`);
+      }
+
+      return {
+        ...roadmap,
+        part_type: partType,
+        cursor_index: cursorIndex,
+        target_minutes: Number(roadmap.target_minutes ?? 0),
+        estimated_gain: Number(roadmap.estimated_gain ?? 0),
+        reaches_target: Boolean(roadmap.reaches_target),
+        units: normalizeRoadmapUnits(
+          roadmap.units ?? [],
+          `part_roadmaps[${index}].units`
+        ),
+      };
+    })
+    .sort((a, b) => a.part_type - b.part_type);
 };
 
 export const sortOptionsByStrategy = <T extends { strategy: LearningPathStrategyType }>(
@@ -247,7 +295,7 @@ const buildCreatePayload = (
   estimated_total_minutes: input.estimated_total_minutes,
   estimated_gain: input.estimated_gain,
   reaches_target: input.reaches_target,
-  route_units: normalizeRouteUnits(input.route_units ?? []),
+  part_roadmaps: normalizePartRoadmaps(input.part_roadmaps ?? []),
   summary_reasons: input.summary_reasons ?? [],
   ability_highlights: input.ability_highlights ?? [],
   selected_at: overrides.selected_at,
@@ -415,7 +463,6 @@ export const selectLearningPathStrategyOption = async (
    */
   option.status = "selected";
   option.selected_at = now;
-  option.next_route_unit_index = option.next_route_unit_index ?? 0;
   await option.save();
 
   /*
@@ -482,3 +529,5 @@ export const expirePendingStrategyOptions = async (
   });
   return getModifiedCount(result);
 };
+
+

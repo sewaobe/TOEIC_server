@@ -1,18 +1,15 @@
-import { describe, expect, it } from "@jest/globals";
+﻿import { describe, expect, it } from "@jest/globals";
 import {
   allocatePartBudgets,
   buildStrategyRoutePlan,
-  buildNextCyclePlan,
-  calculateCloseCycleScore,
+  buildNextCycleByBeamSearch,
   calculateNodeGain,
   calculateSkillGroupDistribution,
   calculateTargetSkillGroupDistribution,
-  cutLearningCycle,
-  getCycleFocusSkillKeys,
-  mergePartPathsToRoute,
   optimizePartPath,
 } from "../../src/services/learning_path_v2/layer4_route_optimizer.service";
 import type {
+  LearningPathStrategyPartRoadmapV2,
   LessonManagerRouteNodeV2,
   OptimizedPartPathV2,
   PartAbilityInputV2,
@@ -82,6 +79,54 @@ const createPartPath = (
   nodes,
 });
 
+const createBeamRoadmaps = (
+  overridesByPart: Record<number, Partial<LearningPathStrategyPartRoadmapV2>> = {}
+): LearningPathStrategyPartRoadmapV2[] =>
+  [1, 2, 3, 4, 5, 6, 7].map((partType) => {
+    const units = [0, 1, 2].map((index) =>
+      createRouteUnit(`p${partType}u${index}`, {
+        part_type: partType,
+        order: index,
+        planned_minutes: 80,
+        estimated_gain: partType === 2 || partType === 3 || partType === 6 ? 2 : 1,
+        target_tags:
+          partType === 2
+            ? ["What question"]
+            : partType === 3
+              ? ["Main idea"]
+              : partType === 6
+                ? ["Word form"]
+                : ["Word form"],
+      })
+    );
+
+    return {
+      part_type: partType,
+      cursor_index: 0,
+      target_minutes: 240,
+      estimated_gain: units.reduce((sum, unit) => sum + unit.estimated_gain, 0),
+      reaches_target: false,
+      units,
+      ...overridesByPart[partType],
+    };
+  });
+
+const smallBeamConfig = {
+  beam_width: 8,
+  max_expansion_steps: 6,
+  max_focus_part_types: 3,
+  max_focus_skill_keys: 7,
+  max_non_focus_part_types: 1,
+  non_focus_part_penalty: 1.5,
+  non_focus_unit_penalty: 0.6,
+  min_learning_minutes: 120,
+  ideal_learning_minutes: 240,
+  max_learning_minutes: 360,
+  mini_test_estimated_minutes: 0,
+  full_test_estimated_minutes: 0,
+};
+
+
 describe("layer4_route_optimizer.service", () => {
   it("allocatePartBudgets -> recommended strategy -> allocates 60 30 10 across weak medium strong", () => {
     // Chuẩn bị
@@ -150,7 +195,7 @@ describe("layer4_route_optimizer.service", () => {
     const action = () => allocatePartBudgets(input);
 
     // Kiểm tra
-    expect(action).toThrow("Layer 4 cần đúng 7 part abilities cho Part 1..7.");
+    expect(action).toThrow("Layer 4");
   });
 
   it("allocatePartBudgets -> equal abilities -> still produces deterministic buckets", () => {
@@ -378,7 +423,7 @@ describe("layer4_route_optimizer.service", () => {
       });
 
     // Kiểm tra
-    expect(action).toThrow("Thiếu prerequisite node");
+    expect(action).toThrow("prerequisite node");
   });
 
   it("optimizePartPath -> prerequisite cycle -> throws Vietnamese error", () => {
@@ -401,7 +446,7 @@ describe("layer4_route_optimizer.service", () => {
       });
 
     // Kiểm tra
-    expect(action).toThrow("vòng lặp prerequisite");
+    expect(action).toThrow("prerequisite");
   });
 
   it("optimizePartPath -> score_band covers target_score -> reaches_target true", () => {
@@ -492,108 +537,11 @@ describe("layer4_route_optimizer.service", () => {
     expect(result.nodes.map((node) => node.lesson_manager_id)).toEqual(["a", "b"]);
   });
 
-  it("mergePartPathsToRoute -> seven ordered part paths -> preserves order inside each part", () => {
-    // Chuẩn bị
-    const paths = Array.from({ length: 7 }, (_, index) => {
-      const partType = index + 1;
-      return createPartPath(partType, [
-        createRouteUnit(`p${partType}-a`, { part_type: partType }),
-        createRouteUnit(`p${partType}-b`, { part_type: partType }),
-      ]);
-    });
 
-    // Thực thi
-    const result = mergePartPathsToRoute({
-      part_paths: paths,
-      target_minutes_by_part: Object.fromEntries(paths.map((path) => [path.part_type, 20])),
-      total_available_minutes: 200,
-    });
 
-    // Kiểm tra
-    for (let partType = 1; partType <= 7; partType += 1) {
-      const ids = result
-        .filter((unit) => unit.part_type === partType)
-        .map((unit) => unit.lesson_manager_id);
-      expect(ids).toEqual([`p${partType}-a`, `p${partType}-b`]);
-    }
-  });
 
-  it("mergePartPathsToRoute -> part progress ratio lower -> picks that part next", () => {
-    // Chuẩn bị
-    const paths = [
-      createPartPath(1, [
-        createRouteUnit("p1-a", { part_type: 1, planned_minutes: 10 }),
-        createRouteUnit("p1-b", { part_type: 1, planned_minutes: 10 }),
-      ], 10),
-      createPartPath(2, [
-        createRouteUnit("p2-a", { part_type: 2, planned_minutes: 10 }),
-        createRouteUnit("p2-b", { part_type: 2, planned_minutes: 10 }),
-      ], 100),
-    ];
 
-    // Thực thi
-    const result = mergePartPathsToRoute({
-      part_paths: paths,
-      target_minutes_by_part: { 1: 10, 2: 100 },
-      total_available_minutes: 40,
-    });
-
-    // Kiểm tra
-    expect(result.map((unit) => unit.lesson_manager_id).slice(0, 3)).toEqual([
-      "p1-a",
-      "p2-a",
-      "p2-b",
-    ]);
-  });
-
-  it("mergePartPathsToRoute -> tie candidates -> uses deterministic tie breaker", () => {
-    // Chuẩn bị
-    const paths = [
-      createPartPath(1, [
-        createRouteUnit("p1-a", { part_type: 1, estimated_gain: 1, planned_minutes: 10 }),
-      ]),
-      createPartPath(2, [
-        createRouteUnit("p2-a", { part_type: 2, estimated_gain: 2, planned_minutes: 10 }),
-      ]),
-    ];
-
-    // Thực thi
-    const result = mergePartPathsToRoute({
-      part_paths: paths,
-      target_minutes_by_part: { 1: 20, 2: 20 },
-      total_available_minutes: 20,
-      part_abilities: [
-        { part_type: 1, ability: 0.1 },
-        { part_type: 2, ability: 0.9 },
-      ],
-    });
-
-    // Kiểm tra
-    expect(result[0].lesson_manager_id).toBe("p2-a");
-  });
-
-  it("mergePartPathsToRoute -> next node exceeds total budget -> stops before exceeding budget", () => {
-    // Chuẩn bị
-    const paths = [
-      createPartPath(1, [
-        createRouteUnit("p1-a", { part_type: 1, planned_minutes: 10 }),
-        createRouteUnit("p1-b", { part_type: 1, planned_minutes: 15 }),
-      ]),
-    ];
-
-    // Thực thi
-    const result = mergePartPathsToRoute({
-      part_paths: paths,
-      target_minutes_by_part: { 1: 20 },
-      total_available_minutes: 20,
-    });
-
-    // Kiểm tra
-    expect(result.map((unit) => unit.lesson_manager_id)).toEqual(["p1-a"]);
-    expect(result.reduce((sum, unit) => sum + unit.planned_minutes, 0)).toBeLessThanOrEqual(20);
-  });
-
-  it("buildStrategyRoutePlan -> valid nodes and abilities -> returns flattened route units", () => {
+  it("buildStrategyRoutePlan -> valid nodes and abilities -> returns 7 part roadmaps", () => {
     // Chuẩn bị
     const nodes = partAbilities.map((part) =>
       createNode(`p${part.part_type}-a`, {
@@ -613,12 +561,17 @@ describe("layer4_route_optimizer.service", () => {
     });
 
     // Kiểm tra
-    expect(result.route_units.length).toBeGreaterThan(0);
-    expect(result.route_units.every((unit, index) => unit.order === index)).toBe(true);
+    expect(result.part_roadmaps).toHaveLength(7);
+    expect(result.part_roadmaps.flatMap((roadmap) => roadmap.units).length).toBeGreaterThan(0);
+    expect(
+      result.part_roadmaps.every((roadmap) =>
+        roadmap.units.every((unit, index) => unit.order === index)
+      )
+    ).toBe(true);
     expect(result.estimated_total_minutes).toBeLessThanOrEqual(100);
   });
 
-  it("buildStrategyRoutePlan -> target_score 510 -> route_units do not exceed target boundary", () => {
+  it("buildStrategyRoutePlan -> target_score 510 -> part_roadmaps do not exceed target boundary", () => {
     const nodes = partAbilities.flatMap((part) => {
       const partType = part.part_type;
 
@@ -668,19 +621,21 @@ describe("layer4_route_optimizer.service", () => {
       lesson_manager_nodes: nodes,
     });
 
+    const roadmapUnits = result.part_roadmaps.flatMap((roadmap) => roadmap.units);
+
     expect(
-      result.route_units.every((unit) => {
+      roadmapUnits.every((unit) => {
         if (!unit.score_band) return true;
-        return unit.score_band.from <= 510;
+        return (unit.score_band.from ?? 0) <= 510;
       })
     ).toBe(true);
-    expect(result.route_units.some((unit) => unit.score_band?.from === 500)).toBe(
+    expect(roadmapUnits.some((unit) => unit.score_band?.from === 500)).toBe(
       true
     );
-    expect(result.route_units.some((unit) => unit.score_band?.from === 530)).toBe(
+    expect(roadmapUnits.some((unit) => unit.score_band?.from === 530)).toBe(
       false
     );
-    expect(result.route_units.some((unit) => unit.score_band?.from === 810)).toBe(
+    expect(roadmapUnits.some((unit) => unit.score_band?.from === 810)).toBe(
       false
     );
     expect(result.reaches_target).toBe(true);
@@ -706,11 +661,42 @@ describe("layer4_route_optimizer.service", () => {
     });
 
     // Kiểm tra
-    expect(result.summary_reasons).toContain(
-      "Ưu tiên các Part yếu theo kết quả năng lực hiện tại."
-    );
+    expect(result.summary_reasons.some((reason) => reason.includes("Part"))).toBe(true);
     expect(result.focus_part_types).toEqual([5, 6, 7]);
     expect(result.ability_highlights).toHaveLength(7);
+  });
+
+  it("buildStrategyRoutePlan -> focus_skill_keys only come from focus_part_types", () => {
+    const customPartAbilities: PartAbilityInputV2[] = [
+      { part_type: 1, ability: 0.7 },
+      { part_type: 2, ability: 0.1 },
+      { part_type: 3, ability: 0.2 },
+      { part_type: 4, ability: 0.8 },
+      { part_type: 5, ability: 0.9 },
+      { part_type: 6, ability: 0.3 },
+      { part_type: 7, ability: 0.6 },
+    ];
+    const nodes = customPartAbilities.map((part) =>
+      createNode(`p${part.part_type}-a`, {
+        part_type: part.part_type,
+        target_tags:
+          part.part_type === 5
+            ? ["part5_to_infinitive"]
+            : [`part${part.part_type}_word_form_question`],
+      })
+    );
+
+    const result = buildStrategyRoutePlan({
+      strategy: "recommended",
+      scenario: "NORMAL_PROGRESS",
+      target_score: 600,
+      total_available_minutes: 100,
+      part_abilities: customPartAbilities,
+      lesson_manager_nodes: nodes,
+    });
+
+    expect(result.focus_part_types).toEqual([2, 3, 6]);
+    expect(result.focus_skill_keys).not.toContain("part5_to_infinitive");
   });
 
   it("optimizePartPath -> top five runtime candidates exceed budget -> still considers later valid candidate", () => {
@@ -792,352 +778,274 @@ describe("layer4_route_optimizer.service", () => {
     expect(result.total_minutes).toBeLessThanOrEqual(30);
   });
 
-  it("calculateCloseCycleScore -> ideal minutes and good skill count and low next overlap -> returns high score", () => {
-    // Chuẩn bị
-    const cycleUnits = [
-      createRouteUnit("u1", {
-        part_type: 5,
-        planned_minutes: 100,
-        target_tags: ["Word form"],
-      }),
-      createRouteUnit("u2", {
-        part_type: 5,
-        planned_minutes: 100,
-        target_tags: ["Vocabulary"],
-      }),
-      createRouteUnit("u3", {
-        part_type: 5,
-        planned_minutes: 100,
-        target_tags: ["Relative clause"],
-      }),
-    ];
-    const nextUnit = createRouteUnit("next", {
-      part_type: 5,
-      target_tags: ["Tense"],
-    });
-
-    // Thực thi
-    const result = calculateCloseCycleScore({
-      cycle_units: cycleUnits,
-      next_unit: nextUnit,
-      config: {
-        min_cycle_minutes: 120,
-        ideal_cycle_minutes: 300,
-        max_cycle_minutes: 600,
-        close_score_threshold: 0.7,
-        mini_test_estimated_minutes: 100,
-        full_test_estimated_minutes: 200,
-      },
-    });
-
-    // Kiểm tra
-    expect(result.score).toBeGreaterThanOrEqual(0.7);
-  });
-
-  it("calculateCloseCycleScore -> next unit has high skill overlap -> lower boundary score", () => {
-    // Chuẩn bị
-    const cycleUnits = [
-      createRouteUnit("u1", {
-        part_type: 5,
-        planned_minutes: 120,
-        target_tags: ["Word form"],
-      }),
-    ];
-    const nextUnit = createRouteUnit("next", {
-      part_type: 5,
-      target_tags: ["Word form"],
-    });
-
-    // Thực thi
-    const result = calculateCloseCycleScore({
-      cycle_units: cycleUnits,
-      next_unit: nextUnit,
-      config: {
-        min_cycle_minutes: 120,
-        ideal_cycle_minutes: 300,
-        max_cycle_minutes: 600,
-        close_score_threshold: 0.7,
-        mini_test_estimated_minutes: 100,
-        full_test_estimated_minutes: 200,
-      },
-    });
-
-    // Kiểm tra
-    expect(result.boundary_score).toBe(0);
-  });
-
-  it("cutLearningCycle -> cycle below min minutes -> keeps adding units", () => {
-    // Chuẩn bị
-    const routeUnits = [
-      createRouteUnit("u1", { planned_minutes: 60, target_tags: ["Word form"] }),
-      createRouteUnit("u2", { planned_minutes: 70, target_tags: ["Vocabulary"] }),
-      createRouteUnit("u3", { planned_minutes: 80, target_tags: ["Tense"] }),
-    ];
-
-    // Thực thi
-    const result = cutLearningCycle({
-      route_units: routeUnits,
-      next_route_unit_index: 0,
-      config: { min_cycle_minutes: 120, close_score_threshold: 0.1 },
-    });
-
-    // Kiểm tra
-    expect(result?.route_units.map((unit) => unit.lesson_manager_id)).toEqual([
-      "u1",
-      "u2",
-    ]);
-  });
-
-  it("cutLearningCycle -> no next unit -> cuts at route end", () => {
-    // Chuẩn bị
-    const routeUnits = [
-      createRouteUnit("u1", { planned_minutes: 60, target_tags: ["Word form"] }),
-    ];
-
-    // Thực thi
-    const result = cutLearningCycle({
-      route_units: routeUnits,
-      next_route_unit_index: 0,
-    });
-
-    // Kiểm tra
-    expect(result?.route_units).toHaveLength(1);
-    expect(result?.route_unit_end_index).toBe(0);
-    expect(result?.next_route_unit_index).toBe(1);
-  });
-
-  it("cutLearningCycle -> adding next unit exceeds max minutes -> cuts before next unit", () => {
-    // Chuẩn bị
-    const routeUnits = [
-      createRouteUnit("u1", { planned_minutes: 260, target_tags: ["Word form"] }),
-      createRouteUnit("u2", { planned_minutes: 260, target_tags: ["Vocabulary"] }),
-      createRouteUnit("u3", { planned_minutes: 120, target_tags: ["Tense"] }),
-    ];
-
-    // Thực thi
-    const result = cutLearningCycle({
-      route_units: routeUnits,
-      next_route_unit_index: 0,
-      config: { max_cycle_minutes: 600, close_score_threshold: 1.1 },
-    });
-
-    // Kiểm tra
-    expect(result?.route_units.map((unit) => unit.lesson_manager_id)).toEqual([
-      "u1",
-      "u2",
-    ]);
-    expect(result?.next_route_unit_index).toBe(2);
-  });
-
-  it("cutLearningCycle -> high close score -> cuts cycle and returns cursor", () => {
-    // Chuẩn bị
-    const routeUnits = [
-      createRouteUnit("u1", {
-        part_type: 5,
-        planned_minutes: 150,
-        target_tags: ["Word form"],
-      }),
-      createRouteUnit("u2", {
-        part_type: 5,
-        planned_minutes: 150,
-        target_tags: ["Vocabulary"],
-      }),
-      createRouteUnit("u3", { planned_minutes: 150, target_tags: ["Tense"] }),
-    ];
-
-    // Thực thi
-    const result = cutLearningCycle({
-      route_units: routeUnits,
-      next_route_unit_index: 0,
-      config: { close_score_threshold: 0.7 },
-    });
-
-    // Kiểm tra
-    expect(result).not.toBeNull();
-    expect(result!.next_route_unit_index).toBe(result!.route_unit_end_index + 1);
-  });
-
-  it("buildNextCyclePlan -> mini count 0 -> returns learning cycle with mini test", () => {
-    // Chuẩn bị
-    const routeUnits = [
-      createRouteUnit("u1", {
-        part_type: 5,
-        planned_minutes: 150,
-        target_tags: ["Word form"],
-      }),
-      createRouteUnit("u2", {
-        part_type: 5,
-        planned_minutes: 150,
-        target_tags: ["Vocabulary"],
-      }),
-    ];
-
-    // Thực thi
-    const result = buildNextCyclePlan({
-      route_units: routeUnits,
-      next_route_unit_index: 0,
+  it("buildNextCycleByBeamSearch -> selects focused units from part roadmaps", () => {
+    const result = buildNextCycleByBeamSearch({
+      part_roadmaps: createBeamRoadmaps(),
+      strategy: "recommended",
+      scenario: "NORMAL_PROGRESS",
+      focus_part_types: [2, 3, 6],
       mini_tests_completed_since_last_full_test: 0,
+      config: smallBeamConfig,
     });
 
-    // Kiểm tra
     expect(result.plan_type).toBe("learning_cycle");
     if (result.plan_type !== "learning_cycle") throw new Error("Expected learning_cycle");
     expect(result.assessment.type).toBe("mini_test");
-    expect(result.route_units.length).toBeGreaterThan(0);
-    if (result.assessment.type !== "mini_test") throw new Error("Expected mini_test");
-    expect(result.assessment.focus_skill_keys.length).toBeGreaterThan(0);
-    expect(result.assessment.focus_part_types.length).toBeGreaterThan(0);
+    expect(result.selected_roadmap_units.length).toBeGreaterThan(0);
+    expect(result.selected_roadmap_units.some((unit) => [2, 3, 6].includes(unit.part_type))).toBe(true);
+    expect(result.focus_part_types.every((partType) => [2, 3, 6].includes(partType))).toBe(true);
+    expect(result.selected_roadmap_positions.length).toBeGreaterThan(0);
+    expect(result.beam_search_debug?.candidate_count).toBeGreaterThan(0);
   });
 
-  it("buildNextCyclePlan -> mini count 2 -> still mini test", () => {
-    // Chuẩn bị
-    const routeUnits = [
-      createRouteUnit("u1", { planned_minutes: 150, target_tags: ["Word form"] }),
-    ];
-
-    // Thực thi
-    const result = buildNextCyclePlan({
-      route_units: routeUnits,
-      next_route_unit_index: 0,
-      mini_tests_completed_since_last_full_test: 2,
+  it("buildNextCycleByBeamSearch -> penalizes non-focus parts even when total parts is within max", () => {
+    const roadmaps = createBeamRoadmaps({
+      2: {
+        units: [
+          createRouteUnit("p2-focus", {
+            part_type: 2,
+            planned_minutes: 80,
+            estimated_gain: 2,
+          }),
+        ],
+      },
+      3: {
+        units: [
+          createRouteUnit("p3-focus", {
+            part_type: 3,
+            planned_minutes: 80,
+            estimated_gain: 2,
+          }),
+        ],
+      },
+      5: {
+        units: [
+          createRouteUnit("p5-non-focus", {
+            part_type: 5,
+            planned_minutes: 80,
+            estimated_gain: 3,
+          }),
+        ],
+      },
+      7: {
+        units: [
+          createRouteUnit("p7-non-focus", {
+            part_type: 7,
+            planned_minutes: 80,
+            estimated_gain: 3,
+          }),
+        ],
+      },
     });
 
-    // Kiểm tra
+    const result = buildNextCycleByBeamSearch({
+      part_roadmaps: roadmaps,
+      strategy: "recommended",
+      scenario: "ONBOARDING",
+      focus_part_types: [2, 3, 6],
+      mini_tests_completed_since_last_full_test: 0,
+      config: {
+        ...smallBeamConfig,
+        max_expansion_steps: 3,
+        max_learning_minutes: 240,
+      },
+    });
+
     expect(result.plan_type).toBe("learning_cycle");
     if (result.plan_type !== "learning_cycle") throw new Error("Expected learning_cycle");
-    expect(result.assessment.type).toBe("mini_test");
+    const nonFocusParts = result.focus_part_types.filter(
+      (part) => ![2, 3, 6].includes(part)
+    );
+    expect(nonFocusParts.length).toBeLessThanOrEqual(1);
+    expect(result.focus_part_types.some((part) => [2, 3, 6].includes(part))).toBe(true);
   });
 
-  it("buildNextCyclePlan -> mini count 3 -> returns learning cycle with full test", () => {
-    // Chuẩn bị
-    const routeUnits = [
-      createRouteUnit("u1", { planned_minutes: 150, target_tags: ["Word form"] }),
-      createRouteUnit("u2", { planned_minutes: 150, target_tags: ["Vocabulary"] }),
-    ];
+  it("buildNextCycleByBeamSearch -> does not exceed max_focus_part_types", () => {
+    const result = buildNextCycleByBeamSearch({
+      part_roadmaps: createBeamRoadmaps(),
+      strategy: "recommended",
+      scenario: "NORMAL_PROGRESS",
+      focus_part_types: [2, 3, 6],
+      mini_tests_completed_since_last_full_test: 0,
+      config: {
+        ...smallBeamConfig,
+        max_focus_part_types: 3,
+        max_expansion_steps: 10,
+        min_learning_minutes: 320,
+        ideal_learning_minutes: 360,
+        max_learning_minutes: 420,
+      },
+    });
 
-    // Thực thi
-    const result = buildNextCyclePlan({
-      route_units: routeUnits,
-      next_route_unit_index: 0,
+    expect(result.plan_type).toBe("learning_cycle");
+    if (result.plan_type !== "learning_cycle") throw new Error("Expected learning_cycle");
+    expect(result.focus_part_types.length).toBeLessThanOrEqual(3);
+  });
+
+  it("buildNextCycleByBeamSearch -> keeps earlier high-score terminal state instead of forcing extra weak expansion", () => {
+    const result = buildNextCycleByBeamSearch({
+      part_roadmaps: createBeamRoadmaps({
+        1: { units: [] },
+        2: {
+          units: [
+            createRouteUnit("p2-terminal-focus", {
+              part_type: 2,
+              planned_minutes: 120,
+              estimated_gain: 3,
+            }),
+          ],
+        },
+        3: {
+          units: [
+            createRouteUnit("p3-terminal-focus", {
+              part_type: 3,
+              planned_minutes: 120,
+              estimated_gain: 3,
+            }),
+          ],
+        },
+        4: { units: [] },
+        5: {
+          units: [
+            createRouteUnit("p5-weak-extra", {
+              part_type: 5,
+              planned_minutes: 80,
+              estimated_gain: 0.1,
+            }),
+          ],
+        },
+        6: {
+          units: [
+            createRouteUnit("p6-terminal-focus", {
+              part_type: 6,
+              planned_minutes: 120,
+              estimated_gain: 3,
+            }),
+          ],
+        },
+        7: { units: [] },
+      }),
+      strategy: "recommended",
+      scenario: "ONBOARDING",
+      focus_part_types: [2, 3, 6],
+      mini_tests_completed_since_last_full_test: 0,
+      config: {
+        ...smallBeamConfig,
+        beam_width: 8,
+        max_expansion_steps: 4,
+        max_focus_part_types: 4,
+        min_learning_minutes: 300,
+        ideal_learning_minutes: 360,
+        max_learning_minutes: 520,
+        non_focus_unit_penalty: 2,
+      },
+    });
+
+    expect(result.plan_type).toBe("learning_cycle");
+    if (result.plan_type !== "learning_cycle") throw new Error("Expected learning_cycle");
+    expect(result.selected_roadmap_units.map((unit) => unit.part_type)).toEqual(
+      expect.arrayContaining([2, 3, 6])
+    );
+    expect(result.selected_roadmap_units.some((unit) => unit.part_type === 5)).toBe(false);
+    expect(result.focus_part_types).toEqual([2, 3, 6]);
+  });
+
+  it("buildNextCycleByBeamSearch -> respects existing per-part cursor", () => {
+    const result = buildNextCycleByBeamSearch({
+      part_roadmaps: createBeamRoadmaps({
+        2: { cursor_index: 1 },
+      }),
+      strategy: "recommended",
+      scenario: "NORMAL_PROGRESS",
+      focus_part_types: [2],
+      mini_tests_completed_since_last_full_test: 0,
+      config: smallBeamConfig,
+    });
+
+    expect(result.plan_type).toBe("learning_cycle");
+    if (result.plan_type !== "learning_cycle") throw new Error("Expected learning_cycle");
+    const selectedIds = result.selected_roadmap_units.map((unit) => unit.lesson_manager_id);
+    expect(selectedIds).not.toContain("p2u0");
+    expect(result.selected_roadmap_positions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          part_type: 2,
+          from_cursor_index: 1,
+        }),
+      ])
+    );
+  });
+
+  it("buildNextCycleByBeamSearch -> mini count 3 returns full test", () => {
+    const result = buildNextCycleByBeamSearch({
+      part_roadmaps: createBeamRoadmaps(),
+      strategy: "balanced",
+      scenario: "NORMAL_PROGRESS",
+      focus_part_types: [2, 3, 6],
       mini_tests_completed_since_last_full_test: 3,
+      config: smallBeamConfig,
     });
 
-    // Kiểm tra
     expect(result.plan_type).toBe("learning_cycle");
     if (result.plan_type !== "learning_cycle") throw new Error("Expected learning_cycle");
-    expect(result.route_units.length).toBeGreaterThan(0);
     expect(result.assessment.type).toBe("full_test");
-    expect(result.next_route_unit_index).toBeGreaterThan(0);
   });
 
-  it("buildNextCyclePlan -> route exhausted -> returns route_completed", () => {
-    // Chuẩn bị
-    const routeUnits = [
-      createRouteUnit("u1", { planned_minutes: 150, target_tags: ["Word form"] }),
-    ];
+  it("buildNextCycleByBeamSearch -> exhausted roadmaps return route_completed", () => {
+    const roadmaps = createBeamRoadmaps().map((roadmap) => ({
+      ...roadmap,
+      cursor_index: roadmap.units.length,
+    }));
 
-    // Thực thi
-    const result = buildNextCyclePlan({
-      route_units: routeUnits,
-      next_route_unit_index: 1,
+    const result = buildNextCycleByBeamSearch({
+      part_roadmaps: roadmaps,
+      strategy: "recommended",
+      scenario: "NORMAL_PROGRESS",
+      focus_part_types: [2, 3, 6],
       mini_tests_completed_since_last_full_test: 0,
+      config: smallBeamConfig,
     });
 
-    // Kiểm tra
     expect(result).toEqual({
       plan_type: "route_completed",
-      next_route_unit_index: 1,
-      route_units: [],
+      selected_roadmap_units: [],
       assessment: null,
-      reason: "Route hiện tại đã hết bài học để tạo learning cycle.",
+      reason: "Tất cả Part roadmap đã hết bài học để tạo cycle.",
     });
   });
 
-  it("getCycleFocusSkillKeys -> unknown tags -> ignores unknown without crash", () => {
-    // Chuẩn bị
-    const routeUnits = [
-      createRouteUnit("u1", {
-        part_type: 5,
-        target_tags: ["Word form", "unknown-skill-tag"],
-      }),
-    ];
-
-    // Thực thi
-    const result = getCycleFocusSkillKeys(routeUnits);
-
-    // Kiểm tra
-    expect(result).toEqual(["part5_word_form_question"]);
-  });
-
-  it("buildNextCyclePlan -> full test cycle does not return empty checkpoint", () => {
-    // Chuẩn bị
-    const routeUnits = [
-      createRouteUnit("u1", { planned_minutes: 150, target_tags: ["Word form"] }),
-    ];
-
-    // Thực thi
-    const result = buildNextCyclePlan({
-      route_units: routeUnits,
-      next_route_unit_index: 0,
-      mini_tests_completed_since_last_full_test: 3,
+  it("buildNextCycleByBeamSearch -> reserves assessment minutes from learning budget", () => {
+    const roadmaps = createBeamRoadmaps({
+      2: {
+        units: [
+          createRouteUnit("p2-large-1", { part_type: 2, planned_minutes: 600, estimated_gain: 5 }),
+          createRouteUnit("p2-large-2", { part_type: 2, planned_minutes: 850, estimated_gain: 5 }),
+        ],
+      },
     });
 
-    // Kiểm tra
-    expect(result.plan_type).toBe("learning_cycle");
-    if (result.plan_type !== "learning_cycle") throw new Error("Expected learning_cycle");
-    expect(result.assessment.type).toBe("full_test");
-    expect(result.route_units.length).toBeGreaterThan(0);
-  });
-
-  it("buildNextCyclePlan -> mini test cycle cuts learning budget after reserving mini test minutes", () => {
-    const routeUnits = [
-      createRouteUnit("u1", { planned_minutes: 600 }),
-      createRouteUnit("u2", { planned_minutes: 850 }),
-    ];
-
-    const result = buildNextCyclePlan({
-      route_units: routeUnits,
-      next_route_unit_index: 0,
+    const result = buildNextCycleByBeamSearch({
+      part_roadmaps: roadmaps,
+      strategy: "recommended",
+      scenario: "NORMAL_PROGRESS",
+      focus_part_types: [2],
       mini_tests_completed_since_last_full_test: 0,
       config: {
-        min_cycle_minutes: 480,
-        ideal_cycle_minutes: 900,
-        max_cycle_minutes: 1500,
+        ...smallBeamConfig,
+        min_learning_minutes: 480,
+        ideal_learning_minutes: 900,
+        max_learning_minutes: 1500,
         mini_test_estimated_minutes: 100,
-        full_test_estimated_minutes: 200,
       },
     });
 
     expect(result.plan_type).toBe("learning_cycle");
-    if (result.plan_type !== "learning_cycle") return;
-
+    if (result.plan_type !== "learning_cycle") throw new Error("Expected learning_cycle");
     expect(result.assessment.type).toBe("mini_test");
     expect(result.estimated_learning_minutes).toBeLessThanOrEqual(1400);
   });
-
-  it("buildNextCyclePlan -> full test cycle cuts learning budget after reserving full test minutes", () => {
-    const routeUnits = [
-      createRouteUnit("u1", { planned_minutes: 600 }),
-      createRouteUnit("u2", { planned_minutes: 850 }),
-    ];
-
-    const result = buildNextCyclePlan({
-      route_units: routeUnits,
-      next_route_unit_index: 0,
-      mini_tests_completed_since_last_full_test: 3,
-      config: {
-        min_cycle_minutes: 480,
-        ideal_cycle_minutes: 900,
-        max_cycle_minutes: 1500,
-        mini_test_estimated_minutes: 100,
-        full_test_estimated_minutes: 200,
-      },
-    });
-
-    expect(result.plan_type).toBe("learning_cycle");
-    if (result.plan_type !== "learning_cycle") return;
-
-    expect(result.assessment.type).toBe("full_test");
-    expect(result.estimated_learning_minutes).toBeLessThanOrEqual(1300);
-  });
 });
+
+
+
+

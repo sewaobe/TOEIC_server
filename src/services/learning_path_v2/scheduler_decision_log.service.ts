@@ -17,6 +17,7 @@ export interface GetLatestAppliedStrategyContextInput {
 export interface CreateSchedulerDecisionLogInput {
   user_id: string | Types.ObjectId;
   learning_path_id: string | Types.ObjectId;
+  learning_path_strategy_option_id?: string | Types.ObjectId | null;
   source_week_id?: string | Types.ObjectId | null;
   generated_week_id?: string | Types.ObjectId | null;
   trigger_type: SchedulerTriggerType;
@@ -27,7 +28,6 @@ export interface CreateSchedulerDecisionLogInput {
   reasons?: string[];
   warnings?: string[];
   input_snapshot?: ISchedulerInputSnapshot;
-  candidate_lesson_manager_ids?: Array<string | Types.ObjectId>;
   selected_lesson_manager_ids?: Array<string | Types.ObjectId>;
   output_summary?: ISchedulerOutputSummary;
   error_message?: string;
@@ -56,9 +56,16 @@ const toObjectIds = (
 export const createSchedulerDecisionLog = async (
   input: CreateSchedulerDecisionLogInput
 ) => {
+  /*
+   * Decision log ghi lại một lần scheduler tạo cycle cụ thể.
+   * Candidate roadmap dài hạn nằm trong LearningPathStrategyOption nên không ghi lặp lại ở đây.
+   */
   return SchedulerDecisionLog.create({
     user_id: toObjectId(input.user_id),
     learning_path_id: toObjectId(input.learning_path_id),
+    learning_path_strategy_option_id: toObjectId(
+      input.learning_path_strategy_option_id
+    ),
     source_week_id: toObjectId(input.source_week_id),
     generated_week_id: toObjectId(input.generated_week_id),
     trigger_type: input.trigger_type,
@@ -70,9 +77,6 @@ export const createSchedulerDecisionLog = async (
     reasons: input.reasons ?? [],
     warnings: input.warnings ?? [],
     input_snapshot: input.input_snapshot,
-    candidate_lesson_manager_ids: toObjectIds(
-      input.candidate_lesson_manager_ids
-    ),
     selected_lesson_manager_ids: toObjectIds(
       input.selected_lesson_manager_ids
     ),
