@@ -1,4 +1,6 @@
 import { Schema, model, Document, Types } from "mongoose";
+import { PartType } from "./enums/PartType";
+import { UserSkillAbilityStatus, UserSkillTrend } from "../types/user_skill.type";
 
 export type SchedulerTriggerType =
   | "initial_generation"
@@ -26,7 +28,9 @@ export type SchedulerDecisionStatus = "applied" | "failed";
  * status = nhóm tương đối sau khi sort trong chính user đó.
  * Không phải năng lực tuyệt đối.
  */
-export type AbilityStatus = "weak" | "medium" | "strong";
+export type AbilityStatus = UserSkillAbilityStatus;
+
+export type AbilityTrend = UserSkillTrend;
 
 /**
  * absolute_level = mức năng lực tuyệt đối theo ngưỡng.
@@ -38,22 +42,18 @@ export type AbsoluteAbilityLevel = "very_low" | "low" | "medium" | "high";
 export type SkillGroup = "basic" | "core" | "advanced";
 
 export interface ISchedulerPartAbilitySnapshot {
-  part_type: number;
-  ability: number;
-  estimated_score?: number;
-  status: AbilityStatus;
-  absolute_level?: AbsoluteAbilityLevel;
-  confidence?: number;
+  part_type: PartType;
+  ability?: number;
+  status?: AbilityStatus;
+  trend?: AbilityTrend;
 }
 
 export interface ISchedulerSkillAbilitySnapshot {
-  part_type: number;
-  tag: string;
-  ability: number;
-  status: AbilityStatus;
-  absolute_level?: AbsoluteAbilityLevel;
-  confidence?: number;
-  skill_group?: SkillGroup;
+  part_type: PartType;
+  skill_key: string;
+  ability?: number;
+  status?: AbilityStatus;
+  trend?: AbilityTrend;
 }
 
 export type SchedulerExtraSnapshot = Record<string, unknown>;
@@ -66,8 +66,6 @@ export interface ISchedulerInputSnapshot {
 
   part_abilities?: ISchedulerPartAbilitySnapshot[];
   skill_abilities?: ISchedulerSkillAbilitySnapshot[];
-
-  completed_lesson_manager_ids?: Types.ObjectId[];
 
   /**
    * Dữ liệu phụ để debug/audit.
@@ -124,18 +122,15 @@ const SchedulerPartAbilitySnapshotSchema =
   new Schema<ISchedulerPartAbilitySnapshot>(
     {
       part_type: { type: Number, required: true },
-      ability: { type: Number, required: true },
-      estimated_score: { type: Number },
+      ability: { type: Number },
       status: {
         type: String,
         enum: ["weak", "medium", "strong"],
-        required: true,
       },
-      absolute_level: {
+      trend: {
         type: String,
-        enum: ["very_low", "low", "medium", "high"],
+        enum: ["improving", "stable", "declining"],
       },
-      confidence: { type: Number },
     },
     { _id: false }
   );
@@ -144,21 +139,15 @@ const SchedulerSkillAbilitySnapshotSchema =
   new Schema<ISchedulerSkillAbilitySnapshot>(
     {
       part_type: { type: Number, required: true },
-      tag: { type: String, required: true },
-      ability: { type: Number, required: true },
+      skill_key: { type: String, required: true },
+      ability: { type: Number },
       status: {
         type: String,
         enum: ["weak", "medium", "strong"],
-        required: true,
       },
-      absolute_level: {
+      trend: {
         type: String,
-        enum: ["very_low", "low", "medium", "high"],
-      },
-      confidence: { type: Number },
-      skill_group: {
-        type: String,
-        enum: ["basic", "core", "advanced"],
+        enum: ["improving", "stable", "declining"],
       },
     },
     { _id: false }
@@ -183,10 +172,6 @@ const SchedulerInputSnapshotSchema = new Schema<ISchedulerInputSnapshot>(
       type: [SchedulerSkillAbilitySnapshotSchema],
       default: [],
     },
-
-    completed_lesson_manager_ids: [
-      { type: Schema.Types.ObjectId, ref: "LessonManager" },
-    ],
 
     extra: {
       type: Schema.Types.Mixed,

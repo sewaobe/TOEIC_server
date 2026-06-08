@@ -118,7 +118,20 @@ const createUserSkill = (parts: number[] = [1, 2, 3, 4, 5, 6, 7]) =>
       ability: partType / 10,
       status: "medium",
       absolute_level: "medium",
-      skills: [],
+      trend: "stable",
+      skills:
+        partType === 1
+          ? [
+              {
+                skill_key: "part_1_skill",
+                label_vi: "Part 1 skill",
+                ability: 0.2,
+                status: "weak",
+                absolute_level: "low",
+                trend: "declining",
+              },
+            ]
+          : [],
     })),
   } as any);
 
@@ -172,7 +185,6 @@ const createRoutePlan = (strategy: string, scenario = "ONBOARDING") => ({
         : [],
   })),
   summary_reasons: ["Ưu tiên Part yếu."],
-  ability_highlights: [{ part_type: 1, ability: 0.1, status: "weak" }],
 });
 
 const setupBaseMocks = (triggerType: string) => {
@@ -318,6 +330,8 @@ describe("learning_path_v2.service", () => {
           target_score: 700,
           weekly_available_minutes: 220,
           test_type: "entry",
+          part_abilities: expect.any(Array),
+          skill_abilities: expect.any(Array),
         }),
         output_summary: expect.objectContaining({
           planned_minutes: 220,
@@ -330,6 +344,31 @@ describe("learning_path_v2.service", () => {
       })
     );
     const logInput = mockCreateSchedulerDecisionLog.mock.calls[0][0];
+    expect(logInput.input_snapshot.part_abilities[0]).toEqual(
+      expect.objectContaining({
+        part_type: 1,
+        ability: 0.1,
+        status: "medium",
+        trend: "stable",
+      })
+    );
+    expect(logInput.input_snapshot.skill_abilities[0]).toEqual(
+      expect.objectContaining({
+        part_type: 1,
+        skill_key: "part_1_skill",
+        label_vi: "Part 1 skill",
+        ability: 0.2,
+        status: "weak",
+        trend: "declining",
+      })
+    );
+    expect(logInput.input_snapshot.part_abilities[0]).not.toHaveProperty("absolute_level");
+    expect(logInput.input_snapshot.part_abilities[0]).not.toHaveProperty("confidence");
+    expect(logInput.input_snapshot.part_abilities[0]).not.toHaveProperty("estimated_score");
+    expect(logInput.input_snapshot.skill_abilities[0]).not.toHaveProperty("tag");
+    expect(logInput.input_snapshot.skill_abilities[0]).not.toHaveProperty("skill_group");
+    expect(logInput.input_snapshot.skill_abilities[0]).not.toHaveProperty("absolute_level");
+    expect(logInput.input_snapshot).not.toHaveProperty("completed_lesson_manager_ids");
     expect(logInput.input_snapshot.extra).not.toHaveProperty("time_per_day");
     expect(logInput.input_snapshot.extra).not.toHaveProperty("days_per_week");
     expect(logInput.input_snapshot.extra).not.toHaveProperty("focus_part_types");

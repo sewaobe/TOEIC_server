@@ -13,9 +13,6 @@ import type {
 } from "../models/lesson_manager.model";
 import { createNextLearningPathCycle } from "./week_study.service";
 
-type StrategyAbilityStatus = "weak" | "medium" | "strong";
-type StrategyAbilityTrend = "improving" | "stable" | "declining";
-
 export type RoadmapUnitOptionInput = {
   lesson_manager_id: string;
   title: string;
@@ -39,16 +36,6 @@ export type PartRoadmapOptionInput = {
   units: RoadmapUnitOptionInput[];
 };
 
-export type StrategyAbilityHighlightInput = {
-  part_type?: number;
-  skill_key?: string;
-  label_vi?: string;
-  ability?: number;
-  status?: StrategyAbilityStatus;
-  trend?: StrategyAbilityTrend;
-  reason: string;
-};
-
 export type CreateStrategyOptionPayload = {
   user_id: string;
   learning_path_id: string;
@@ -67,7 +54,6 @@ export type CreateStrategyOptionPayload = {
   reaches_target: boolean;
   part_roadmaps: PartRoadmapOptionInput[];
   summary_reasons: string[];
-  ability_highlights: StrategyAbilityHighlightInput[];
   selected_at?: Date;
 };
 
@@ -297,7 +283,6 @@ const buildCreatePayload = (
   reaches_target: input.reaches_target,
   part_roadmaps: normalizePartRoadmaps(input.part_roadmaps ?? []),
   summary_reasons: input.summary_reasons ?? [],
-  ability_highlights: input.ability_highlights ?? [],
   selected_at: overrides.selected_at,
 });
 

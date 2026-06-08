@@ -1220,12 +1220,6 @@ export const buildStrategyRoutePlan = (
     focus_skill_keys: focusSkillKeys,
     part_roadmaps: partRoadmaps,
     summary_reasons: getSummaryReasons(input.strategy),
-    ability_highlights: allocations.map((allocation) => ({
-      part_type: allocation.part_type,
-      bucket: allocation.bucket,
-      ability: allocation.ability,
-      target_minutes: allocation.target_minutes,
-    })),
   };
 
   logLearningPathV2DebugSafe("layer4.selected_roadmap_units", {
@@ -1243,7 +1237,12 @@ export const buildStrategyRoutePlan = (
     reaches_target: output.reaches_target,
     focus_part_types: output.focus_part_types,
     focus_skill_keys_sample: output.focus_skill_keys.slice(0, 10),
-    ability_highlights: output.ability_highlights,
+    part_budget_allocations: allocations.map((allocation) => ({
+      part_type: allocation.part_type,
+      bucket: allocation.bucket,
+      ability: allocation.ability,
+      target_minutes: allocation.target_minutes,
+    })),
     selected_roadmap_units_sample: allRoadmapUnits.slice(0, 5).map((unit) => ({
       lesson_manager_id: unit.lesson_manager_id,
       part_type: unit.part_type,

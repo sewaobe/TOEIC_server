@@ -663,7 +663,8 @@ describe("layer4_route_optimizer.service", () => {
     // Kiểm tra
     expect(result.summary_reasons.some((reason) => reason.includes("Part"))).toBe(true);
     expect(result.focus_part_types).toEqual([5, 6, 7]);
-    expect(result.ability_highlights).toHaveLength(7);
+    expect(result.part_roadmaps).toHaveLength(7);
+    expect(result).not.toHaveProperty("ability_highlights");
   });
 
   it("buildStrategyRoutePlan -> focus_skill_keys only come from focus_part_types", () => {

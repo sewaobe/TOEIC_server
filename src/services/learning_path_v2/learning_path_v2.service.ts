@@ -445,10 +445,6 @@ const mapRoutePlanToStrategyOptionPayload = (input: StrategyOptionPayloadInput) 
     })),
   })),
   summary_reasons: input.plan.summary_reasons,
-  ability_highlights: input.plan.ability_highlights.map((highlight) => ({
-    ...highlight,
-    reason: "Snapshot năng lực tại thời điểm tạo route.",
-  })),
   selected_at: input.status === "selected" ? new Date() : undefined,
 });
 
@@ -504,6 +500,25 @@ const countCycleActivities = (dayStudies?: IDayStudy[]) => {
     ),
   };
 };
+
+const mapUserSkillPartsToSchedulerSnapshot = (userSkill: IUserSkill) =>
+  (userSkill.parts ?? []).map((part) => ({
+    part_type: part.part_type,
+    ability: part.ability,
+    status: part.status,
+    trend: part.trend,
+  }));
+
+const mapUserSkillSkillsToSchedulerSnapshot = (userSkill: IUserSkill) =>
+  (userSkill.parts ?? []).flatMap((part) =>
+    (part.skills ?? []).map((skill) => ({
+      part_type: part.part_type,
+      skill_key: skill.skill_key,
+      ability: skill.ability,
+      status: skill.status,
+      trend: skill.trend,
+    }))
+  );
 
 const sumDayStudyPlannedMinutes = (dayStudies?: IDayStudy[]): number => {
   return (dayStudies ?? []).reduce((daySum, day) => {
@@ -598,6 +613,8 @@ const createInitialSelectedOptionAndCycle = async (input: {
           target_score: input.learningPath.target_score,
           weekly_available_minutes: cycleDayStudyMinutes,
           test_type: "entry",
+          part_abilities: mapUserSkillPartsToSchedulerSnapshot(input.userSkill),
+          skill_abilities: mapUserSkillSkillsToSchedulerSnapshot(input.userSkill),
           extra: {
             source_user_test_id: String(input.userTest._id),
             source_test_id: String(input.userTest.test_id),

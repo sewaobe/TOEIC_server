@@ -81,20 +81,6 @@ export interface ILearningPathStrategyPartRoadmap {
   units: ILearningPathStrategyRoadmapUnit[];
 }
 
-export interface IStrategyAbilityHighlight {
-  /**
-   * Dùng để hiển thị các bằng chứng chính từ UserSkill tại thời điểm tạo option.
-   * Đây không thay thế UserSkill, chỉ là snapshot nhẹ cho user hiểu vì sao route được gợi ý.
-   */
-  part_type?: PartType;
-  skill_key?: string;
-  label_vi?: string;
-  ability?: number;
-  status?: "weak" | "medium" | "strong";
-  trend?: "improving" | "stable" | "declining";
-  reason: string;
-}
-
 export interface ILearningPathStrategyOption extends Document {
   _id: Types.ObjectId;
 
@@ -159,12 +145,6 @@ export interface ILearningPathStrategyOption extends Document {
    * Ví dụ: "Ưu tiên Part 5/6/7 vì đang yếu", "Target 600 nên tập trung core skills".
    */
   summary_reasons: string[];
-
-  /**
-   * Bằng chứng năng lực chính tại thời điểm tạo option.
-   * Giúp user tin tưởng vì sao hệ thống gợi ý route này.
-   */
-  ability_highlights: IStrategyAbilityHighlight[];
 
   selected_at?: Date;
   created_at: Date;
@@ -284,48 +264,6 @@ const LearningPathStrategyPartRoadmapSchema =
     { _id: false }
   );
 
-const StrategyAbilityHighlightSchema = new Schema<IStrategyAbilityHighlight>(
-  {
-    part_type: {
-      type: Number,
-      enum: Object.values(PartType).filter((value) => typeof value === "number"),
-    },
-
-    skill_key: {
-      type: String,
-      default: "",
-      index: true,
-    },
-
-    label_vi: {
-      type: String,
-      default: "",
-    },
-
-    ability: {
-      type: Number,
-      min: 0,
-      max: 1,
-    },
-
-    status: {
-      type: String,
-      enum: ["weak", "medium", "strong"],
-    },
-
-    trend: {
-      type: String,
-      enum: ["improving", "stable", "declining"],
-    },
-
-    reason: {
-      type: String,
-      required: true,
-    },
-  },
-  { _id: false }
-);
-
 const LearningPathStrategyOptionSchema =
   new Schema<ILearningPathStrategyOption>(
     {
@@ -444,11 +382,6 @@ const LearningPathStrategyOptionSchema =
 
       summary_reasons: {
         type: [String],
-        default: [],
-      },
-
-      ability_highlights: {
-        type: [StrategyAbilityHighlightSchema],
         default: [],
       },
 

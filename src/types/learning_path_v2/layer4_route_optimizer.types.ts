@@ -116,7 +116,6 @@ export interface BuildStrategyRoutePlanOutputV2 {
   focus_skill_keys: string[];
   part_roadmaps: LearningPathStrategyPartRoadmapV2[];
   summary_reasons: string[];
-  ability_highlights: object[];
 }
 
 export interface SkillGroupDistributionV2 {

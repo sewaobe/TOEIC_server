@@ -88,17 +88,6 @@ const createPayload = (overrides: Record<string, unknown> = {}) => ({
     units: partType === 5 ? [createRouteUnit()] : [],
   })),
   summary_reasons: ["Part 5 đang yếu"],
-  ability_highlights: [
-    {
-      part_type: 5,
-      skill_key: "part5_word_form",
-      label_vi: "Từ loại",
-      ability: 0.4,
-      status: "weak",
-      trend: "stable",
-      reason: "Cần luyện thêm",
-    },
-  ],
   ...overrides,
 });
 
@@ -157,6 +146,7 @@ describe("learning path strategy option service", () => {
       1, 2, 3, 4, 5, 6, 7,
     ]);
     expect(createPayloadInput.part_roadmaps.every((roadmap: any) => roadmap.cursor_index === 0)).toBe(true);
+    expect(createPayloadInput).not.toHaveProperty("ability_highlights");
     expect(result.status).toBe("selected");
   });
 
