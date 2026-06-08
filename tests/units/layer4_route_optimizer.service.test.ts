@@ -861,6 +861,91 @@ describe("layer4_route_optimizer.service", () => {
     expect(result.focus_part_types.some((part) => [2, 3, 6].includes(part))).toBe(true);
   });
 
+  it("buildNextCycleByBeamSearch -> rewards coverage across focus parts", () => {
+    const roadmaps = createBeamRoadmaps({
+      1: { units: [] },
+      2: { units: [] },
+      3: {
+        units: [
+          createRouteUnit("p3-coverage", {
+            part_type: 3,
+            planned_minutes: 80,
+            estimated_gain: 1.6,
+            target_tags: ["Main idea"],
+          }),
+        ],
+      },
+      4: { units: [] },
+      5: { units: [] },
+      6: {
+        units: [
+          createRouteUnit("p6-high-1", {
+            part_type: 6,
+            planned_minutes: 80,
+            estimated_gain: 2,
+            target_tags: ["Word form"],
+          }),
+          createRouteUnit("p6-high-2", {
+            part_type: 6,
+            planned_minutes: 80,
+            estimated_gain: 2,
+            target_tags: ["Vocabulary"],
+          }),
+        ],
+      },
+      7: {
+        units: [
+          createRouteUnit("p7-high-1", {
+            part_type: 7,
+            planned_minutes: 80,
+            estimated_gain: 2,
+            target_tags: ["Inference"],
+          }),
+          createRouteUnit("p7-high-2", {
+            part_type: 7,
+            planned_minutes: 80,
+            estimated_gain: 2,
+            target_tags: ["Information"],
+          }),
+        ],
+      },
+    });
+
+    const result = buildNextCycleByBeamSearch({
+      part_roadmaps: roadmaps,
+      strategy: "recommended",
+      scenario: "NORMAL_PROGRESS",
+      focus_part_types: [3, 6, 7],
+      mini_tests_completed_since_last_full_test: 0,
+      config: {
+        ...smallBeamConfig,
+        beam_width: 8,
+        max_expansion_steps: 4,
+        max_focus_part_types: 3,
+        min_learning_minutes: 160,
+        ideal_learning_minutes: 240,
+        max_learning_minutes: 320,
+      },
+    });
+
+    expect(result.plan_type).toBe("learning_cycle");
+    if (result.plan_type !== "learning_cycle") throw new Error("Expected learning_cycle");
+    expect(result.selected_roadmap_units.map((unit) => unit.part_type)).toEqual(
+      expect.arrayContaining([3, 6, 7])
+    );
+    expect(result.focus_part_types).toEqual([3, 6, 7]);
+    expect(result.beam_search_debug).toEqual(
+      expect.objectContaining({
+        focus_part_coverage_ratio: 1,
+        focus_score: expect.any(Number),
+        focus_unit_score: expect.any(Number),
+        focus_part_coverage_score: expect.any(Number),
+        time_score: expect.any(Number),
+        spread_penalty: expect.any(Number),
+      })
+    );
+  });
+
   it("buildNextCycleByBeamSearch -> does not exceed max_focus_part_types", () => {
     const result = buildNextCycleByBeamSearch({
       part_roadmaps: createBeamRoadmaps(),

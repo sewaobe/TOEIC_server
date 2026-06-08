@@ -21,6 +21,15 @@ export type LessonManagerRouteNodeRoleV2 =
   | "normal"
   | "support";
 
+export type AbilityStatusV2 = "weak" | "medium" | "strong";
+
+export interface SkillAbilityInputV2 {
+  part_type: number;
+  skill_key: string;
+  ability: number;
+  status?: AbilityStatusV2;
+}
+
 export interface LessonManagerRouteNodeV2 {
   id: string;
   title: string;
@@ -104,6 +113,7 @@ export interface BuildStrategyRoutePlanInputV2 {
   lesson_manager_nodes: LessonManagerRouteNodeV2[];
   completed_unit_ids?: string[];
   start_unit_ids_by_part?: Record<number, string[]>;
+  skill_abilities?: SkillAbilityInputV2[];
 }
 
 export interface BuildStrategyRoutePlanOutputV2 {
@@ -126,15 +136,15 @@ export interface SkillGroupDistributionV2 {
 
 export type CycleAssessmentV2 =
   | {
-      type: "mini_test";
-      estimated_minutes: number;
-      focus_skill_keys: string[];
-      focus_part_types: number[];
-    }
+    type: "mini_test";
+    estimated_minutes: number;
+    focus_skill_keys: string[];
+    focus_part_types: number[];
+  }
   | {
-      type: "full_test";
-      estimated_minutes: number;
-    };
+    type: "full_test";
+    estimated_minutes: number;
+  };
 
 export interface BeamSearchCycleConfigV2 {
   beam_width: number;
@@ -156,6 +166,9 @@ export interface BeamSearchCycleStateV2 {
   total_minutes: number;
   estimated_gain: number;
   focus_score: number;
+  focus_unit_score: number;
+  focus_part_coverage_score: number;
+  focus_part_coverage_ratio: number;
   time_score: number;
   spread_penalty: number;
   score: number;
@@ -187,6 +200,12 @@ export type LearningCyclePlanV2 = {
   assessment: CycleAssessmentV2;
   beam_search_debug?: {
     selected_score: number;
+    focus_score: number;
+    focus_unit_score: number;
+    focus_part_coverage_score: number;
+    focus_part_coverage_ratio: number;
+    time_score: number;
+    spread_penalty: number;
     candidate_count: number;
     reason: string;
   };

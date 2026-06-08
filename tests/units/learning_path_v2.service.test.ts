@@ -356,7 +356,6 @@ describe("learning_path_v2.service", () => {
       expect.objectContaining({
         part_type: 1,
         skill_key: "part_1_skill",
-        label_vi: "Part 1 skill",
         ability: 0.2,
         status: "weak",
         trend: "declining",

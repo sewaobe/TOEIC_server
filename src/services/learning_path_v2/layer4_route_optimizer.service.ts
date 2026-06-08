@@ -19,6 +19,7 @@ import type {
   PartBudgetAllocationV2,
   PlannedRouteUnitV2,
   RoutePartBucketV2,
+  SkillAbilityInputV2,
   SkillGroupDistributionV2,
 } from "../../types/learning_path_v2";
 import { logLearningPathV2DebugSafe } from "./learning_path_v2_debug_logger";
@@ -34,6 +35,7 @@ type CalculateNodeGainInput = {
   skill_group_distribution?: SkillGroupDistributionV2;
   completed_unit_ids?: string[];
   focus_skill_keys?: string[];
+  skill_abilities?: SkillAbilityInputV2[];
 };
 
 type OptimizePartPathInput = {
@@ -46,6 +48,7 @@ type OptimizePartPathInput = {
   nodes_of_part: LessonManagerRouteNodeV2[];
   completed_unit_ids?: string[];
   start_unit_ids?: string[];
+  skill_abilities?: SkillAbilityInputV2[];
 };
 
 
@@ -226,6 +229,56 @@ const calculateSkillGroupFit = (
   );
 };
 
+const getNormalizedSkillKeysFromTags = (
+  targetTags: string[],
+  partType?: number
+): string[] =>
+  normalizeToeicSkillTags(targetTags, partType).map((skill) => skill.key);
+
+const calculateSkillWeaknessMultiplier = (input: {
+  node: LessonManagerRouteNodeV2;
+  skill_abilities?: SkillAbilityInputV2[];
+}): number => {
+  const nodeSkillKeys = getNormalizedSkillKeysFromTags(
+    input.node.target_tags,
+    input.node.part_type
+  );
+
+  if (nodeSkillKeys.length === 0 || !input.skill_abilities?.length) {
+    return 1;
+  }
+
+  const abilityBySkillKey = new Map(
+    input.skill_abilities
+      .filter((skill) => skill.part_type === input.node.part_type)
+      .map((skill) => [
+        skill.skill_key,
+        Math.min(1, Math.max(0, skill.ability)),
+      ])
+  );
+
+  const matchedWeaknessValues = nodeSkillKeys
+    .map((skillKey) => abilityBySkillKey.get(skillKey))
+    .filter((ability): ability is number => ability !== undefined)
+    .map((ability) => 1 - ability);
+
+  if (matchedWeaknessValues.length === 0) {
+    return 1;
+  }
+
+  const averageWeakness =
+    matchedWeaknessValues.reduce((sum, value) => sum + value, 0) /
+    matchedWeaknessValues.length;
+
+  /*
+   * Skill weakness chỉ là soft bonus, không phá graph/prerequisite.
+   * ability=0   -> multiplier 1.15
+   * ability=0.5 -> multiplier 1.075
+   * ability=1   -> multiplier 1.0
+   */
+  return 1 + 0.15 * averageWeakness;
+};
+
 const calculateStrategyMultiplier = (
   strategy: LearningPathStrategyV2,
   node: LessonManagerRouteNodeV2,
@@ -273,10 +326,21 @@ export const calculateNodeGain = (input: CalculateNodeGainInput): number => {
     input.node,
     input.part_ability
   );
+  const nodeSkillKeys = getNormalizedSkillKeysFromTags(
+    input.node.target_tags,
+    input.node.part_type
+  );
+
   const focusBonus =
-    input.focus_skill_keys?.some((key) => input.node.target_tags.includes(key))
+    input.focus_skill_keys?.some((key) => nodeSkillKeys.includes(key))
       ? 1.08
       : 1;
+
+  const skillWeaknessMultiplier = calculateSkillWeaknessMultiplier({
+    node: input.node,
+    skill_abilities: input.skill_abilities,
+  });
+
   const difficultyMultiplier =
     input.scenario === "ONBOARDING"
       ? Math.max(0.05, difficultyFit * difficultyFit)
@@ -303,6 +367,7 @@ export const calculateNodeGain = (input: CalculateNodeGainInput): number => {
     unitMultiplier *
     strategyMultiplier *
     focusBonus *
+    skillWeaknessMultiplier *
     efficiencyMultiplier;
 
   return roundToTwo(gain);
@@ -611,14 +676,15 @@ export const optimizePartPath = (
 
       totalGain = roundToTwo(
         totalGain +
-          calculateNodeGain({
-            node,
-            scenario: input.scenario,
-            strategy: input.strategy,
-            target_score: input.target_score,
-            part_ability: input.part_ability,
-            completed_unit_ids: input.completed_unit_ids,
-          })
+        calculateNodeGain({
+          node,
+          scenario: input.scenario,
+          strategy: input.strategy,
+          target_score: input.target_score,
+          part_ability: input.part_ability,
+          completed_unit_ids: input.completed_unit_ids,
+          skill_abilities: input.skill_abilities,
+        })
       );
       reachesTarget =
         reachesTarget || isNodeCoveringTarget(node, input.target_score);
@@ -651,6 +717,7 @@ export const optimizePartPath = (
       target_score: input.target_score,
       part_ability: input.part_ability,
       completed_unit_ids: input.completed_unit_ids,
+      skill_abilities: input.skill_abilities,
     });
     const nextPath = [...path, node];
     const nextState: PathState = {
@@ -714,6 +781,7 @@ export const optimizePartPath = (
       target_score: input.target_score,
       part_ability: input.part_ability,
       completed_unit_ids: input.completed_unit_ids,
+      skill_abilities: input.skill_abilities,
     });
 
     return toPlannedRouteUnit(node, index, gain, getScenarioReason(input.scenario));
@@ -789,7 +857,7 @@ const scoreBeamSearchState = (input: {
   const totalMinutes = sumPlannedMinutes(selectedRoadmapUnits);
   const focusSet = new Set(input.focus_part_types);
   const focusCount = selectedRoadmapUnits.filter((unit) => focusSet.has(unit.part_type)).length;
-  const focusRatio =
+  const focusUnitRatio =
     selectedRoadmapUnits.length > 0 ? focusCount / selectedRoadmapUnits.length : 0;
   const partTypes = Array.from(
     new Set(selectedRoadmapUnits.map((unit) => unit.part_type))
@@ -807,15 +875,24 @@ const scoreBeamSearchState = (input: {
     (sum, unit) => sum + unit.estimated_gain,
     0
   );
-  const focusScore = focusRatio * 2;
+  const focusUnitScore = focusUnitRatio * 1.5;
+  const selectedFocusPartTypes = partTypes.filter((partType) =>
+    focusSet.has(partType)
+  );
+  const focusPartCoverageRatio =
+    input.focus_part_types.length > 0
+      ? selectedFocusPartTypes.length / input.focus_part_types.length
+      : 0;
+  const focusPartCoverageScore = focusPartCoverageRatio * 2.5;
+  const focusScore = focusUnitScore + focusPartCoverageScore;
   const timeScore =
     input.ideal_learning_minutes > 0
       ? 1 -
-        Math.min(
-          1,
-          Math.abs(totalMinutes - input.ideal_learning_minutes) /
-            input.ideal_learning_minutes
-        )
+      Math.min(
+        1,
+        Math.abs(totalMinutes - input.ideal_learning_minutes) /
+        input.ideal_learning_minutes
+      )
       : 0;
   const partSpreadPenalty = Math.max(
     0,
@@ -839,6 +916,9 @@ const scoreBeamSearchState = (input: {
   return {
     score: roundToTwo(gainScore + focusScore + timeScore - spreadPenalty),
     focus_score: roundToTwo(focusScore),
+    focus_unit_score: roundToTwo(focusUnitScore),
+    focus_part_coverage_score: roundToTwo(focusPartCoverageScore),
+    focus_part_coverage_ratio: roundToTwo(focusPartCoverageRatio),
     time_score: roundToTwo(timeScore),
     spread_penalty: roundToTwo(spreadPenalty),
     skill_keys: skillKeys,
@@ -1078,6 +1158,12 @@ export const buildNextCycleByBeamSearch = (
     selected_roadmap_units_count: best.selected_roadmap_units.length,
     estimated_learning_minutes: best.total_minutes,
     selected_score: best.score,
+    focus_score: best.focus_score,
+    focus_unit_score: best.focus_unit_score,
+    focus_part_coverage_score: best.focus_part_coverage_score,
+    focus_part_coverage_ratio: best.focus_part_coverage_ratio,
+    time_score: best.time_score,
+    spread_penalty: best.spread_penalty,
     candidate_count: candidateCount,
     selected_roadmap_positions: selectedRoadmapPositions,
   });
@@ -1094,17 +1180,23 @@ export const buildNextCycleByBeamSearch = (
     estimated_learning_minutes: best.total_minutes,
     assessment: shouldUseFullTest
       ? {
-          type: "full_test",
-          estimated_minutes: config.full_test_estimated_minutes,
-        }
+        type: "full_test",
+        estimated_minutes: config.full_test_estimated_minutes,
+      }
       : {
-          type: "mini_test",
-          estimated_minutes: config.mini_test_estimated_minutes,
-          focus_skill_keys: selectedSkillKeys,
-          focus_part_types: selectedPartTypes,
-        },
+        type: "mini_test",
+        estimated_minutes: config.mini_test_estimated_minutes,
+        focus_skill_keys: selectedSkillKeys,
+        focus_part_types: selectedPartTypes,
+      },
     beam_search_debug: {
       selected_score: best.score,
+      focus_score: best.focus_score,
+      focus_unit_score: best.focus_unit_score,
+      focus_part_coverage_score: best.focus_part_coverage_score,
+      focus_part_coverage_ratio: best.focus_part_coverage_ratio,
+      time_score: best.time_score,
+      spread_penalty: best.spread_penalty,
       candidate_count: candidateCount,
       reason:
         "Beam Search chọn cycle từ 7 Part roadmap theo focus, gain, thời lượng và độ tập trung.",
@@ -1173,6 +1265,7 @@ export const buildStrategyRoutePlan = (
       nodes_of_part: nodesByPart[allocation.part_type] ?? [],
       completed_unit_ids: input.completed_unit_ids,
       start_unit_ids: input.start_unit_ids_by_part?.[allocation.part_type],
+      skill_abilities: input.skill_abilities,
     });
   });
 
@@ -1201,10 +1294,10 @@ export const buildStrategyRoutePlan = (
     (path) => path.reaches_target
   ).length;
 
-    /*
-   * buildStrategyRoutePlan chỉ tạo strategy snapshot gồm 7 Part roadmaps.
-   * Đây là định hướng dài hạn theo từng Part, không phải một route tổng tuyến tính.
-   */
+  /*
+ * buildStrategyRoutePlan chỉ tạo strategy snapshot gồm 7 Part roadmaps.
+ * Đây là định hướng dài hạn theo từng Part, không phải một route tổng tuyến tính.
+ */
   const output: BuildStrategyRoutePlanOutputV2 = {
     strategy: input.strategy,
     scenario: input.scenario,

@@ -10,6 +10,7 @@
   LearningScenarioDecisionV2,
   NormalizedTestResultV2,
   PartAbilityInputV2,
+  SkillAbilityInputV2,
 } from "../../types/learning_path_v2";
 import { Types } from "mongoose";
 import {
@@ -369,6 +370,27 @@ export const extractPartAbilitiesForLayer4 = (input: {
   return abilities;
 };
 
+export const extractSkillAbilitiesForLayer4 = (input: {
+  user_skill: IUserSkill;
+}): SkillAbilityInputV2[] => {
+  return (input.user_skill.parts ?? []).flatMap((part) =>
+    (part.skills ?? [])
+      .filter(
+        (skill) =>
+          typeof skill.skill_key === "string" &&
+          skill.skill_key.length > 0 &&
+          typeof skill.ability === "number" &&
+          Number.isFinite(skill.ability)
+      )
+      .map((skill) => ({
+        part_type: part.part_type,
+        skill_key: skill.skill_key,
+        ability: clampAbility(skill.ability),
+        status: skill.status,
+      }))
+  );
+};
+
 const loadLessonManagerRouteNodes = async (): Promise<LessonManagerRouteNodeV2[]> => {
   const nodes = await LessonManager.find({
     status: { $in: ["approved", "open"] },
@@ -468,6 +490,9 @@ const buildRoutePlanForStrategy = async (input: {
   const partAbilities = extractPartAbilitiesForLayer4({
     user_skill: input.userSkill,
   });
+  const skillAbilities = extractSkillAbilitiesForLayer4({
+    user_skill: input.userSkill,
+  });
   const lessonManagerNodes = await loadLessonManagerRouteNodes();
 
   return buildStrategyRoutePlan({
@@ -476,6 +501,7 @@ const buildRoutePlanForStrategy = async (input: {
     target_score: input.learningPath.target_score ?? 0,
     total_available_minutes: totalAvailableMinutes,
     part_abilities: partAbilities,
+    skill_abilities: skillAbilities,
     lesson_manager_nodes: lessonManagerNodes,
   });
 };
