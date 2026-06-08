@@ -787,6 +787,47 @@ export const optimizePartPath = (
     return toPlannedRouteUnit(node, index, gain, getScenarioReason(input.scenario));
   });
 
+  logLearningPathV2DebugSafe("layer4.part_path.selected_nodes", {
+    stage: "layer4_route_optimizer",
+    part_type: input.part_type,
+    strategy: input.strategy,
+    scenario: input.scenario,
+    target_score: input.target_score,
+    part_ability: input.part_ability,
+    part_budget_minutes: input.part_budget_minutes,
+    selected_total_minutes: best.totalMinutes,
+    selected_total_gain: best.totalGain,
+    reaches_target: best.reachesTarget,
+
+    selected_nodes: best.nodes.map((node, index) => ({
+      lesson_manager_id: node.id,
+      title: node.title,
+      order: index,
+      score_band: node.score_band,
+      weight: node.weight,
+      unit_type: node.unit_type,
+      target_tags: node.target_tags,
+      planned_minutes: node.planned_completion_time,
+      next_unit_ids: node.next_unit_ids,
+      prerequisite_unit_ids: node.prerequisite_unit_ids,
+
+      estimated_gain: calculateNodeGain({
+        node,
+        scenario: input.scenario,
+        strategy: input.strategy,
+        target_score: input.target_score,
+        part_ability: input.part_ability,
+        skill_abilities: input.skill_abilities,
+        completed_unit_ids: input.completed_unit_ids,
+      }),
+
+      skill_debug: buildNodeSkillDebugSnapshot({
+        node,
+        skill_abilities: input.skill_abilities,
+      }),
+    })),
+  });
+
   return {
     part_type: input.part_type,
     target_minutes: input.part_budget_minutes,
@@ -1349,13 +1390,61 @@ export const buildStrategyRoutePlan = (
   return output;
 };
 
+const buildNodeSkillDebugSnapshot = (input: {
+  node: LessonManagerRouteNodeV2;
+  skill_abilities?: SkillAbilityInputV2[];
+}) => {
+  const matchedSkillKeys = getNormalizedSkillKeysFromTags(
+    input.node.target_tags,
+    input.node.part_type
+  );
 
+  const abilityBySkillKey = new Map(
+    (input.skill_abilities ?? [])
+      .filter((skill) => skill.part_type === input.node.part_type)
+      .map((skill) => [
+        skill.skill_key,
+        Math.min(1, Math.max(0, skill.ability)),
+      ])
+  );
 
+  const matchedSkillAbilities = matchedSkillKeys
+    .map((skillKey) => {
+      const ability = abilityBySkillKey.get(skillKey);
+      if (ability === undefined) return undefined;
 
+      return {
+        skill_key: skillKey,
+        ability,
+        weakness: 1 - ability,
+      };
+    })
+    .filter(
+      (
+        item
+      ): item is {
+        skill_key: string;
+        ability: number;
+        weakness: number;
+      } => Boolean(item)
+    );
 
+  const averageWeakness =
+    matchedSkillAbilities.length > 0
+      ? matchedSkillAbilities.reduce((sum, item) => sum + item.weakness, 0) /
+      matchedSkillAbilities.length
+      : undefined;
 
-
-
-
-
-
+  return {
+    matched_skill_keys: matchedSkillKeys,
+    matched_skill_abilities: matchedSkillAbilities,
+    average_weakness:
+      averageWeakness === undefined ? undefined : roundToTwo(averageWeakness),
+    skill_weakness_multiplier: roundToTwo(
+      calculateSkillWeaknessMultiplier({
+        node: input.node,
+        skill_abilities: input.skill_abilities,
+      })
+    ),
+  };
+};
