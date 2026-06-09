@@ -7,6 +7,7 @@ const mockLearningPath: any = {
 
 const mockLearningPathStrategyOption: any = {
   create: jest.fn(),
+  findOne: jest.fn(),
   updateMany: jest.fn(),
 };
 
@@ -187,6 +188,53 @@ const createRoutePlan = (strategy: string, scenario = "ONBOARDING") => ({
   summary_reasons: ["Ưu tiên Part yếu."],
 });
 
+const previousUnitIds = {
+  unit1: new Types.ObjectId().toString(),
+  unit2: new Types.ObjectId().toString(),
+  unit3: new Types.ObjectId().toString(),
+  unit4: new Types.ObjectId().toString(),
+  unit5: new Types.ObjectId().toString(),
+};
+
+const expectedPreviousSelectedFrontier = {
+  completed_unit_ids: [
+    previousUnitIds.unit1,
+    previousUnitIds.unit2,
+    previousUnitIds.unit4,
+  ],
+  start_unit_ids_by_part: {
+    6: [previousUnitIds.unit3],
+    7: [previousUnitIds.unit5],
+  },
+};
+
+const createPreviousSelectedStrategyOption = () =>
+  ({
+    _id: new Types.ObjectId(),
+    user_id: new Types.ObjectId(userId),
+    learning_path_id: new Types.ObjectId(learningPathId),
+    status: "selected",
+    part_roadmaps: [
+      {
+        part_type: 6,
+        cursor_index: 2,
+        units: [
+          { lesson_manager_id: previousUnitIds.unit1 },
+          { lesson_manager_id: previousUnitIds.unit2 },
+          { lesson_manager_id: previousUnitIds.unit3 },
+        ],
+      },
+      {
+        part_type: 7,
+        cursor_index: 1,
+        units: [
+          { lesson_manager_id: previousUnitIds.unit4 },
+          { lesson_manager_id: previousUnitIds.unit5 },
+        ],
+      },
+    ],
+  } as any);
+
 const setupBaseMocks = (triggerType: string) => {
   const learningPath = createLearningPath();
   const userSkill = createUserSkill();
@@ -219,6 +267,9 @@ const setupBaseMocks = (triggerType: string) => {
   mockBuildStrategyRoutePlan.mockImplementation((input: any) =>
     createRoutePlan(input.strategy, input.scenario)
   );
+  mockLearningPathStrategyOption.findOne.mockReturnValue({
+    sort: jest.fn<(sort: any) => Promise<any>>().mockResolvedValue(null),
+  });
   mockLearningPathStrategyOption.updateMany.mockResolvedValue({ modifiedCount: 0 });
   mockLearningPathStrategyOption.create.mockImplementation((payload: any) => {
     if (Array.isArray(payload)) {
@@ -385,11 +436,33 @@ describe("learning_path_v2.service", () => {
 
   it("runLearningPathV2AbilityPipeline -> full_test_review creates 3 pending options and does not create cycle", async () => {
     const { learningPath } = setupBaseMocks("full_test_review");
+    const previousSelectedOption = createPreviousSelectedStrategyOption();
+    const sortMock = jest
+      .fn<(sort: any) => Promise<any>>()
+      .mockResolvedValue(previousSelectedOption);
+    mockLearningPathStrategyOption.findOne.mockReturnValue({
+      sort: sortMock,
+    });
 
     const output = await runLearningPathV2AbilityPipeline(
       createInput("full_test_review", { week_study_id: weekStudyId })
     );
 
+    expect(mockLearningPathStrategyOption.findOne).toHaveBeenCalledWith({
+      learning_path_id: learningPathId,
+      user_id: userId,
+      status: "selected",
+    });
+    expect(sortMock).toHaveBeenCalledWith({ selected_at: -1, created_at: -1 });
+    expect(mockBuildStrategyRoutePlan).toHaveBeenCalledTimes(3);
+    mockBuildStrategyRoutePlan.mock.calls.forEach(([input]) => {
+      expect(input.completed_unit_ids).toEqual(
+        expectedPreviousSelectedFrontier.completed_unit_ids
+      );
+      expect(input.start_unit_ids_by_part).toEqual(
+        expectedPreviousSelectedFrontier.start_unit_ids_by_part
+      );
+    });
     expect(mockLearningPathStrategyOption.create).toHaveBeenCalledTimes(1);
     const payloads = mockLearningPathStrategyOption.create.mock.calls[0][0];
     expect(payloads).toHaveLength(3);
@@ -409,6 +482,20 @@ describe("learning_path_v2.service", () => {
     expect(learningPath.save).toHaveBeenCalled();
     expect(output.layer4_result?.strategy_options).toHaveLength(3);
     expect(output.layer4_result?.cycle_result).toBeNull();
+  });
+
+  it("full_test_review uses empty frontier when no selected option exists", async () => {
+    setupBaseMocks("full_test_review");
+
+    await runLearningPathV2AbilityPipeline(
+      createInput("full_test_review", { week_study_id: weekStudyId })
+    );
+
+    expect(mockBuildStrategyRoutePlan).toHaveBeenCalledTimes(3);
+    mockBuildStrategyRoutePlan.mock.calls.forEach(([input]) => {
+      expect(input.completed_unit_ids).toEqual([]);
+      expect(input.start_unit_ids_by_part).toEqual({});
+    });
   });
 
   it("runLearningPathV2AbilityPipeline -> mini_test_completion increments counter and creates next cycle", async () => {

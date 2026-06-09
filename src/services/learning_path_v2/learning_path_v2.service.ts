@@ -89,6 +89,11 @@ type StrategyOptionPayloadInput = {
   scenario: LearningPathScenarioSnapshot;
 };
 
+type RouteFrontierForLayer4 = {
+  completed_unit_ids: string[];
+  start_unit_ids_by_part: Record<number, string[]>;
+};
+
 const PART_TYPES = [1, 2, 3, 4, 5, 6, 7];
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -470,12 +475,47 @@ const mapRoutePlanToStrategyOptionPayload = (input: StrategyOptionPayloadInput) 
   selected_at: input.status === "selected" ? new Date() : undefined,
 });
 
+const deriveRouteFrontierFromStrategyOption = (
+  option?: ILearningPathStrategyOption | null
+): RouteFrontierForLayer4 => {
+  const completedUnitIds: string[] = [];
+  const startUnitIdsByPart: Record<number, string[]> = {};
+
+  for (const roadmap of option?.part_roadmaps ?? []) {
+    const units = roadmap.units ?? [];
+    const cursorIndex = Math.min(
+      Math.max(0, roadmap.cursor_index ?? 0),
+      units.length
+    );
+
+    for (const unit of units.slice(0, cursorIndex)) {
+      if (unit.lesson_manager_id) {
+        completedUnitIds.push(String(unit.lesson_manager_id));
+      }
+    }
+
+    const nextUnit = units[cursorIndex];
+    if (nextUnit?.lesson_manager_id) {
+      startUnitIdsByPart[roadmap.part_type] = [
+        String(nextUnit.lesson_manager_id),
+      ];
+    }
+  }
+
+  return {
+    completed_unit_ids: Array.from(new Set(completedUnitIds)),
+    start_unit_ids_by_part: startUnitIdsByPart,
+  };
+};
+
 const buildRoutePlanForStrategy = async (input: {
   learningPath: ILearningPath;
   userSkill: IUserSkill;
   strategy: LearningPathStrategyV2;
   scenario: LearningPathScenarioV2;
   now: Date;
+  completed_unit_ids?: string[];
+  start_unit_ids_by_part?: Record<number, string[]>;
 }): Promise<BuildStrategyRoutePlanOutputV2> => {
   /*
    * Layer 4 cần route budget tổng. MVP dùng time_per_day + target_completion_date,
@@ -503,6 +543,8 @@ const buildRoutePlanForStrategy = async (input: {
     part_abilities: partAbilities,
     skill_abilities: skillAbilities,
     lesson_manager_nodes: lessonManagerNodes,
+    completed_unit_ids: input.completed_unit_ids,
+    start_unit_ids_by_part: input.start_unit_ids_by_part,
   });
 };
 
@@ -691,6 +733,29 @@ const createFullTestPendingOptions = async (input: {
   await input.learningPath.save();
 
   /*
+ * Phải lấy selected option cũ trước khi expire để giữ route frontier.
+ * Full test tạo 3 option mới, nhưng không reset route từ đầu.
+ */
+  const previousSelectedOption = await LearningPathStrategyOption.findOne({
+    learning_path_id: input.originalInput.learning_path_id,
+    user_id: input.originalInput.user_id,
+    status: "selected",
+  }).sort({ selected_at: -1, created_at: -1 });
+
+  const routeFrontier = deriveRouteFrontierFromStrategyOption(
+    previousSelectedOption
+  );
+
+  logLearningPathV2DebugSafe("layer4.full_test_route_frontier", {
+    stage: "layer4",
+    learning_path_id: input.originalInput.learning_path_id,
+    user_id: input.originalInput.user_id,
+    previous_strategy_option_id: previousSelectedOption?._id?.toString(),
+    completed_unit_count: routeFrontier.completed_unit_ids.length,
+    start_unit_ids_by_part: routeFrontier.start_unit_ids_by_part,
+  });
+
+  /*
  * Sau full test, route cũ không còn là active route nữa.
  * User phải chọn 1 trong 3 option pending mới rồi hệ thống mới tạo cycle tiếp theo.
  * Vì vậy selected cũ và pending cũ đều chuyển expired trước khi tạo batch mới.
@@ -719,6 +784,8 @@ const createFullTestPendingOptions = async (input: {
         strategy,
         scenario,
         now: input.normalizedResult.submitted_at ?? new Date(),
+        completed_unit_ids: routeFrontier.completed_unit_ids,
+        start_unit_ids_by_part: routeFrontier.start_unit_ids_by_part,
       });
 
       return mapRoutePlanToStrategyOptionPayload({
