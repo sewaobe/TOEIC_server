@@ -1132,6 +1132,18 @@ type CurrentLearningPathCycleV2Result = {
 type LearningPathV2OverviewResult = CurrentLearningPathCycleV2Result & {
   pending_strategy_options: ILearningPathStrategyOption[];
   week_studies: IWeekStudy[];
+  roadmap_canvas: {
+    current_cycle: {
+      week_study_id: string;
+      cycle_no: number;
+      status: WeekStudyStatus;
+      focus_part_types: number[];
+      focus_skill_keys: string[];
+      assessment_type: "mini_test" | "full_test" | null;
+    } | null;
+    current_learning: RoadmapCanvasCurrentLearning | null;
+    units: RoadmapCanvasUnitStatusItem[];
+  }
 };
 
 const loadActiveLearningPath = async (
@@ -1261,6 +1273,111 @@ export const getLearningPathV2Overview = async (
         day_studies: dayStudies,
       }
       : null,
+    roadmap_canvas: buildRoadmapCanvasSnapshot({
+      selectedOption,
+      currentWeekStudy,
+      dayStudies,
+    }),
   };
 };
 
+
+type RoadmapCanvasUnitStatus = "completed" | "in_cycle" | "current" | "locked";
+
+type RoadmapCanvasUnitStatusItem = {
+  lesson_manager_id: string;
+  status: RoadmapCanvasUnitStatus;
+};
+
+type RoadmapCanvasCurrentLearning = {
+  lesson_manager_id: string;
+  day_study_id: string;
+  stage_no: number;
+  session_no: number;
+  item_order?: number;
+  kind?: string;
+};
+
+const buildRoadmapCanvasSnapshot = (input: {
+  selectedOption?: ILearningPathStrategyOption | null;
+  currentWeekStudy?: IWeekStudy | null;
+  dayStudies: IDayStudy[];
+}) => {
+  const currentCycleLessonManagerIds = new Set<string>();
+  let currentLearning: RoadmapCanvasCurrentLearning | null = null;
+
+  for (const day of input.dayStudies ?? []) {
+    for (const session of day.sessions ?? []) {
+      if (session.lesson_manager_id) {
+        currentCycleLessonManagerIds.add(String(session.lesson_manager_id));
+      }
+
+      if (!currentLearning && session.status === WeekStudyStatus.IN_PROGRESS) {
+        const inProgressItem = (session.items ?? []).find(
+          (item) => item.status === WeekStudyStatus.IN_PROGRESS
+        );
+
+        const lessonManagerId =
+          session.lesson_manager_id ??
+          inProgressItem?.source_lesson_manager_id;
+
+        if (lessonManagerId) {
+          currentLearning = {
+            lesson_manager_id: String(lessonManagerId),
+            day_study_id: String(day._id),
+            stage_no: day.dayOfWeek,
+            session_no: session.session_no,
+            item_order: inProgressItem?.order,
+            kind: inProgressItem?.kind,
+          };
+        }
+      }
+    }
+  }
+
+  const currentLearningLessonManagerId =
+    currentLearning?.lesson_manager_id ?? null;
+
+  const units: RoadmapCanvasUnitStatusItem[] = [];
+
+  for (const roadmap of input.selectedOption?.part_roadmaps ?? []) {
+    const cursorIndex = Math.min(
+      Math.max(0, roadmap.cursor_index ?? 0),
+      roadmap.units?.length ?? 0
+    );
+
+    for (const [index, unit] of (roadmap.units ?? []).entries()) {
+      const lessonManagerId = String(unit.lesson_manager_id);
+
+      let status: RoadmapCanvasUnitStatus = "locked";
+
+      if (lessonManagerId === currentLearningLessonManagerId) {
+        status = "current";
+      } else if (currentCycleLessonManagerIds.has(lessonManagerId)) {
+        status = "in_cycle";
+      } else if (index < cursorIndex) {
+        status = "completed";
+      }
+
+      units.push({
+        lesson_manager_id: lessonManagerId,
+        status,
+      });
+    }
+  }
+
+  return {
+    current_cycle: input.currentWeekStudy
+      ? {
+        week_study_id: String(input.currentWeekStudy._id),
+        cycle_no: input.currentWeekStudy.no,
+        status: input.currentWeekStudy.status,
+        focus_part_types: input.currentWeekStudy.focus_part_types ?? [],
+        focus_skill_keys: input.currentWeekStudy.focus_skill_keys ?? [],
+        assessment_type: input.currentWeekStudy.assessment_type ?? null,
+      }
+      : null,
+    current_learning: currentLearning,
+    units,
+  };
+};
