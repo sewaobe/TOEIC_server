@@ -753,6 +753,19 @@ export const normalizeToeicSkillTag = (
   };
 };
 
+export const getToeicSkillLabelVi = (
+  skillKey: string,
+  partType?: number
+): string | undefined => {
+  const matched = TOEIC_SKILL_DEFINITIONS.find(
+    (definition) =>
+      definition.key === skillKey &&
+      (partType === undefined || definition.part_type === partType)
+  );
+
+  return matched?.label_vi;
+};
+
 export const normalizeToeicSkillTags = (
   rawTags: string[],
   partType?: number

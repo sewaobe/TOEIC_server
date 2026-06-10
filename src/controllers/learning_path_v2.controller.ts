@@ -5,6 +5,7 @@ import {
   getCurrentLearningPathCycleV2,
   getLearningPathV2GenerationContext,
   getLearningPathV2Overview,
+  getLearningPathV2SkillMap,
   runLearningPathV2AbilityPipeline,
   upsertLearningPathV2Setup,
 } from "../services/learning_path_v2/learning_path_v2.service";
@@ -289,6 +290,55 @@ export const getLearningPathV2OverviewController = async (
     const result = await getLearningPathV2Overview({
       user_id: userId,
       learning_path_id: learningPathId,
+    });
+
+    res.status(200).json(ApiResponse.success(result));
+  } catch (error) {
+    handleLearningPathV2ControllerError(error, res, next);
+  }
+};
+
+
+export const getLearningPathV2SkillMapController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { learningPathId } = req.params;
+    const userId = req.user?._id;
+
+    if (!userId) {
+      res.status(401).json(ApiResponse.fail("Không tìm thấy user_id."));
+      return;
+    }
+
+    const tab =
+      typeof req.query.tab === "string" ? req.query.tab : "parts";
+
+    const result = await getLearningPathV2SkillMap({
+      user_id: userId,
+      learning_path_id: learningPathId,
+      tab,
+      status: typeof req.query.status === "string" ? req.query.status : undefined,
+      part_type:
+        typeof req.query.part_type === "string"
+          ? Number(req.query.part_type)
+          : undefined,
+      skill_group:
+        typeof req.query.skill_group === "string"
+          ? req.query.skill_group
+          : undefined,
+      focus_only: req.query.focus_only === "true",
+      q: typeof req.query.q === "string" ? req.query.q : undefined,
+      page:
+        typeof req.query.page === "string"
+          ? Number(req.query.page)
+          : undefined,
+      limit:
+        typeof req.query.limit === "string"
+          ? Number(req.query.limit)
+          : undefined,
     });
 
     res.status(200).json(ApiResponse.success(result));

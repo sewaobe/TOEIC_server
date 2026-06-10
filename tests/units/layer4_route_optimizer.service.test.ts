@@ -15,6 +15,7 @@ import type {
   PartAbilityInputV2,
   PlannedRouteUnitV2,
 } from "../../src/types/learning_path_v2";
+import * as debugLogger from "../../src/services/learning_path_v2/learning_path_v2_debug_logger";
 
 const partAbilities: PartAbilityInputV2[] = [
   { part_type: 1, ability: 0.7 },
@@ -535,6 +536,212 @@ describe("layer4_route_optimizer.service", () => {
 
     // Kiểm tra
     expect(result.nodes.map((node) => node.lesson_manager_id)).toEqual(["a", "b"]);
+  });
+
+  it("optimizePartPath -> next candidate expands missing prerequisite closure inside route", () => {
+    const nodes = [
+      createNode("a", { weight: 0.1, next_unit_ids: ["b"] }),
+      createNode("b", {
+        weight: 0.2,
+        prerequisite_unit_ids: ["a"],
+        next_unit_ids: ["c"],
+      }),
+      createNode("c", {
+        weight: 0.3,
+        prerequisite_unit_ids: ["b"],
+        next_unit_ids: ["d", "f"],
+      }),
+      createNode("m", { weight: 0.45 }),
+      createNode("e", {
+        weight: 0.55,
+        prerequisite_unit_ids: ["m"],
+      }),
+      createNode("d", {
+        weight: 0.9,
+        prerequisite_unit_ids: ["e"],
+      }),
+      createNode("f", {
+        weight: 0.35,
+        prerequisite_unit_ids: ["c"],
+      }),
+    ];
+
+    const result = optimizePartPath({
+      part_type: 5,
+      part_budget_minutes: 80,
+      scenario: "NORMAL_PROGRESS",
+      strategy: "balanced",
+      target_score: 600,
+      part_ability: 0.4,
+      nodes_of_part: nodes,
+      start_unit_ids: ["a"],
+    });
+
+    expect(result.nodes.map((node) => node.lesson_manager_id)).toEqual([
+      "a",
+      "b",
+      "c",
+      "m",
+      "e",
+      "d",
+    ]);
+  });
+
+  it("optimizePartPath -> missing prerequisite closure exceeding budget falls back to best reachable terminal route", () => {
+    const nodes = [
+      createNode("a", { weight: 0.1, next_unit_ids: ["b"] }),
+      createNode("b", {
+        weight: 0.2,
+        prerequisite_unit_ids: ["a"],
+        next_unit_ids: ["c"],
+      }),
+      createNode("c", {
+        weight: 0.3,
+        prerequisite_unit_ids: ["b"],
+        next_unit_ids: ["d", "f"],
+      }),
+      createNode("m", { weight: 0.45 }),
+      createNode("e", {
+        weight: 0.55,
+        prerequisite_unit_ids: ["m"],
+      }),
+      createNode("d", {
+        weight: 0.9,
+        prerequisite_unit_ids: ["e"],
+      }),
+      createNode("f", {
+        weight: 0.35,
+        prerequisite_unit_ids: ["c"],
+      }),
+    ];
+
+    const result = optimizePartPath({
+      part_type: 5,
+      part_budget_minutes: 45,
+      scenario: "NORMAL_PROGRESS",
+      strategy: "balanced",
+      target_score: 600,
+      part_ability: 0.4,
+      nodes_of_part: nodes,
+      start_unit_ids: ["a"],
+    });
+
+    expect(result.nodes.map((node) => node.lesson_manager_id)).toEqual([
+      "a",
+      "b",
+      "c",
+      "f",
+    ]);
+    expect(result.total_minutes).toBeLessThanOrEqual(45);
+  });
+
+  it("optimizePartPath -> target reached terminal path stops before later expansions", () => {
+    const nodes = [
+      createNode("a", {
+        weight: 0.2,
+        next_unit_ids: ["b"],
+      }),
+      createNode("b", {
+        weight: 0.3,
+        prerequisite_unit_ids: ["a"],
+        next_unit_ids: ["c"],
+        score_band: { from: 590, to: 620 },
+      }),
+      createNode("c", {
+        weight: 0.95,
+        prerequisite_unit_ids: ["b"],
+      }),
+    ];
+
+    const result = optimizePartPath({
+      part_type: 5,
+      part_budget_minutes: 100,
+      scenario: "NORMAL_PROGRESS",
+      strategy: "balanced",
+      target_score: 600,
+      part_ability: 0.3,
+      nodes_of_part: nodes,
+      start_unit_ids: ["a"],
+    });
+
+    expect(result.reaches_target).toBe(true);
+    expect(result.nodes.map((node) => node.lesson_manager_id)).toEqual(["a", "b"]);
+  });
+
+  it("optimizePartPath -> debug log includes terminal candidate paths and marks best path", () => {
+    const logSpy = jest.spyOn(debugLogger, "logLearningPathV2DebugSafe");
+    logSpy.mockClear();
+    const nodes = [
+      createNode("a", { weight: 0.1, next_unit_ids: ["b"] }),
+      createNode("b", {
+        weight: 0.2,
+        prerequisite_unit_ids: ["a"],
+        next_unit_ids: ["c"],
+      }),
+      createNode("c", {
+        weight: 0.3,
+        prerequisite_unit_ids: ["b"],
+        next_unit_ids: ["d", "f"],
+      }),
+      createNode("m", { weight: 0.45 }),
+      createNode("e", {
+        weight: 0.55,
+        prerequisite_unit_ids: ["m"],
+      }),
+      createNode("d", {
+        weight: 0.9,
+        prerequisite_unit_ids: ["e"],
+      }),
+      createNode("f", {
+        weight: 0.35,
+        prerequisite_unit_ids: ["c"],
+      }),
+    ];
+
+    optimizePartPath({
+      part_type: 5,
+      part_budget_minutes: 80,
+      scenario: "NORMAL_PROGRESS",
+      strategy: "balanced",
+      target_score: 600,
+      part_ability: 0.4,
+      nodes_of_part: nodes,
+      start_unit_ids: ["a"],
+    });
+
+    const candidateLogCall = logSpy.mock.calls.find(
+      ([event]) => event === "layer4.part_path.all_candidate_paths"
+    );
+
+    expect(candidateLogCall).toBeTruthy();
+    const payload = candidateLogCall?.[1] as {
+      terminal_path_count: number;
+      best_path_ids: string[];
+      paths: Array<{
+        is_best: boolean;
+        stop_reason: string;
+        nodes: Array<{ lesson_manager_id: string }>;
+      }>;
+    };
+
+    expect(payload.terminal_path_count).toBe(2);
+    expect(payload.best_path_ids).toEqual(["a", "b", "c", "m", "e", "d"]);
+    expect(payload.paths[0]).toEqual(
+      expect.objectContaining({
+        is_best: true,
+        stop_reason: "no_expandable_next",
+      })
+    );
+    expect(payload.paths.map((path) =>
+      path.nodes.map((node) => node.lesson_manager_id)
+    )).toEqual(
+      expect.arrayContaining([
+        ["a", "b", "c", "m", "e", "d"],
+        ["a", "b", "c", "f"],
+      ])
+    );
+
+    logSpy.mockRestore();
   });
 
 

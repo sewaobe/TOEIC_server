@@ -3,6 +3,7 @@ import {
   getCurrentLearningPathCycleV2Controller,
   getLearningPathV2GenerationContextController,
   getLearningPathV2OverviewController,
+  getLearningPathV2SkillMapController,
   initialGenerateLearningPathV2Controller,
   upsertLearningPathV2SetupController,
 } from "../controllers/learning_path_v2.controller";
@@ -27,5 +28,10 @@ router.get(
   getCurrentLearningPathCycleV2Controller
 );
 router.get("/:learningPathId/overview", verifyAccessToken, getLearningPathV2OverviewController);
+router.get(
+  "/:learningPathId/skill-map",
+  verifyAccessToken,
+  getLearningPathV2SkillMapController
+);
 
 export default router;

@@ -19,6 +19,9 @@ import {
   LearningPathStrategyOption,
   LessonManager,
   UserProgress,
+  UserSkill,
+  UserSkillHistory,
+  UserTest,
 } from "../../models";
 import type { IUserTest } from "../../models";
 import type { ILearningPath } from "../../models/learning_path.model";
@@ -52,6 +55,7 @@ import { DayStudy, WeekStudy } from "../../models";
 import type { IDayStudy } from "../../models/day_study.model";
 import type { IWeekStudy } from "../../models/week_study.model";
 import { WeekStudyStatus } from "../../models/enums/WeekStudyStatus";
+import { getToeicSkillLabelVi } from "../../utils/toeic_skill.util";
 
 export type LearningPathV2AbilityPipelineInput =
   | BuildInitialLearningPathPlanInput
@@ -1380,4 +1384,516 @@ const buildRoadmapCanvasSnapshot = (input: {
     current_learning: currentLearning,
     units,
   };
+};
+
+
+
+/**
+ * ==================================
+ * ========= User Skill =============
+ * ==================================
+ */
+type SkillMapTab = "parts" | "skills" | "history";
+
+type SkillMapStatusFilter = "weak" | "medium" | "strong";
+
+type SkillMapSkillGroupFilter = "basic" | "core" | "advanced";
+
+type GetLearningPathV2SkillMapInput = {
+  user_id: string;
+  learning_path_id: string;
+  tab?: string;
+  status?: string;
+  part_type?: number;
+  skill_group?: string;
+  focus_only?: boolean;
+  q?: string;
+  page?: number;
+  limit?: number;
+};
+
+type SkillMapEvidence = {
+  item_count?: number;
+  correct_count?: number;
+};
+
+type SkillMapEvidenceMaps = {
+  partsByType: Map<number, SkillMapEvidence>;
+  skillsByKey: Map<string, SkillMapEvidence>;
+};
+
+const normalizeSkillMapTab = (tab?: string): SkillMapTab => {
+  if (tab === "skills" || tab === "history" || tab === "parts") {
+    return tab;
+  }
+
+  return "parts";
+};
+
+const toAbilityPercent = (ability?: number): number => {
+  if (typeof ability !== "number" || !Number.isFinite(ability)) {
+    return 0;
+  }
+
+  return Math.round(clampAbility(ability) * 100);
+};
+
+const toTrendDeltaPercent = (trendSlope?: number): number | undefined => {
+  if (typeof trendSlope !== "number" || !Number.isFinite(trendSlope)) {
+    return undefined;
+  }
+
+  return Math.round(trendSlope * 100);
+};
+
+const getSkillDomainByPartType = (partType: number): "Listening" | "Reading" => {
+  return partType >= 1 && partType <= 4 ? "Listening" : "Reading";
+};
+
+const normalizeStatusFilter = (
+  status?: string
+): SkillMapStatusFilter | undefined => {
+  if (status === "weak" || status === "medium" || status === "strong") {
+    return status;
+  }
+
+  return undefined;
+};
+
+const normalizeSkillGroupFilter = (
+  skillGroup?: string
+): SkillMapSkillGroupFilter | undefined => {
+  if (
+    skillGroup === "basic" ||
+    skillGroup === "core" ||
+    skillGroup === "advanced"
+  ) {
+    return skillGroup;
+  }
+
+  return undefined;
+};
+
+const loadLearningPathSkillMapBase = async (input: {
+  user_id: string;
+  learning_path_id: string;
+}) => {
+  const learningPath = await LearningPath.findOne({
+    _id: input.learning_path_id,
+    user_id: input.user_id,
+    isActive: true,
+  }).lean<ILearningPath | null>();
+
+  if (!learningPath) {
+    throw new Error("Không tìm thấy LearningPath.");
+  }
+
+  const userSkill = await UserSkill.findOne({
+    user_id: input.user_id,
+    context_type: "learning_path",
+    learning_path_id: input.learning_path_id,
+  }).lean<IUserSkill | null>();
+
+  if (!userSkill) {
+    return {
+      learningPath,
+      userSkill: null,
+      selectedOption: null,
+    };
+  }
+
+  const selectedOption = await LearningPathStrategyOption.findOne({
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    status: "selected",
+  })
+    .sort({ selected_at: -1, created_at: -1 })
+    .lean<ILearningPathStrategyOption | null>();
+
+  return {
+    learningPath,
+    userSkill,
+    selectedOption,
+  };
+};
+
+const loadSkillMapLatestEvidence = async (input: {
+  user_id: string;
+  learning_path_id: string;
+}): Promise<SkillMapEvidenceMaps> => {
+  const histories = await UserSkillHistory.find({
+    user_id: input.user_id,
+    context_type: "learning_path",
+    learning_path_id: input.learning_path_id,
+  })
+    .sort({ submitted_at: -1, created_at: -1 })
+    .limit(20)
+    .select("parts skills")
+    .lean<IUserSkillHistory[]>();
+
+  const partsByType = new Map<number, SkillMapEvidence>();
+  const skillsByKey = new Map<string, SkillMapEvidence>();
+
+  for (const history of histories) {
+    for (const part of history.parts ?? []) {
+      if (!partsByType.has(part.part_type)) {
+        partsByType.set(part.part_type, {
+          item_count: part.item_count,
+          correct_count: part.correct_count,
+        });
+      }
+    }
+
+    for (const skill of history.skills ?? []) {
+      if (!skillsByKey.has(skill.skill_key)) {
+        skillsByKey.set(skill.skill_key, {
+          item_count: skill.item_count,
+          correct_count: skill.correct_count,
+        });
+      }
+    }
+  }
+
+  return {
+    partsByType,
+    skillsByKey,
+  };
+};
+
+const buildSkillMapPartsTab = async (input: {
+  userSkill: IUserSkill | null;
+  selectedOption?: ILearningPathStrategyOption | null;
+  evidence?: SkillMapEvidenceMaps;
+}) => {
+  const focusPartSet = new Set(input.selectedOption?.focus_part_types ?? []);
+
+  const parts = (input.userSkill?.parts ?? [])
+    .map((part) => {
+      const evidence = input.evidence?.partsByType.get(part.part_type);
+
+      return {
+        part_type: part.part_type,
+        skill_domain: getSkillDomainByPartType(part.part_type),
+        ability_percent: toAbilityPercent(part.ability),
+        status: part.status,
+        absolute_level: part.absolute_level,
+        trend: part.trend,
+        trend_delta_percent: toTrendDeltaPercent(part.trend_slope),
+        history_count: part.history_count ?? 0,
+        item_count: evidence?.item_count,
+        correct_count: evidence?.correct_count,
+        is_focus_part: focusPartSet.has(part.part_type),
+        last_evaluated_at: part.last_evaluated_at,
+      };
+    })
+    .sort((a, b) => a.part_type - b.part_type);
+
+  const weakestParts = [...parts]
+    .filter((part) => part.status === "weak")
+    .sort((a, b) => a.ability_percent - b.ability_percent)
+    .map((part) => part.part_type);
+
+  const strongestParts = [...parts]
+    .filter((part) => part.status === "strong")
+    .sort((a, b) => b.ability_percent - a.ability_percent)
+    .map((part) => part.part_type);
+
+  const improvingParts = [...parts]
+    .filter((part) => part.trend === "improving")
+    .map((part) => part.part_type);
+
+  const decliningParts = [...parts]
+    .filter((part) => part.trend === "declining")
+    .map((part) => part.part_type);
+
+  return {
+    tab: "parts",
+    summary: {
+      weakest_parts: weakestParts,
+      strongest_parts: strongestParts,
+      improving_parts: improvingParts,
+      declining_parts: decliningParts,
+      focus_part_types: [...focusPartSet],
+      last_evaluated_at: input.userSkill?.last_evaluated_at,
+    },
+    parts,
+  };
+};
+
+const buildSkillMapSkillsTab = async (input: {
+  userSkill: IUserSkill | null;
+  selectedOption?: ILearningPathStrategyOption | null;
+  evidence?: SkillMapEvidenceMaps;
+  status?: string;
+  part_type?: number;
+  skill_group?: string;
+  focus_only?: boolean;
+  q?: string;
+}) => {
+  const statusFilter = normalizeStatusFilter(input.status);
+  const skillGroupFilter = normalizeSkillGroupFilter(input.skill_group);
+  const focusSkillSet = new Set(input.selectedOption?.focus_skill_keys ?? []);
+  const query = input.q?.trim().toLowerCase();
+
+  let skills = (input.userSkill?.parts ?? []).flatMap((part) =>
+    (part.skills ?? []).map((skill) => {
+      const evidence = input.evidence?.skillsByKey.get(skill.skill_key);
+
+      return {
+        skill_key: skill.skill_key,
+        label_vi:
+          getToeicSkillLabelVi(skill.skill_key, part.part_type) ??
+          skill.label_vi ??
+          skill.skill_key,
+        part_type: part.part_type,
+        skill_domain: getSkillDomainByPartType(part.part_type),
+        skill_group: skill.skill_group,
+        ability_percent: toAbilityPercent(skill.ability),
+        status: skill.status,
+        absolute_level: skill.absolute_level,
+        trend: skill.trend,
+        trend_delta_percent: toTrendDeltaPercent(skill.trend_slope),
+        history_count: skill.history_count ?? 0,
+        item_count: evidence?.item_count,
+        correct_count: evidence?.correct_count,
+        is_focus_skill: focusSkillSet.has(skill.skill_key),
+        last_evaluated_at: skill.last_evaluated_at,
+      };
+    })
+  );
+
+  if (statusFilter) {
+    skills = skills.filter((skill) => skill.status === statusFilter);
+  }
+
+  if (Number.isFinite(input.part_type)) {
+    skills = skills.filter((skill) => skill.part_type === input.part_type);
+  }
+
+  if (skillGroupFilter) {
+    skills = skills.filter((skill) => skill.skill_group === skillGroupFilter);
+  }
+
+  if (input.focus_only) {
+    skills = skills.filter((skill) => skill.is_focus_skill);
+  }
+
+  if (query) {
+    skills = skills.filter(
+      (skill) =>
+        skill.skill_key.toLowerCase().includes(query) ||
+        skill.label_vi.toLowerCase().includes(query)
+    );
+  }
+
+  skills.sort((a, b) => {
+    if (a.status !== b.status) {
+      const rank = { weak: 0, medium: 1, strong: 2 };
+      return rank[a.status] - rank[b.status];
+    }
+
+    if (a.part_type !== b.part_type) {
+      return a.part_type - b.part_type;
+    }
+
+    return a.ability_percent - b.ability_percent;
+  });
+
+  const weakestSkills = skills
+    .filter((skill) => skill.status === "weak")
+    .slice(0, 5)
+    .map((skill) => ({
+      skill_key: skill.skill_key,
+      label_vi: skill.label_vi,
+      part_type: skill.part_type,
+      ability_percent: skill.ability_percent,
+    }));
+
+  return {
+    tab: "skills",
+    summary: {
+      weakest_skills: weakestSkills,
+      focus_skill_count: focusSkillSet.size,
+      improving_skill_count: skills.filter((skill) => skill.trend === "improving").length,
+      last_evaluated_at: input.userSkill?.last_evaluated_at,
+    },
+    filters: {
+      status: statusFilter,
+      part_type: input.part_type,
+      skill_group: skillGroupFilter,
+      focus_only: Boolean(input.focus_only),
+      q: input.q,
+    },
+    skills,
+    meta: {
+      total: skills.length,
+    },
+  };
+};
+
+const mapTriggerTypeToUiLabel = (triggerType: string): string => {
+  if (triggerType === "initial_generation") return "Entry Test";
+  if (triggerType === "mini_test_completion") return "Mini Test";
+  if (triggerType === "full_test_review") return "Full Test";
+  return "Luyện tập";
+};
+
+const buildSkillMapHistoryTab = async (input: {
+  user_id: string;
+  learning_path_id: string;
+  page?: number;
+  limit?: number;
+}) => {
+  const page = Math.max(1, Number(input.page) || 1);
+  const limit = Math.min(20, Math.max(1, Number(input.limit) || 5));
+  const skip = (page - 1) * limit;
+
+  const query = {
+    user_id: input.user_id,
+    context_type: "learning_path",
+    learning_path_id: input.learning_path_id,
+  };
+
+  const [histories, total] = await Promise.all([
+    UserSkillHistory.find(query)
+      .sort({ submitted_at: -1, created_at: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean<IUserSkillHistory[]>(),
+    UserSkillHistory.countDocuments(query),
+  ]);
+
+  const sourceUserTestIds = histories
+    .map((history) => history.source_user_test_id)
+    .filter(Boolean)
+    .map((id) => String(id));
+
+  const userTests = await UserTest.find({
+    _id: { $in: sourceUserTestIds },
+  }).lean<IUserTest[]>();
+
+  const userTestById = new Map(
+    userTests.map((test) => [String(test._id), test])
+  );
+
+  const sortedChronological = [...histories].sort((a, b) => {
+    const aTime = (a.submitted_at ?? a.created_at ?? new Date(0)).getTime();
+    const bTime = (b.submitted_at ?? b.created_at ?? new Date(0)).getTime();
+    return aTime - bTime;
+  });
+
+  const scoreTrend = sortedChronological.map((history) => {
+    const userTest = history.source_user_test_id
+      ? userTestById.get(String(history.source_user_test_id))
+      : undefined;
+
+    return {
+      history_id: String(history._id),
+      label: mapTriggerTypeToUiLabel(history.trigger_type),
+      submitted_at: history.submitted_at ?? history.created_at,
+      score: userTest?.score ?? null,
+    };
+  });
+
+  const items = histories.map((history) => {
+    const userTest = history.source_user_test_id
+      ? userTestById.get(String(history.source_user_test_id))
+      : undefined;
+
+    const parts = [...(history.parts ?? [])]
+      .map((part) => ({
+        part_type: part.part_type,
+        ability_percent: toAbilityPercent(part.ability),
+        status: part.status,
+        absolute_level: part.absolute_level,
+        item_count: part.item_count,
+        correct_count: part.correct_count,
+      }))
+      .sort((a, b) => a.part_type - b.part_type);
+
+    const weakestParts = [...parts]
+      .filter((part) => part.status === "weak")
+      .sort((a, b) => a.ability_percent - b.ability_percent)
+      .map((part) => part.part_type);
+
+    return {
+      history_id: String(history._id),
+      source_user_test_id: history.source_user_test_id
+        ? String(history.source_user_test_id)
+        : null,
+      trigger_type: history.trigger_type,
+      label: mapTriggerTypeToUiLabel(history.trigger_type),
+      submitted_at: history.submitted_at ?? history.created_at,
+      score: userTest?.score ?? null,
+      duration: userTest?.duration ?? null,
+      submit_type: userTest?.submit_type ?? null,
+      parts,
+      weakest_parts: weakestParts,
+    };
+  });
+
+  return {
+    tab: "history",
+    summary: {
+      assessment_count: total,
+      latest_submitted_at: items[0]?.submitted_at ?? null,
+      improved_part_count: null,
+    },
+    score_trend: scoreTrend,
+    histories: items,
+    meta: {
+      page,
+      limit,
+      total,
+      total_pages: Math.max(1, Math.ceil(total / limit)),
+    },
+  };
+};
+
+export const getLearningPathV2SkillMap = async (
+  input: GetLearningPathV2SkillMapInput
+) => {
+  const tab = normalizeSkillMapTab(input.tab);
+
+  const { userSkill, selectedOption } = await loadLearningPathSkillMapBase({
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+  });
+  const evidence =
+    tab === "history"
+      ? undefined
+      : await loadSkillMapLatestEvidence({
+          user_id: input.user_id,
+          learning_path_id: input.learning_path_id,
+        });
+
+  switch (tab) {
+    case "skills":
+      return buildSkillMapSkillsTab({
+        userSkill,
+        selectedOption,
+        evidence,
+        status: input.status,
+        part_type: input.part_type,
+        skill_group: input.skill_group,
+        focus_only: input.focus_only,
+        q: input.q,
+      });
+
+    case "history":
+      return buildSkillMapHistoryTab({
+        user_id: input.user_id,
+        learning_path_id: input.learning_path_id,
+        page: input.page,
+        limit: input.limit,
+      });
+
+    case "parts":
+    default:
+      return buildSkillMapPartsTab({
+        userSkill,
+        selectedOption,
+        evidence,
+      });
+  }
 };

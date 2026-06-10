@@ -595,6 +595,15 @@ type PathState = {
   reachesTarget: boolean;
 };
 
+type PathStopReason =
+  | "target_reached"
+  | "no_expandable_next"
+  | "budget_exceeded";
+
+type TerminalPathState = PathState & {
+  stop_reason: PathStopReason;
+};
+
 const comparePathState = (candidate: PathState, current: PathState): PathState => {
   const targetBonus = candidate.reachesTarget ? Math.min(0.25, candidate.totalGain * 0.05) : 0;
   const currentBonus = current.reachesTarget ? Math.min(0.25, current.totalGain * 0.05) : 0;
@@ -610,6 +619,90 @@ const comparePathState = (candidate: PathState, current: PathState): PathState =
   const candidateIds = candidate.nodes.map((node) => node.id).join("|");
   const currentIds = current.nodes.map((node) => node.id).join("|");
   return candidateIds < currentIds ? candidate : current;
+};
+
+const buildMissingPrerequisiteSegment = (input: {
+  targetNode: LessonManagerRouteNodeV2;
+  nodeById: Map<string, LessonManagerRouteNodeV2>;
+  completedIds: Set<string>;
+  currentPathNodes: LessonManagerRouteNodeV2[];
+}): LessonManagerRouteNodeV2[] => {
+  const currentPathIds = new Set(
+    input.currentPathNodes.map((node) => node.id)
+  );
+  const satisfiedIds = new Set<string>([
+    ...Array.from(input.completedIds),
+    ...Array.from(currentPathIds),
+  ]);
+
+  const missingPrerequisites = resolvePrerequisiteChain({
+    node: input.targetNode,
+    nodeById: input.nodeById,
+    completedIds: satisfiedIds,
+  }).filter((node) => !satisfiedIds.has(node.id));
+
+  return [...missingPrerequisites, input.targetNode];
+};
+
+const appendSegmentToState = (input: {
+  baseState: PathState;
+  segment: LessonManagerRouteNodeV2[];
+  completedIds: Set<string>;
+  scenario: LearningPathScenarioV2;
+  strategy: LearningPathStrategyV2;
+  targetScore: number;
+  partAbility: number;
+  partBudgetMinutes: number;
+  completedUnitIds?: string[];
+  skillAbilities?: SkillAbilityInputV2[];
+}): PathState | null => {
+  let totalMinutes = input.baseState.totalMinutes;
+  let totalGain = input.baseState.totalGain;
+  let reachesTarget = input.baseState.reachesTarget;
+
+  const nextNodes = [...input.baseState.nodes];
+  const currentPathIds = new Set(nextNodes.map((node) => node.id));
+
+  for (const node of input.segment) {
+    if (input.completedIds.has(node.id)) continue;
+    if (currentPathIds.has(node.id)) continue;
+
+    if (!prerequisitesSatisfied(node, input.completedIds, currentPathIds)) {
+      return null;
+    }
+
+    totalMinutes += node.planned_completion_time;
+    if (totalMinutes > input.partBudgetMinutes) {
+      return null;
+    }
+
+    const gain = calculateNodeGain({
+      node,
+      scenario: input.scenario,
+      strategy: input.strategy,
+      target_score: input.targetScore,
+      part_ability: input.partAbility,
+      completed_unit_ids: input.completedUnitIds,
+      skill_abilities: input.skillAbilities,
+    });
+
+    totalGain = roundToTwo(totalGain + gain);
+    reachesTarget = reachesTarget || isNodeCoveringTarget(node, input.targetScore);
+
+    nextNodes.push(node);
+    currentPathIds.add(node.id);
+
+    if (isNodeCoveringTarget(node, input.targetScore)) {
+      break;
+    }
+  }
+
+  return {
+    nodes: nextNodes,
+    totalMinutes,
+    totalGain,
+    reachesTarget,
+  };
 };
 
 /**
@@ -653,6 +746,26 @@ export const optimizePartPath = (
     totalGain: 0,
     reachesTarget: false,
   };
+  const terminalPaths: TerminalPathState[] = [];
+  const terminalPathKeys = new Set<string>();
+
+  const collectTerminalPath = (
+    state: PathState,
+    stopReason: PathStopReason
+  ): void => {
+    if (state.nodes.length === 0) return;
+
+    const key = state.nodes.map((node) => node.id).join("|");
+    if (terminalPathKeys.has(key)) return;
+
+    terminalPathKeys.add(key);
+    terminalPaths.push({
+      ...state,
+      stop_reason: stopReason,
+    });
+
+    best = comparePathState(state, best);
+  };
 
   const initializePrefixState = (
     prefix: LessonManagerRouteNodeV2[]
@@ -694,58 +807,75 @@ export const optimizePartPath = (
     return { nodes: prefix, totalMinutes, totalGain, reachesTarget };
   };
 
-  const walk = (
-    node: LessonManagerRouteNodeV2,
-    path: LessonManagerRouteNodeV2[],
-    visited: Set<string>,
-    totalMinutes: number,
-    totalGain: number,
-    reachesTarget: boolean
-  ): void => {
-    if (visited.has(node.id)) return;
+  const walk = (state: PathState): void => {
+    const lastNode = state.nodes[state.nodes.length - 1];
+    if (!lastNode) return;
 
-    const currentPathIds = new Set(path.map((item) => item.id));
-    if (!prerequisitesSatisfied(node, completedIds, currentPathIds)) return;
+    if (state.reachesTarget || isNodeCoveringTarget(lastNode, input.target_score)) {
+      collectTerminalPath(
+        {
+          ...state,
+          reachesTarget: true,
+        },
+        "target_reached"
+      );
+      return;
+    }
 
-    const nextMinutes = totalMinutes + node.planned_completion_time;
-    if (nextMinutes > input.part_budget_minutes) return;
+    let expandedCount = 0;
+    let blockedByBudgetCount = 0;
+    let candidateNextCount = 0;
 
-    const gain = calculateNodeGain({
-      node,
-      scenario: input.scenario,
-      strategy: input.strategy,
-      target_score: input.target_score,
-      part_ability: input.part_ability,
-      completed_unit_ids: input.completed_unit_ids,
-      skill_abilities: input.skill_abilities,
-    });
-    const nextPath = [...path, node];
-    const nextState: PathState = {
-      nodes: nextPath,
-      totalMinutes: nextMinutes,
-      totalGain: roundToTwo(totalGain + gain),
-      reachesTarget:
-        reachesTarget || isNodeCoveringTarget(node, input.target_score),
-    };
+    const currentPathIds = new Set(state.nodes.map((node) => node.id));
 
-    best = comparePathState(nextState, best);
-
-    if (isNodeCoveringTarget(node, input.target_score)) return;
-
-    const nextVisited = new Set(visited);
-    nextVisited.add(node.id);
-    for (const nextId of node.next_unit_ids) {
+    for (const nextId of lastNode.next_unit_ids) {
       const nextNode = nodeById.get(nextId);
-      if (nextNode) {
-        walk(
-          nextNode,
-          nextPath,
-          nextVisited,
-          nextState.totalMinutes,
-          nextState.totalGain,
-          nextState.reachesTarget
-        );
+      if (!nextNode) continue;
+      if (currentPathIds.has(nextNode.id)) continue;
+
+      candidateNextCount += 1;
+
+      const segment = buildMissingPrerequisiteSegment({
+        targetNode: nextNode,
+        nodeById,
+        completedIds,
+        currentPathNodes: state.nodes,
+      });
+
+      const hasDuplicateInCurrentPath = segment.some((node) =>
+        currentPathIds.has(node.id)
+      );
+      if (hasDuplicateInCurrentPath) continue;
+
+      const nextState = appendSegmentToState({
+        baseState: state,
+        segment,
+        completedIds,
+        scenario: input.scenario,
+        strategy: input.strategy,
+        targetScore: input.target_score,
+        partAbility: input.part_ability,
+        partBudgetMinutes: input.part_budget_minutes,
+        completedUnitIds: input.completed_unit_ids,
+        skillAbilities: input.skill_abilities,
+      });
+
+      if (!nextState) {
+        blockedByBudgetCount += 1;
+        continue;
       }
+
+      expandedCount += 1;
+      walk(nextState);
+    }
+
+    if (expandedCount === 0) {
+      collectTerminalPath(
+        state,
+        candidateNextCount > 0 || blockedByBudgetCount > 0
+          ? "budget_exceeded"
+          : "no_expandable_next"
+      );
     }
   };
 
@@ -753,25 +883,81 @@ export const optimizePartPath = (
     const prefixState = initializePrefixState(prefix);
     if (!prefixState || prefix.length === 0) continue;
 
-    best = comparePathState(prefixState, best);
-    if (prefixState.reachesTarget) continue;
-
-    const lastNode = prefix[prefix.length - 1];
-    const visited = new Set(prefix.map((node) => node.id));
-    for (const nextId of lastNode.next_unit_ids) {
-      const nextNode = nodeById.get(nextId);
-      if (nextNode) {
-        walk(
-          nextNode,
-          prefix,
-          visited,
-          prefixState.totalMinutes,
-          prefixState.totalGain,
-          prefixState.reachesTarget
-        );
-      }
-    }
+    walk(prefixState);
   }
+
+  if (terminalPaths.length === 0) {
+    return {
+      part_type: input.part_type,
+      target_minutes: input.part_budget_minutes,
+      total_minutes: 0,
+      estimated_gain: 0,
+      reaches_target: false,
+      nodes: [],
+    };
+  }
+
+  const bestPathKey = best.nodes.map((node) => node.id).join("|");
+  const terminalPathDebugItems = terminalPaths
+    .map((path, index) => {
+      const pathKey = path.nodes.map((node) => node.id).join("|");
+
+      return {
+        path_index: index,
+        is_best: pathKey === bestPathKey,
+        stop_reason: path.stop_reason,
+        reaches_target: path.reachesTarget,
+        total_minutes: path.totalMinutes,
+        total_gain: roundToTwo(path.totalGain),
+        node_count: path.nodes.length,
+        nodes: path.nodes.map((node, nodeIndex) => ({
+          order: nodeIndex,
+          lesson_manager_id: node.id,
+          title: node.title,
+          unit_type: node.unit_type,
+          node_role: node.node_role,
+          score_band: node.score_band,
+          weight: node.weight,
+          target_tags: node.target_tags,
+          planned_minutes: node.planned_completion_time,
+          next_unit_ids: node.next_unit_ids,
+          prerequisite_unit_ids: node.prerequisite_unit_ids,
+          gain: calculateNodeGain({
+            node,
+            scenario: input.scenario,
+            strategy: input.strategy,
+            target_score: input.target_score,
+            part_ability: input.part_ability,
+            completed_unit_ids: input.completed_unit_ids,
+            skill_abilities: input.skill_abilities,
+          }),
+        })),
+      };
+    })
+    .sort((a, b) => {
+      if (a.is_best !== b.is_best) return a.is_best ? -1 : 1;
+      if (a.total_gain !== b.total_gain) return b.total_gain - a.total_gain;
+      if (a.total_minutes !== b.total_minutes) {
+        return a.total_minutes - b.total_minutes;
+      }
+      return a.path_index - b.path_index;
+    });
+
+  logLearningPathV2DebugSafe("layer4.part_path.all_candidate_paths", {
+    stage: "layer4_route_optimizer",
+    part_type: input.part_type,
+    strategy: input.strategy,
+    scenario: input.scenario,
+    target_score: input.target_score,
+    part_ability: input.part_ability,
+    part_budget_minutes: input.part_budget_minutes,
+    terminal_path_count: terminalPaths.length,
+    best_total_minutes: best.totalMinutes,
+    best_total_gain: roundToTwo(best.totalGain),
+    best_reaches_target: best.reachesTarget,
+    best_path_ids: best.nodes.map((node) => node.id),
+    paths: terminalPathDebugItems,
+  });
 
   const plannedNodes = best.nodes.map((node, index) => {
     const gain = calculateNodeGain({
