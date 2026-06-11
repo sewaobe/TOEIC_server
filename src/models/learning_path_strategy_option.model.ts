@@ -18,7 +18,9 @@ export type LearningPathStrategyOptionStatus =
 
 export type LearningPathStrategyOptionTrigger =
   | "initial_generation"
-  | "full_test_review";
+  | "full_test_review"
+  | "mini_test_completion"
+  | "manual_adjustment";
 
 export type LearningPathScenarioSnapshot =
   | "ONBOARDING"
@@ -283,7 +285,7 @@ const LearningPathStrategyOptionSchema =
 
       trigger_type: {
         type: String,
-        enum: ["initial_generation", "full_test_review"],
+        enum: ["initial_generation", "full_test_review", "manual_adjustment", "mini_test_completion"],
         required: true,
         index: true,
       },

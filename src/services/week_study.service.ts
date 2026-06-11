@@ -21,6 +21,7 @@ import type {
   LearningPathStrategyPartRoadmapV2,
   RouteCompletedPlanV2,
 } from "../types/learning_path_v2";
+import { StrategyCyclePreview, StrategyCyclePreviewGroup, StrategyCyclePreviewUnit } from "../types/learning_strategies.type";
 
 type CreateNextLearningPathCycleInput = {
   user_id: string;
@@ -278,5 +279,118 @@ export const createNextLearningPathCycle = async (
   };
 };
 
+const getPartLabel = (partType: number): string => {
+  if (partType === 1) return "Part 1";
+  if (partType === 2) return "Part 2: Hỏi – Đáp";
+  if (partType === 3) return "Part 3: Conversations";
+  if (partType === 4) return "Part 4: Talks";
+  if (partType === 5) return "Part 5: Incomplete Sentences";
+  if (partType === 6) return "Part 6: Text Completion";
+  if (partType === 7) return "Part 7: Reading Comprehension";
+  return `Part ${partType}`;
+};
 
+const groupPreviewUnitsByPart = (
+  units: StrategyCyclePreviewUnit[]
+): StrategyCyclePreviewGroup[] => {
+  const groupMap = new Map<number, StrategyCyclePreviewUnit[]>();
 
+  for (const unit of units) {
+    const current = groupMap.get(unit.part_type) ?? [];
+    current.push(unit);
+    groupMap.set(unit.part_type, current);
+  }
+
+  return [...groupMap.entries()]
+    .sort(([leftPart], [rightPart]) => leftPart - rightPart)
+    .map(([partType, partUnits]) => ({
+      part_type: partType,
+      part_label: getPartLabel(partType),
+      total_minutes: partUnits.reduce(
+        (sum, unit) => sum + (unit.planned_minutes ?? 0),
+        0
+      ),
+      unit_count: partUnits.length,
+      units: partUnits,
+    }));
+};
+
+export const previewNextLearningPathCycleFromStrategyOption = async (input: {
+  user_id: string;
+  learning_path_id: string;
+  strategy_option_id: string;
+}): Promise<StrategyCyclePreview> => {
+  const learningPath = await LearningPath.findOne({
+    _id: input.learning_path_id,
+    user_id: input.user_id,
+    isActive: true,
+  });
+
+  if (!learningPath) {
+    throw new Error("Không tìm thấy LearningPath đang hoạt động để preview cycle.");
+  }
+
+  const strategyOption = await LearningPathStrategyOption.findOne({
+    _id: input.strategy_option_id,
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+  });
+
+  if (!strategyOption) {
+    throw new Error("Không tìm thấy strategy option để preview cycle.");
+  }
+
+  if (!strategyOption.part_roadmaps || strategyOption.part_roadmaps.length === 0) {
+    throw new Error("Strategy option chưa có part_roadmaps để preview cycle.");
+  }
+
+  const plan = buildNextCycleByBeamSearch({
+    part_roadmaps: mapPartRoadmapsForBeamSearch(strategyOption.part_roadmaps),
+    strategy: strategyOption.strategy,
+    scenario: strategyOption.scenario,
+    focus_part_types: strategyOption.focus_part_types ?? [],
+    mini_tests_completed_since_last_full_test:
+      learningPath.mini_tests_completed_since_last_full_test ?? 0,
+  });
+
+  if (plan.plan_type === "route_completed") {
+    return {
+      status: "route_completed",
+      title: "Roadmap đã hoàn tất",
+      description: "Tất cả Part roadmap đã hết bài học để tạo cycle mới.",
+      assessment_type: null,
+      assessment_estimated_minutes: 0,
+      estimated_learning_minutes: 0,
+      focus_part_types: [],
+      focus_skill_keys: [],
+      groups: [],
+      route_completed_reason: plan.reason,
+    };
+  }
+
+  const units: StrategyCyclePreviewUnit[] = plan.selected_roadmap_units.map(
+    (unit) => ({
+      lesson_manager_id: String(unit.lesson_manager_id),
+      title: unit.title,
+      part_type: unit.part_type,
+      unit_type: unit.unit_type,
+      target_tags: unit.target_tags ?? [],
+      planned_minutes: unit.planned_minutes ?? 0,
+      estimated_gain: unit.estimated_gain ?? 0,
+      reason: unit.reason ?? "",
+    })
+  );
+
+  return {
+    status: "preview_available",
+    title: "Cycle dự kiến nếu chọn chiến lược này",
+    description:
+      "Đây là preview cycle đầu tiên nếu user chọn strategy option này. Cycle chính thức chỉ được tạo sau khi user xác nhận chọn.",
+    assessment_type: plan.assessment.type,
+    assessment_estimated_minutes: plan.assessment.estimated_minutes,
+    estimated_learning_minutes: plan.estimated_learning_minutes,
+    focus_part_types: plan.focus_part_types,
+    focus_skill_keys: plan.focus_skill_keys,
+    groups: groupPreviewUnitsByPart(units),
+  };
+};

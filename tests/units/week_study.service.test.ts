@@ -34,6 +34,7 @@ jest.mock("../../src/services/learning_path_v2/learning_path_assessment.service"
 import {
   calculateExpectedCompletionAt,
   createNextLearningPathCycle,
+  previewNextLearningPathCycleFromStrategyOption,
 } from "../../src/services/week_study.service";
 
 const userId = new Types.ObjectId().toString();
@@ -430,10 +431,56 @@ describe("week_study.service", () => {
       learning_path_id: learningPathId,
     });
 
-    // Kiếm tra
+    // Kiểm tra
     await expect(action).rejects.toThrow("Assessment failed");
   });
+
+  it("previewNextLearningPathCycleFromStrategyOption -> không save option, không tạo WeekStudy/DayStudy", async () => {
+    // Chuẩn bị
+    const learningPath = createLearningPath({
+      mini_tests_completed_since_last_full_test: 0,
+    });
+    const strategyOption = createSelectedOption({
+      _id: optionId,
+      status: "pending_selection",
+    });
+    const initialCursor = strategyOption.part_roadmaps.find(
+      (roadmap: any) => roadmap.part_type === 5
+    )!.cursor_index;
+    mockLearningPath.findOne.mockResolvedValue(learningPath);
+    mockLearningPathStrategyOption.findOne.mockResolvedValue(strategyOption);
+
+    // Thực thi
+    const result = await previewNextLearningPathCycleFromStrategyOption({
+      user_id: userId,
+      learning_path_id: learningPathId,
+      strategy_option_id: String(optionId),
+    });
+
+    // Kiểm tra
+    expect(result.status).toBe("preview_available");
+    expect(result.assessment_type).toBe("mini_test");
+    expect(result.groups).toHaveLength(1);
+    expect(result.groups[0]).toEqual(
+      expect.objectContaining({
+        part_type: 5,
+        total_minutes: 450,
+        unit_count: 3,
+      })
+    );
+    expect(mockWeekStudy.create).not.toHaveBeenCalled();
+    expect(mockCreateDayStudiesForWeekStudyCycle).not.toHaveBeenCalled();
+    expect(mockGenerateAssessmentTestFromWeekCycle).not.toHaveBeenCalled();
+    expect(strategyOption.save).not.toHaveBeenCalled();
+    expect(learningPath.save).not.toHaveBeenCalled();
+    expect(
+      strategyOption.part_roadmaps.find((roadmap: any) => roadmap.part_type === 5)!
+        .cursor_index
+    ).toBe(initialCursor);
+  });
 });
+
+
 
 
 

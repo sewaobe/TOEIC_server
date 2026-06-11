@@ -11,7 +11,9 @@ import type {
   LessonManagerNodeRole,
   LessonManagerUnitType,
 } from "../models/lesson_manager.model";
-import { createNextLearningPathCycle } from "./week_study.service";
+import { createNextLearningPathCycle, previewNextLearningPathCycleFromStrategyOption } from "./week_study.service";
+import { LearningPathStrategyOverviewResponse, SelectLearningPathStrategyOptionResponse, StrategyHistoryItem, StrategyOptionView } from "../types/learning_strategies.type";
+import { getToeicSkillLabelVi } from "../utils/toeic_skill.util";
 
 export type RoadmapUnitOptionInput = {
   lesson_manager_id: string;
@@ -346,7 +348,7 @@ export const createFullTestStrategyOptions = async (
     },
     { $set: { status: "expired" } }
   );
-  
+
   const createPayloads = sortOptionsByStrategy(input.options).map((option) =>
     buildCreatePayload(
       {
@@ -515,4 +517,280 @@ export const expirePendingStrategyOptions = async (
   return getModifiedCount(result);
 };
 
+const STRATEGY_COPY: Record<
+  LearningPathStrategyType,
+  { label: string; description: string }
+> = {
+  recommended: {
+    label: "Đề xuất",
+    description:
+      "Tập trung thứ tự ưu tiên vào các kỹ năng có tác động cao để tối ưu tiến bộ.",
+  },
+  balanced: {
+    label: "Cân bằng",
+    description:
+      "Cân bằng giữa cải thiện điểm yếu và duy trì ổn định các kỹ năng mạnh.",
+  },
+  opportunity: {
+    label: "Cơ hội tăng điểm",
+    description:
+      "Tập trung vào các Part/skill có dư địa để tạo bước nhảy điểm số.",
+  },
+};
 
+const SCENARIO_COPY: Record<
+  LearningPathScenarioSnapshot,
+  { label: string; description: string }
+> = {
+  ONBOARDING: {
+    label: "Khởi động lộ trình",
+    description:
+      "Chiến lược đầu tiên sau Entry Test, ưu tiên nền tảng và các Part cần củng cố.",
+  },
+  FULLTEST_MONTHLY: {
+    label: "Điều chỉnh sau Full Test",
+    description:
+      "Tạo lại các hướng học dựa trên kết quả Full Test mới nhất.",
+  },
+  PRE_DEADLINE: {
+    label: "Tăng tốc trước hạn",
+    description:
+      "Ưu tiên nội dung có tác động cao vì thời gian còn lại không nhiều.",
+  },
+  BEHIND_SCHEDULE: {
+    label: "Bù tiến độ",
+    description:
+      "Tối ưu lại kế hoạch vì tiến độ thực tế đang chậm hơn dự kiến.",
+  },
+};
+
+const STATUS_LABEL: Record<LearningPathStrategyOptionStatus, string> = {
+  selected: "Đang áp dụng",
+  pending_selection: "Cần chọn",
+  dismissed: "Không được chọn",
+  expired: "Đã thay thế",
+};
+
+const TRIGGER_LABEL: Record<LearningPathStrategyOptionTrigger, string> = {
+  initial_generation: "Entry Test",
+  mini_test_completion: "Mini Test",
+  full_test_review: "Full Test",
+  manual_adjustment: "Điều chỉnh thủ công",
+};
+
+const ESTIMATED_GAIN_TOOLTIP = "Dự kiến tăng là điểm ước lượng của hệ thống, được tính từ tổng tác động dự kiến của các bài học trong chiến lược. Con số này dùng để so sánh và tối ưu hướng học trong thời gian còn lại, không phải cam kết điểm TOEIC sau khi học.";
+
+const roundToTwo = (value: number): number => Math.round(value * 100) / 100;
+
+const toNullableString = (value: unknown): string | null => {
+  if (!value) return null;
+  return String(value);
+};
+
+const mapFocusSkillLabels = (focusSkillKeys: string[]): string[] => {
+  return (focusSkillKeys ?? [])
+    .map((skillKey) => getToeicSkillLabelVi(skillKey) ?? skillKey)
+    .filter(Boolean)
+};
+
+const mapStrategyOptionToView = async (input: {
+  option: ILearningPathStrategyOption;
+  user_id: string;
+  learning_path_id: string;
+  include_preview?: boolean;
+}): Promise<StrategyOptionView> => {
+  const strategyCopy = STRATEGY_COPY[input.option.strategy];
+  const scenarioCopy = SCENARIO_COPY[input.option.scenario];
+
+  const previewCycle = input.include_preview
+    ? await previewNextLearningPathCycleFromStrategyOption({
+        user_id: input.user_id,
+        learning_path_id: input.learning_path_id,
+        strategy_option_id: String(input.option._id),
+      })
+    : null;
+
+  return {
+    option_id: String(input.option._id),
+
+    strategy: input.option.strategy,
+    strategy_label: strategyCopy.label,
+    strategy_description: strategyCopy.description,
+
+    scenario: input.option.scenario,
+    scenario_label: scenarioCopy.label,
+    scenario_description: scenarioCopy.description,
+
+    status: input.option.status,
+    status_label: STATUS_LABEL[input.option.status],
+
+    title: input.option.title,
+    description: input.option.description ?? "",
+
+    focus_part_types: input.option.focus_part_types ?? [],
+    focus_skill_keys: input.option.focus_skill_keys ?? [],
+    focus_skill_labels: mapFocusSkillLabels(input.option.focus_skill_keys ?? []),
+
+    estimated_total_minutes: input.option.estimated_total_minutes ?? 0,
+    estimated_total_hours: roundToTwo(
+      (input.option.estimated_total_minutes ?? 0) / 60
+    ),
+    estimated_gain: input.option.estimated_gain ?? 0,
+
+    summary_reasons: input.option.summary_reasons ?? [],
+
+    preview_cycle: previewCycle,
+
+    trigger_type: input.option.trigger_type,
+    source_user_test_id: toNullableString(input.option.source_user_test_id),
+    source_week_study_id: toNullableString(input.option.source_week_study_id),
+
+    created_at: input.option.created_at,
+    selected_at: input.option.selected_at,
+  };
+};
+
+const mapStrategyOptionToHistoryItem = (
+  option: ILearningPathStrategyOption
+): StrategyHistoryItem => {
+  const strategyCopy = STRATEGY_COPY[option.strategy];
+  const scenarioCopy = SCENARIO_COPY[option.scenario];
+
+  return {
+    option_id: String(option._id),
+    trigger_type: option.trigger_type,
+    trigger_label: TRIGGER_LABEL[option.trigger_type],
+
+    strategy: option.strategy,
+    strategy_label: strategyCopy.label,
+
+    scenario: option.scenario,
+    scenario_label: scenarioCopy.label,
+
+    status: option.status,
+    status_label: STATUS_LABEL[option.status],
+
+    title: option.title,
+    description: option.description ?? "",
+
+    focus_part_types: option.focus_part_types ?? [],
+    estimated_gain: option.estimated_gain ?? 0,
+    summary_reason: option.summary_reasons?.[0] ?? "",
+
+    source_user_test_id: toNullableString(option.source_user_test_id),
+    source_week_study_id: toNullableString(option.source_week_study_id),
+
+    created_at: option.created_at,
+    selected_at: option.selected_at,
+  };
+};
+
+export const getLearningPathStrategyOverview = async (input: {
+  user_id: string;
+  learning_path_id: string;
+}): Promise<LearningPathStrategyOverviewResponse> => {
+  const userId = toObjectId(input.user_id, "user_id");
+  const learningPathId = toObjectId(
+    input.learning_path_id,
+    "learning_path_id"
+  );
+
+  const [selectedOption, pendingOptionsRaw, historyOptions] =
+    await Promise.all([
+      LearningPathStrategyOption.findOne({
+        user_id: userId,
+        learning_path_id: learningPathId,
+        status: "selected",
+      }).sort({ selected_at: -1, created_at: -1 }),
+
+      LearningPathStrategyOption.find({
+        user_id: userId,
+        learning_path_id: learningPathId,
+        status: "pending_selection",
+      }).sort({ created_at: -1 }),
+
+      LearningPathStrategyOption.find({
+        user_id: userId,
+        learning_path_id: learningPathId,
+      }).sort({ created_at: -1 }),
+    ]);
+
+  const pendingOptions = sortOptionsByStrategy(pendingOptionsRaw);
+
+  const mode =
+    pendingOptions.length > 0
+      ? "pending_selection"
+      : selectedOption
+        ? "selected_current"
+        : "empty";
+
+  const currentOption = selectedOption
+    ? await mapStrategyOptionToView({
+        option: selectedOption,
+        user_id: input.user_id,
+        learning_path_id: input.learning_path_id,
+        include_preview: false,
+      })
+    : null;
+
+  const pendingOptionViews = await Promise.all(
+    pendingOptions.map((option) =>
+      mapStrategyOptionToView({
+        option,
+        user_id: input.user_id,
+        learning_path_id: input.learning_path_id,
+        include_preview: true,
+      })
+    )
+  );
+
+  return {
+    mode,
+    current_option: currentOption,
+    pending_options: pendingOptionViews,
+
+    history: historyOptions.map(mapStrategyOptionToHistoryItem),
+
+    copy: {
+      estimated_gain_tooltip: ESTIMATED_GAIN_TOOLTIP,
+      strategy_note:
+        "TOEIC Smart tối ưu hướng học dựa trên năng lực hiện tại và thời gian học còn lại. Mini Test cập nhật năng lực; Full Test tạo các lựa chọn chiến lược mới.",
+    },
+  };
+};
+
+export const selectLearningPathStrategyOptionForV2 = async (input: {
+  user_id: string;
+  learning_path_id: string;
+  strategy_option_id: string;
+}): Promise<SelectLearningPathStrategyOptionResponse> => {
+  const result = await selectLearningPathStrategyOption({
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    strategy_option_id: input.strategy_option_id,
+  });
+
+  const selectedView = await mapStrategyOptionToView({
+    option: result.selected_strategy_option,
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    include_preview: false,
+  });
+
+  return {
+    selected_strategy_option: selectedView,
+    dismissed_strategy_options_count:
+      result.dismissed_strategy_options_count,
+    expired_previous_selected_count:
+      result.expired_previous_selected_count,
+    cycle_status: result.cycle_result.status,
+    generated_week_id:
+      result.cycle_result.status === "cycle_created"
+        ? String(result.cycle_result.week_study._id)
+        : null,
+    generated_day_count:
+      result.cycle_result.status === "cycle_created"
+        ? result.cycle_result.day_studies.length
+        : 0,
+  };
+};
