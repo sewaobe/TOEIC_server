@@ -36,7 +36,6 @@ describe("scheduler_decision_log.service", () => {
         part_abilities: [
           {
             part_type: 1,
-            label_vi: "Part 1",
             ability: 0.4,
             status: "weak",
             trend: "stable",
@@ -46,7 +45,6 @@ describe("scheduler_decision_log.service", () => {
           {
             part_type: 1,
             skill_key: "part1_photos",
-            label_vi: "Photographs",
             ability: 0.35,
             status: "weak",
             trend: "declining",
@@ -68,7 +66,6 @@ describe("scheduler_decision_log.service", () => {
           part_abilities: [
             {
               part_type: 1,
-              label_vi: "Part 1",
               ability: 0.4,
               status: "weak",
               trend: "stable",
@@ -78,7 +75,6 @@ describe("scheduler_decision_log.service", () => {
             {
               part_type: 1,
               skill_key: "part1_photos",
-              label_vi: "Photographs",
               ability: 0.35,
               status: "weak",
               trend: "declining",

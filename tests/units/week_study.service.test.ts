@@ -25,10 +25,10 @@ jest.mock("../../src/services/day_study.service", () => ({
   createDayStudiesForWeekStudyCycle: mockCreateDayStudiesForWeekStudyCycle,
 }));
 
-const mockGenerateAssessmentTestFromWeekCycle = jest.fn<(...args: any[]) => any>();
+const mockGenerateAssessmentTestFromPlan = jest.fn<(...args: any[]) => any>();
 
 jest.mock("../../src/services/learning_path_v2/learning_path_assessment.service", () => ({
-  generateAssessmentTestFromWeekCycle: mockGenerateAssessmentTestFromWeekCycle,
+  generateAssessmentTestFromPlan: mockGenerateAssessmentTestFromPlan,
 }));
 
 import {
@@ -123,9 +123,8 @@ describe("week_study.service", () => {
         ],
       })
     );
-    mockGenerateAssessmentTestFromWeekCycle.mockResolvedValue({
+    mockGenerateAssessmentTestFromPlan.mockResolvedValue({
       test_id: new Types.ObjectId(),
-      day_study: { _id: new Types.ObjectId(), dayOfWeek: 2 },
     });
   });
 
@@ -171,17 +170,21 @@ describe("week_study.service", () => {
       user_id: userId,
       learning_path_id: learningPathId,
       week_study_id: String(result.week_study._id),
+      assessment_test_id: result.assessment_result.test_id,
       cycle_units: expect.any(Array),
     });
-    expect(mockGenerateAssessmentTestFromWeekCycle).toHaveBeenCalledWith({
+    expect(mockGenerateAssessmentTestFromPlan).toHaveBeenCalledWith({
       user_id: userId,
       learning_path_id: learningPathId,
-      week_study_id: String(result.week_study._id),
+      cycle_no: 1,
+      assessment: expect.objectContaining({ type: "mini_test" }),
+      focus_part_types: expect.any(Array),
+      focus_skill_keys: expect.any(Array),
     });
     expect(
-      mockCreateDayStudiesForWeekStudyCycle.mock.invocationCallOrder[0]
+      mockGenerateAssessmentTestFromPlan.mock.invocationCallOrder[0]
     ).toBeLessThan(
-      mockGenerateAssessmentTestFromWeekCycle.mock.invocationCallOrder[0]
+      mockWeekStudy.create.mock.invocationCallOrder[0]
     );
     expect(result.day_studies.length).toBeGreaterThan(0);
     expect(result.assessment_result.test_id).toBeInstanceOf(Types.ObjectId);
@@ -218,11 +221,11 @@ describe("week_study.service", () => {
     );
     expect(selectedOption.part_roadmaps.find((roadmap: any) => roadmap.part_type === 5)!.cursor_index).toBeGreaterThan(0);
     expect(mockCreateDayStudiesForWeekStudyCycle).toHaveBeenCalledTimes(1);
-    expect(mockGenerateAssessmentTestFromWeekCycle).toHaveBeenCalledTimes(1);
+    expect(mockGenerateAssessmentTestFromPlan).toHaveBeenCalledTimes(1);
     expect(
-      mockCreateDayStudiesForWeekStudyCycle.mock.invocationCallOrder[0]
+      mockGenerateAssessmentTestFromPlan.mock.invocationCallOrder[0]
     ).toBeLessThan(
-      mockGenerateAssessmentTestFromWeekCycle.mock.invocationCallOrder[0]
+      mockWeekStudy.create.mock.invocationCallOrder[0]
     );
     expect(result.day_studies.length).toBeGreaterThan(0);
     expect(result.assessment_result.test_id).toBeInstanceOf(Types.ObjectId);
@@ -263,7 +266,7 @@ describe("week_study.service", () => {
     expect(result.status).toBe("route_completed");
     expect(mockWeekStudy.create).not.toHaveBeenCalled();
     expect(mockCreateDayStudiesForWeekStudyCycle).not.toHaveBeenCalled();
-    expect(mockGenerateAssessmentTestFromWeekCycle).not.toHaveBeenCalled();
+    expect(mockGenerateAssessmentTestFromPlan).not.toHaveBeenCalled();
     expect(result.day_studies).toEqual([]);
     expect(selectedOption.save).not.toHaveBeenCalled();
     expect(learningPath.save).not.toHaveBeenCalled();
@@ -421,7 +424,7 @@ describe("week_study.service", () => {
 
   it("createNextLearningPathCycle -> assessment generation throws -> propagates error", async () => {
     // Chuẩn bị
-    mockGenerateAssessmentTestFromWeekCycle.mockRejectedValue(
+    mockGenerateAssessmentTestFromPlan.mockRejectedValue(
       new Error("Assessment failed")
     );
 
@@ -470,7 +473,7 @@ describe("week_study.service", () => {
     );
     expect(mockWeekStudy.create).not.toHaveBeenCalled();
     expect(mockCreateDayStudiesForWeekStudyCycle).not.toHaveBeenCalled();
-    expect(mockGenerateAssessmentTestFromWeekCycle).not.toHaveBeenCalled();
+    expect(mockGenerateAssessmentTestFromPlan).not.toHaveBeenCalled();
     expect(strategyOption.save).not.toHaveBeenCalled();
     expect(learningPath.save).not.toHaveBeenCalled();
     expect(

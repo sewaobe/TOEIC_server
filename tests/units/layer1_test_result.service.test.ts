@@ -403,14 +403,14 @@ describe("LearningPath v2 Layer 1 test result normalization", () => {
     expect(result.answers[0].raw_tags).toEqual(["[Part 5] Từ loại"]);
     expect(result.answers[0].skills).toEqual([
       {
-        key: "part5_word_form",
-        label_vi: "Từ loại",
+        key: "part5_word_form_question",
+        label_vi: "Câu hỏi từ loại",
         raw_tag: "[Part 5] Từ loại",
         part_type: 5,
         skill_group: "basic",
       },
     ]);
-    expect(result.answers[0].skill_keys).toEqual(["part5_word_form"]);
+    expect(result.answers[0].skill_keys).toEqual(["part5_word_form_question"]);
     expect(result.answers[0].part_type).toBe(5);
   });
 
@@ -486,7 +486,7 @@ describe("LearningPath v2 Layer 1 test result normalization", () => {
 
     // Kiểm tra
     expect(result.answers[0].part_type).toBe(5);
-    expect(result.answers[0].skill_keys).toEqual(["part5_word_form"]);
+    expect(result.answers[0].skill_keys).toEqual(["part5_word_form_question"]);
     expect(result.answers[1].raw_tags).toEqual(["[Part 5] Từ loại"]);
     expect(result.answers[1].part_type).toBeUndefined();
   });

@@ -39,6 +39,7 @@ const weekStudyId = new Types.ObjectId().toString();
 const optionId = new Types.ObjectId();
 const lessonManagerId1 = new Types.ObjectId();
 const lessonManagerId2 = new Types.ObjectId();
+const assessmentTestId = new Types.ObjectId();
 
 const createLearningPath = (overrides: Record<string, unknown> = {}) => ({
   _id: new Types.ObjectId(learningPathId),
@@ -148,6 +149,7 @@ const createCycleInput = (cycleUnits: any[]) => ({
   user_id: userId,
   learning_path_id: learningPathId,
   week_study_id: weekStudyId,
+  assessment_test_id: assessmentTestId,
   cycle_units: cycleUnits,
 });
 
@@ -175,6 +177,7 @@ describe("day_study.service", () => {
       15,
     ]);
     expect(payloads[2].sessions[0].items[0].kind).toBe(SessionType.MINI_TEST);
+    expect(payloads[2].sessions[0].items[0].activity_id).toBe(assessmentTestId);
     expect(weekStudy.days).toHaveLength(3);
     expect(weekStudy.save).toHaveBeenCalled();
     expect(result.day_studies).toHaveLength(3);
@@ -235,6 +238,7 @@ describe("day_study.service", () => {
     const payloads = mockDayStudy.create.mock.calls[0][0];
     const assessmentDay = payloads[payloads.length - 1];
     expect(assessmentDay.sessions[0].items[0].kind).toBe(SessionType.FULL_TEST);
+    expect(assessmentDay.sessions[0].items[0].activity_id).toBe(assessmentTestId);
     expect(assessmentDay.sessions[0].planned_minutes).toBe(200);
   });
 
