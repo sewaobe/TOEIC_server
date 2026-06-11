@@ -14,7 +14,7 @@ import type { IWeekStudy } from "../models/week_study.model";
 import { WeekStudyStatus } from "../models/enums/WeekStudyStatus";
 import { buildNextCycleByBeamSearch } from "./learning_path_v2/layer4_route_optimizer.service";
 import { createDayStudiesForWeekStudyCycle } from "./day_study.service";
-import { generateAssessmentTestFromWeekCycle } from "./learning_path_v2/learning_path_assessment.service";
+import { generateAssessmentTestFromPlan } from "./learning_path_v2/learning_path_assessment.service";
 import { logLearningPathV2DebugSafe } from "./learning_path_v2/learning_path_v2_debug_logger";
 import type {
   LearningCyclePlanV2,
@@ -37,7 +37,7 @@ type CreateNextLearningPathCycleResult =
       strategy_option: ILearningPathStrategyOption;
       day_studies: IDayStudy[];
       assessment_result: Awaited<
-        ReturnType<typeof generateAssessmentTestFromWeekCycle>
+        ReturnType<typeof generateAssessmentTestFromPlan>
       >;
     }
   | {
@@ -198,6 +198,15 @@ export const createNextLearningPathCycle = async (
   }
 
   const weekNo = getWeekStudyNo(learningPath);
+  const assessmentResult = await generateAssessmentTestFromPlan({
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    cycle_no: weekNo,
+    assessment: plan.assessment,
+    focus_skill_keys: plan.focus_skill_keys,
+    focus_part_types: plan.focus_part_types,
+  });
+
   const weekStudyPayload = {
     no: weekNo,
     description: `Cycle ${weekNo}: ${
@@ -231,13 +240,8 @@ export const createNextLearningPathCycle = async (
     user_id: input.user_id,
     learning_path_id: input.learning_path_id,
     week_study_id: String(weekStudy._id),
+    assessment_test_id: assessmentResult.test_id,
     cycle_units: plan.selected_roadmap_units,
-  });
-
-  const assessmentResult = await generateAssessmentTestFromWeekCycle({
-    user_id: input.user_id,
-    learning_path_id: input.learning_path_id,
-    week_study_id: String(weekStudy._id),
   });
 
   /*

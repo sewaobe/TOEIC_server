@@ -17,6 +17,7 @@ type CreateDayStudiesForWeekStudyCycleInput = {
   user_id: string;
   learning_path_id: string;
   week_study_id: string;
+  assessment_test_id: Types.ObjectId;
   /**
      * Các LessonManager unit đã được Beam Search chọn cho cycle hiện tại.
      * DayStudy không đọc roadmap dài hạn và không phụ thuộc route tuyến tính cũ.
@@ -245,6 +246,7 @@ const buildAssessmentDayPayload = (input: {
   stage_no: number;
   assessment_type: IWeekStudy["assessment_type"];
   assessment_estimated_minutes: number;
+  assessment_test_id: Types.ObjectId;
   has_learning_days: boolean;
 }) => {
   const kind = getAssessmentSessionType(input.assessment_type);
@@ -274,6 +276,7 @@ const buildAssessmentDayPayload = (input: {
         items: [
           {
             kind,
+            activity_id: input.assessment_test_id,
             status,
             estimated_minutes: input.assessment_estimated_minutes,
             is_required: true,
@@ -365,6 +368,7 @@ export const createDayStudiesForWeekStudyCycle = async (
     stage_no: learningDayPayloads.length + 1,
     assessment_type: weekStudy.assessment_type,
     assessment_estimated_minutes: weekStudy.assessment_estimated_minutes,
+    assessment_test_id: input.assessment_test_id,
     has_learning_days: learningDayPayloads.length > 0,
   });
 
