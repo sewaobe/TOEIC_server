@@ -1,5 +1,7 @@
 import { Types } from "mongoose";
 import type { LearningCyclePlanV2 } from "../../types/learning_path_v2";
+import { selectLearningPathFullTest } from "../../utils/full_test.util";
+import { generateLearningPathMiniTest } from "../../utils/mini_test.util";
 
 export type GenerateAssessmentTestFromPlanInput = {
   user_id: string;
@@ -17,25 +19,26 @@ export type GenerateAssessmentTestResult = {
 export const generateMiniTestFromPlan = async (
   input: GenerateAssessmentTestFromPlanInput
 ): Promise<{ test_id: Types.ObjectId }> => {
-  void input;
+  const miniTest = await generateLearningPathMiniTest({
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    cycle_no: input.cycle_no,
+    focus_skill_keys: input.focus_skill_keys,
+    focus_part_types: input.focus_part_types,
+  });
 
-  /*
-   * Placeholder: sau này chọn question theo input.focus_skill_keys
-   * và input.focus_part_types, hiện tại chưa generate test thật.
-   */
-  return { test_id: new Types.ObjectId() };
+  return { test_id: miniTest._id };
 };
 
 export const generateFullTestFromPlan = async (
   input: GenerateAssessmentTestFromPlanInput
 ): Promise<{ test_id: Types.ObjectId }> => {
-  void input;
+  const fullTest = await selectLearningPathFullTest({
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+  });
 
-  /*
-   * Placeholder: sau này generate full TOEIC test thật,
-   * hiện tại chỉ tạo test_id giả để gắn vào DayStudy.
-   */
-  return { test_id: new Types.ObjectId() };
+  return { test_id: fullTest._id };
 };
 
 export const generateAssessmentTestFromPlan = async (
