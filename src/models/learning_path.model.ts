@@ -30,6 +30,23 @@ export interface ILearningPath extends Document {
   created_at: Date;
   updated_at: Date;
   created_by: Types.ObjectId;
+  /**
+ * Số mini test user đã hoàn thành kể từ lần full test gần nhất.
+ * Layer 4 dùng counter này để biết cycle tiếp theo gắn mini test hay full test.
+ * Rule hiện tại: 3 mini test xong thì cycle kế tiếp kết thúc bằng full test.
+ */
+  mini_tests_completed_since_last_full_test: number;
+
+  /**
+   * UserTest của lần full test gần nhất.
+   * Dùng để audit và reset chu kỳ mini/full test.
+   */
+  last_full_test_user_test_id?: Types.ObjectId | null;
+
+  /**
+   * Thời điểm user submit full test gần nhất.
+   */
+  last_full_test_submitted_at?: Date | null;
 }
 
 /**
@@ -92,6 +109,24 @@ const LearningPathSchema = new Schema<ILearningPath>({
   created_at: { type: Date, default: Date.now },
   updated_at: { type: Date, default: Date.now },
   created_by: { type: Schema.Types.ObjectId, ref: "User" },
+  mini_tests_completed_since_last_full_test: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+
+  last_full_test_user_test_id: {
+    type: Schema.Types.ObjectId,
+    ref: "UserTest",
+    default: null,
+    index: true,
+  },
+
+  last_full_test_submitted_at: {
+    type: Date,
+    default: null,
+    index: true,
+  },
 });
 
 export const LearningPath = mongoose.model<ILearningPath>(

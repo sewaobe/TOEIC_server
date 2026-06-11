@@ -79,13 +79,14 @@ export const submitTest = async (
     const userId = req?.user?._id || "guest";
 
     const { testId } = req.params;
-    const { answers, duration, completedPart } = req.body;
+    const { answers, duration, completedPart, submit_type } = req.body;
     const result = await testService.submitTest(
       userId,
       testId,
       answers,
       duration,
       completedPart, // optional
+      submit_type,
     );
 
     return res.status(200).json({

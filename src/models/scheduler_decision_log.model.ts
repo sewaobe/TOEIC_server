@@ -1,4 +1,6 @@
 import { Schema, model, Document, Types } from "mongoose";
+import { PartType } from "./enums/PartType";
+import { UserSkillAbilityStatus, UserSkillTrend } from "../types/user_skill.type";
 
 export type SchedulerTriggerType =
   | "initial_generation"
@@ -13,13 +15,12 @@ export type SchedulerTriggerType =
 export type SchedulerStrategy = "recommended" | "balanced" | "opportunity";
 
 export type SchedulerScenario =
-  | "normal_progress"
-  | "ahead_of_plan"
-  | "behind_plan"
-  | "weak_after_mini_test"
-  | "fail_light"
-  | "fail_heavy"
-  | "plateau";
+  | "ONBOARDING"
+  | "NORMAL_PROGRESS"
+  | "PLATEAU"
+  | "BEHIND_SCHEDULE"
+  | "PRE_DEADLINE"
+  | "FULLTEST_MONTHLY";
 
 export type SchedulerDecisionStatus = "applied" | "failed";
 
@@ -27,7 +28,9 @@ export type SchedulerDecisionStatus = "applied" | "failed";
  * status = nhóm tương đối sau khi sort trong chính user đó.
  * Không phải năng lực tuyệt đối.
  */
-export type AbilityStatus = "weak" | "medium" | "strong";
+export type AbilityStatus = UserSkillAbilityStatus;
+
+export type AbilityTrend = UserSkillTrend;
 
 /**
  * absolute_level = mức năng lực tuyệt đối theo ngưỡng.
@@ -39,22 +42,18 @@ export type AbsoluteAbilityLevel = "very_low" | "low" | "medium" | "high";
 export type SkillGroup = "basic" | "core" | "advanced";
 
 export interface ISchedulerPartAbilitySnapshot {
-  part_type: number;
-  ability: number;
-  estimated_score?: number;
-  status: AbilityStatus;
-  absolute_level?: AbsoluteAbilityLevel;
-  confidence?: number;
+  part_type: PartType;
+  ability?: number;
+  status?: AbilityStatus;
+  trend?: AbilityTrend;
 }
 
 export interface ISchedulerSkillAbilitySnapshot {
-  part_type: number;
-  tag: string;
-  ability: number;
-  status: AbilityStatus;
-  absolute_level?: AbsoluteAbilityLevel;
-  confidence?: number;
-  skill_group?: SkillGroup;
+  part_type: PartType;
+  skill_key: string;
+  ability?: number;
+  status?: AbilityStatus;
+  trend?: AbilityTrend;
 }
 
 export type SchedulerExtraSnapshot = Record<string, unknown>;
@@ -63,12 +62,10 @@ export interface ISchedulerInputSnapshot {
   current_score?: number;
   target_score?: number;
   weekly_available_minutes?: number;
-  test_type?: "full" | "mini" | "manual";
+  test_type?: "entry" | "full" | "mini" | "manual";
 
   part_abilities?: ISchedulerPartAbilitySnapshot[];
   skill_abilities?: ISchedulerSkillAbilitySnapshot[];
-
-  completed_lesson_manager_ids?: Types.ObjectId[];
 
   /**
    * Dữ liệu phụ để debug/audit.
@@ -92,6 +89,7 @@ export interface ISchedulerOutputSummary {
 export interface ISchedulerDecisionLog extends Document {
   user_id: Types.ObjectId;
   learning_path_id: Types.ObjectId;
+  learning_path_strategy_option_id?: Types.ObjectId;
 
   source_week_id?: Types.ObjectId;
   generated_week_id?: Types.ObjectId;
@@ -106,7 +104,6 @@ export interface ISchedulerDecisionLog extends Document {
 
   input_snapshot?: ISchedulerInputSnapshot;
 
-  candidate_lesson_manager_ids?: Types.ObjectId[];
   selected_lesson_manager_ids?: Types.ObjectId[];
 
   output_summary?: ISchedulerOutputSummary;
@@ -125,18 +122,15 @@ const SchedulerPartAbilitySnapshotSchema =
   new Schema<ISchedulerPartAbilitySnapshot>(
     {
       part_type: { type: Number, required: true },
-      ability: { type: Number, required: true },
-      estimated_score: { type: Number },
+      ability: { type: Number },
       status: {
         type: String,
         enum: ["weak", "medium", "strong"],
-        required: true,
       },
-      absolute_level: {
+      trend: {
         type: String,
-        enum: ["very_low", "low", "medium", "high"],
+        enum: ["improving", "stable", "declining"],
       },
-      confidence: { type: Number },
     },
     { _id: false }
   );
@@ -145,21 +139,15 @@ const SchedulerSkillAbilitySnapshotSchema =
   new Schema<ISchedulerSkillAbilitySnapshot>(
     {
       part_type: { type: Number, required: true },
-      tag: { type: String, required: true },
-      ability: { type: Number, required: true },
+      skill_key: { type: String, required: true },
+      ability: { type: Number },
       status: {
         type: String,
         enum: ["weak", "medium", "strong"],
-        required: true,
       },
-      absolute_level: {
+      trend: {
         type: String,
-        enum: ["very_low", "low", "medium", "high"],
-      },
-      confidence: { type: Number },
-      skill_group: {
-        type: String,
-        enum: ["basic", "core", "advanced"],
+        enum: ["improving", "stable", "declining"],
       },
     },
     { _id: false }
@@ -172,7 +160,7 @@ const SchedulerInputSnapshotSchema = new Schema<ISchedulerInputSnapshot>(
     weekly_available_minutes: { type: Number },
     test_type: {
       type: String,
-      enum: ["full", "mini", "manual"],
+      enum: ["entry", "full", "mini", "manual"],
     },
 
     part_abilities: {
@@ -184,10 +172,6 @@ const SchedulerInputSnapshotSchema = new Schema<ISchedulerInputSnapshot>(
       type: [SchedulerSkillAbilitySnapshotSchema],
       default: [],
     },
-
-    completed_lesson_manager_ids: [
-      { type: Schema.Types.ObjectId, ref: "LessonManager" },
-    ],
 
     extra: {
       type: Schema.Types.Mixed,
@@ -221,6 +205,17 @@ const SchedulerDecisionLogSchema = new Schema<ISchedulerDecisionLog>(
       type: Schema.Types.ObjectId,
       ref: "LearningPath",
       required: true,
+      index: true,
+    },
+
+    /**
+     * Strategy option là nơi lưu roadmap dài hạn.
+     * Decision log chỉ tham chiếu option đã được dùng để tạo cycle,
+     * tránh duplicate toàn bộ roadmap vào log.
+     */
+    learning_path_strategy_option_id: {
+      type: Schema.Types.ObjectId,
+      ref: "LearningPathStrategyOption",
       index: true,
     },
 
@@ -260,13 +255,12 @@ const SchedulerDecisionLogSchema = new Schema<ISchedulerDecisionLog>(
     scenario: {
       type: String,
       enum: [
-        "normal_progress",
-        "ahead_of_plan",
-        "behind_plan",
-        "weak_after_mini_test",
-        "fail_light",
-        "fail_heavy",
-        "plateau",
+        "ONBOARDING",
+        "NORMAL_PROGRESS",
+        "PLATEAU",
+        "BEHIND_SCHEDULE",
+        "PRE_DEADLINE",
+        "FULLTEST_MONTHLY",
       ],
     },
 
@@ -281,10 +275,6 @@ const SchedulerDecisionLogSchema = new Schema<ISchedulerDecisionLog>(
       type: SchedulerInputSnapshotSchema,
       default: undefined,
     },
-
-    candidate_lesson_manager_ids: [
-      { type: Schema.Types.ObjectId, ref: "LessonManager" },
-    ],
 
     selected_lesson_manager_ids: [
       { type: Schema.Types.ObjectId, ref: "LessonManager" },

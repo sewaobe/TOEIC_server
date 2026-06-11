@@ -18,6 +18,7 @@ import {
 } from "./group.service";
 import { TestType } from "../models/enums/TestType";
 import { updateIRTAbilities } from "./irt.service";
+import { UserTestSubmitType } from "../models/enums/UserTestSubmitType";
 
 export const getFullTest = async (testId: string): Promise<any | null> => {
   const test = await Test.findById(testId)
@@ -91,9 +92,15 @@ export const submitTest = async (
   answers: { question_id: string; selectedOption: string }[],
   duration: number,
   completedPart?: string,
+  submitType: UserTestSubmitType = UserTestSubmitType.PRACTICE,
 ) => {
   const test = await getFullTest(testId);
   if (!test) throw new Error("Test not found");
+  const safeSubmitType = Object.values(UserTestSubmitType).includes(
+    submitType as UserTestSubmitType,
+  )
+    ? (submitType as UserTestSubmitType)
+    : UserTestSubmitType.PRACTICE;
 
   // Map lưu số câu đúng từng part
   const partStats: Record<string, { correct: number; total: number }> = {};
@@ -155,6 +162,7 @@ export const submitTest = async (
   const userTest = new UserTest({
     user_id: userId,
     test_id: new Types.ObjectId(testId),
+    submit_type: safeSubmitType,
     score,
     answers: detailedAnswers,
     parts,
@@ -659,6 +667,7 @@ export const submitMiniTestService = async (
   const userTest = new UserTest({
     user_id: new Types.ObjectId(userId),
     test_id: new Types.ObjectId(testId),
+    submit_type: UserTestSubmitType.MINI_TEST,
     score,
     answers: detailedAnswers,
     parts,

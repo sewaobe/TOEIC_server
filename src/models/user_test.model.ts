@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
+import { UserTestSubmitType } from './enums/UserTestSubmitType';
 
 export interface IPartAccuracy {
   part_name: string;
@@ -8,6 +9,7 @@ export interface IUserTest extends Document {
   _id: Types.ObjectId;
   user_id: string;
   test_id: Types.ObjectId;
+  submit_type: UserTestSubmitType;
   score: number;
   answers: {
     question_id: Types.ObjectId;
@@ -34,6 +36,16 @@ const UserTestSchema = new Schema<IUserTest>({
       isCorrect: { type: Boolean, default: false },
     },
   ],
+  /*
+   * submit_type is the business context of this submission.
+   * completedPart is kept for compatibility with older practice filters.
+   */
+  submit_type: {
+    type: String,
+    enum: Object.values(UserTestSubmitType),
+    default: UserTestSubmitType.PRACTICE,
+    index: true,
+  },
   parts: [{
     _id: false,
     part_name: { type: String, default: '' },

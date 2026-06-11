@@ -13,6 +13,7 @@ import type {
   NormalizedTestAnswerV2,
   ToeicSkillGroupV2,
 } from "../../types/learning_path_v2";
+import { logLearningPathV2DebugSafe } from "./learning_path_v2_debug_logger";
 
 type RaschItemWithMetadata = {
   question_id: string;
@@ -236,6 +237,24 @@ export const buildAbilityProfile = async (
     normalizedResult.answers
   );
 
+  logLearningPathV2DebugSafe("layer2.rasch_items", {
+    stage: "layer2",
+    user_id: normalizedResult.user_id,
+    trigger_type: normalizedResult.trigger_type,
+    test_id: normalizedResult.test_id,
+    source_test_result_id: normalizedResult.test_result_id,
+    normalized_answers_count: normalizedResult.answers.length,
+    valid_rasch_items_count: items.length,
+    missing_irt_difficulty_count: missingIrtDifficultyCount,
+    sample_items: items.slice(0, 3).map((item) => ({
+      question_id: item.question_id,
+      is_correct: item.is_correct,
+      irt_difficulty: item.irt_difficulty,
+      part_type: item.answer.part_type,
+      skill_keys: item.answer.skill_keys?.slice(0, 5) ?? [],
+    })),
+  });
+
   if (missingIrtDifficultyCount > 0) {
     warnings.push(
       `Skipped ${missingIrtDifficultyCount} items missing irt_difficulty.`
@@ -255,6 +274,30 @@ export const buildAbilityProfile = async (
   if (missingSkillKeysCount > 0) {
     warnings.push(`Skipped ${missingSkillKeysCount} items missing skill_keys.`);
   }
+
+  logLearningPathV2DebugSafe("layer2.ability_profile", {
+    stage: "layer2",
+    user_id: normalizedResult.user_id,
+    trigger_type: normalizedResult.trigger_type,
+    test_id: normalizedResult.test_id,
+    source_test_result_id: normalizedResult.test_result_id,
+    part_abilities_count: partAbilities.length,
+    skill_abilities_count: skillAbilities.length,
+    missing_part_type_count: missingPartTypeCount,
+    missing_skill_keys_count: missingSkillKeysCount,
+    part_abilities: partAbilities.map((part) => ({
+      part_type: part.part_type,
+      ability: part.ability,
+      status: part.status,
+      item_count: part.item_count,
+      correct_count: part.correct_count,
+    })),
+    weak_skill_keys_sample: skillAbilities
+      .filter((skill) => skill.status === "weak")
+      .slice(0, 10)
+      .map((skill) => skill.skill_key),
+    warnings,
+  });
 
   return {
     trigger_type: normalizedResult.trigger_type,

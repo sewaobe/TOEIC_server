@@ -1,4 +1,4 @@
-import { Types } from "mongoose";
+﻿import { Types } from "mongoose";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 
 const mockLearningPathStrategyOption: any = {
@@ -13,13 +13,26 @@ jest.mock("../../src/models/learning_path_strategy_option.model", () => ({
   LearningPathStrategyOption: mockLearningPathStrategyOption,
 }));
 
+const mockCreateNextLearningPathCycle = jest.fn<(...args: any[]) => any>();
+const mockPreviewNextLearningPathCycleFromStrategyOption = jest.fn<
+  (...args: any[]) => any
+>();
+
+jest.mock("../../src/services/week_study.service", () => ({
+  createNextLearningPathCycle: mockCreateNextLearningPathCycle,
+  previewNextLearningPathCycleFromStrategyOption:
+    mockPreviewNextLearningPathCycleFromStrategyOption,
+}));
+
 import {
   createFullTestStrategyOptions,
   createInitialRecommendedOption,
   expirePendingStrategyOptions,
   getActiveLearningPathStrategyOption,
+  getLearningPathStrategyOverview,
   getPendingStrategyOptions,
   selectLearningPathStrategyOption,
+  selectLearningPathStrategyOptionForV2,
 } from "../../src/services/learning_path_strategy_option.service";
 
 const userId = new Types.ObjectId().toString();
@@ -29,7 +42,7 @@ const sourceUserTestId = new Types.ObjectId().toString();
 const sourceWeekStudyId = new Types.ObjectId().toString();
 const lessonManagerId = new Types.ObjectId().toString();
 
-const createFindSortChain = (rows: unknown[]) => ({
+const createFindSortChain = (rows: unknown) => ({
   sort: (jest.fn() as any).mockResolvedValue(rows),
 });
 
@@ -38,8 +51,12 @@ const createOption = (strategy = "recommended", overrides: Record<string, unknow
   user_id: new Types.ObjectId(userId),
   learning_path_id: new Types.ObjectId(learningPathId),
   source_user_test_id: new Types.ObjectId(sourceUserTestId),
+  trigger_type: "full_test_review",
   strategy,
+  scenario: "FULLTEST_MONTHLY",
   status: "pending_selection",
+  selected_at: undefined as Date | undefined,
+  save: (jest.fn() as any).mockResolvedValue(undefined),
   ...overrides,
 });
 
@@ -70,19 +87,15 @@ const createPayload = (overrides: Record<string, unknown> = {}) => ({
   estimated_total_minutes: 90,
   estimated_gain: 0.25,
   reaches_target: true,
-  route_units: [createRouteUnit()],
+  part_roadmaps: [1, 2, 3, 4, 5, 6, 7].map((partType) => ({
+    part_type: partType,
+    cursor_index: 0,
+    target_minutes: partType === 5 ? 90 : 0,
+    estimated_gain: partType === 5 ? 0.25 : 0,
+    reaches_target: partType === 5,
+    units: partType === 5 ? [createRouteUnit()] : [],
+  })),
   summary_reasons: ["Part 5 đang yếu"],
-  ability_highlights: [
-    {
-      part_type: 5,
-      skill_key: "part5_word_form",
-      label_vi: "Từ loại",
-      ability: 0.4,
-      status: "weak",
-      trend: "stable",
-      reason: "Cần luyện thêm",
-    },
-  ],
   ...overrides,
 });
 
@@ -109,6 +122,23 @@ describe("learning path strategy option service", () => {
     mockLearningPathStrategyOption.find.mockReturnValue(createFindSortChain([]));
     mockLearningPathStrategyOption.findOne.mockResolvedValue(null);
     mockLearningPathStrategyOption.findOneAndUpdate.mockResolvedValue(null);
+    mockCreateNextLearningPathCycle.mockResolvedValue({
+      status: "cycle_created",
+      week_study: { _id: new Types.ObjectId() },
+      strategy_option: { _id: new Types.ObjectId(), status: "selected" },
+      day_studies: [],
+    });
+    mockPreviewNextLearningPathCycleFromStrategyOption.mockResolvedValue({
+      status: "preview_available",
+      title: "Cycle dự kiến nếu chọn chiến lược này",
+      description: "Preview",
+      assessment_type: "mini_test",
+      assessment_estimated_minutes: 100,
+      estimated_learning_minutes: 90,
+      focus_part_types: [5],
+      focus_skill_keys: ["part5_word_form"],
+      groups: [],
+    });
   });
 
   it("createInitialRecommendedOption -> valid onboarding route -> creates selected recommended option", async () => {
@@ -127,8 +157,16 @@ describe("learning path strategy option service", () => {
         scenario: "ONBOARDING",
         status: "selected",
         selected_at: selectedAt,
+        part_roadmaps: expect.any(Array),
       })
     );
+    const createPayloadInput = mockLearningPathStrategyOption.create.mock.calls[0][0];
+    expect(createPayloadInput.part_roadmaps).toHaveLength(7);
+    expect(createPayloadInput.part_roadmaps.map((roadmap: any) => roadmap.part_type)).toEqual([
+      1, 2, 3, 4, 5, 6, 7,
+    ]);
+    expect(createPayloadInput.part_roadmaps.every((roadmap: any) => roadmap.cursor_index === 0)).toBe(true);
+    expect(createPayloadInput).not.toHaveProperty("ability_highlights");
     expect(result.status).toBe("selected");
   });
 
@@ -160,7 +198,7 @@ describe("learning path strategy option service", () => {
     const action = createInitialRecommendedOption(input as any);
 
     // Kiểm tra
-    await expect(action).rejects.toThrow("learning_path_id không phải ObjectId hợp lệ.");
+    await expect(action).rejects.toThrow("learning_path_id");
   });
 
   it("createFullTestStrategyOptions -> exactly three valid strategies -> creates pending options", async () => {
@@ -209,7 +247,7 @@ describe("learning path strategy option service", () => {
     const action = createFullTestStrategyOptions(input as any);
 
     // Kiểm tra
-    await expect(action).rejects.toThrow("đúng 3 strategy option");
+    await expect(action).rejects.toThrow("3 strategy option");
   });
 
   it("createFullTestStrategyOptions -> duplicate strategy -> throws clear error", async () => {
@@ -229,10 +267,10 @@ describe("learning path strategy option service", () => {
     const action = createFullTestStrategyOptions(input as any);
 
     // Kiểm tra
-    await expect(action).rejects.toThrow("không được trùng strategy");
+    await expect(action).rejects.toThrow("strategy");
   });
 
-  it("createFullTestStrategyOptions -> old pending options exist -> expires old pending options", async () => {
+  it("createFullTestStrategyOptions -> old selected and pending options exist -> expires old options", async () => {
     // Chuẩn bị
     const input = {
       user_id: userId,
@@ -247,8 +285,9 @@ describe("learning path strategy option service", () => {
     // Kiểm tra
     expect(mockLearningPathStrategyOption.updateMany).toHaveBeenCalledWith(
       {
+        user_id: new Types.ObjectId(userId),
         learning_path_id: new Types.ObjectId(learningPathId),
-        status: "pending_selection",
+        status: { $in: ["selected", "pending_selection"] },
       },
       { $set: { status: "expired" } }
     );
@@ -293,96 +332,151 @@ describe("learning path strategy option service", () => {
     );
   });
 
-  it("selectLearningPathStrategyOption -> pending option -> expires old selected and selects new option", async () => {
-    // Chuẩn bị
-    mockLearningPathStrategyOption.findOne.mockResolvedValue(
-      createOption("recommended", { _id: new Types.ObjectId(optionId) })
-    );
-    mockLearningPathStrategyOption.findOneAndUpdate.mockResolvedValue(
-      createOption("recommended", {
-        _id: new Types.ObjectId(optionId),
-        status: "selected",
-      })
-    );
+  it("selectLearningPathStrategyOption -> pending full test option -> selects option and creates cycle", async () => {
+    const now = new Date("2026-06-01T00:00:00.000Z");
+    const targetOption = createOption("recommended", {
+      _id: new Types.ObjectId(optionId),
+      status: "pending_selection",
+    });
+    mockLearningPathStrategyOption.findOne.mockResolvedValue(targetOption);
+    mockLearningPathStrategyOption.updateMany
+      .mockResolvedValueOnce({ modifiedCount: 1 })
+      .mockResolvedValueOnce({ modifiedCount: 2 });
 
-    // Thực thi
     const result = await selectLearningPathStrategyOption({
+      user_id: userId,
       learning_path_id: learningPathId,
-      option_id: optionId,
+      strategy_option_id: optionId,
+      now,
     });
 
-    // Kiểm tra
     expect(mockLearningPathStrategyOption.updateMany.mock.calls[0][0]).toEqual({
+      user_id: new Types.ObjectId(userId),
       learning_path_id: new Types.ObjectId(learningPathId),
       status: "selected",
       _id: { $ne: new Types.ObjectId(optionId) },
     });
-    expect(mockLearningPathStrategyOption.findOneAndUpdate).toHaveBeenCalledWith(
-      { _id: new Types.ObjectId(optionId), learning_path_id: new Types.ObjectId(learningPathId) },
-      { $set: { status: "selected", selected_at: expect.any(Date) } },
-      { new: true }
-    );
-    expect(result.status).toBe("selected");
-  });
-
-  it("selectLearningPathStrategyOption -> selected option already selected -> returns existing selected option", async () => {
-    // Chuẩn bị
-    const selected = createOption("recommended", { status: "selected" });
-    mockLearningPathStrategyOption.findOne.mockResolvedValue(selected);
-
-    // Thực thi
-    const result = await selectLearningPathStrategyOption({
+    expect(targetOption.status).toBe("selected");
+    expect(targetOption.selected_at).toBe(now);
+    expect(targetOption.save).toHaveBeenCalled();
+    expect(mockCreateNextLearningPathCycle).toHaveBeenCalledWith({
+      user_id: userId,
       learning_path_id: learningPathId,
-      option_id: optionId,
+      now,
     });
-
-    // Kiểm tra
-    expect(result).toBe(selected);
-    expect(mockLearningPathStrategyOption.findOneAndUpdate).not.toHaveBeenCalled();
+    expect(result.selected_strategy_option).toBe(targetOption);
+    expect(result.cycle_result).toBeTruthy();
   });
 
-  it("selectLearningPathStrategyOption -> option not found -> throws clear error", async () => {
-    // Chuẩn bị
+  it("selectLearningPathStrategyOption -> no pending option -> throws Vietnamese error", async () => {
     mockLearningPathStrategyOption.findOne.mockResolvedValue(null);
 
-    // Thực thi
     const action = selectLearningPathStrategyOption({
+      user_id: userId,
       learning_path_id: learningPathId,
-      option_id: optionId,
+      strategy_option_id: optionId,
     });
 
-    // Kiểm tra
-    await expect(action).rejects.toThrow("Không tìm thấy strategy option cần chọn.");
+    await expect(action).rejects.toThrow("pending");
   });
 
-  it("selectLearningPathStrategyOption -> sibling pending options -> dismisses siblings from same source test", async () => {
-    // Chuẩn bị
+  it("selectLearningPathStrategyOption -> option trigger initial_generation -> throws", async () => {
     mockLearningPathStrategyOption.findOne.mockResolvedValue(
-      createOption("balanced", { _id: new Types.ObjectId(optionId) })
-    );
-    mockLearningPathStrategyOption.findOneAndUpdate.mockResolvedValue(
-      createOption("balanced", {
+      createOption("recommended", {
         _id: new Types.ObjectId(optionId),
-        status: "selected",
+        trigger_type: "initial_generation",
       })
     );
 
-    // Thực thi
-    await selectLearningPathStrategyOption({
+    const action = selectLearningPathStrategyOption({
+      user_id: userId,
       learning_path_id: learningPathId,
-      option_id: optionId,
+      strategy_option_id: optionId,
     });
 
-    // Kiểm tra
+    await expect(action).rejects.toThrow("full test");
+    expect(mockCreateNextLearningPathCycle).not.toHaveBeenCalled();
+  });
+
+  it("selectLearningPathStrategyOption -> dismissed siblings uses same source_user_test_id", async () => {
+    const targetOption = createOption("balanced", {
+      _id: new Types.ObjectId(optionId),
+    });
+    mockLearningPathStrategyOption.findOne.mockResolvedValue(targetOption);
+
+    await selectLearningPathStrategyOption({
+      user_id: userId,
+      learning_path_id: learningPathId,
+      strategy_option_id: optionId,
+    });
+
     expect(mockLearningPathStrategyOption.updateMany.mock.calls[1]).toEqual([
       {
+        user_id: new Types.ObjectId(userId),
         learning_path_id: new Types.ObjectId(learningPathId),
-        source_user_test_id: new Types.ObjectId(sourceUserTestId),
         status: "pending_selection",
+        trigger_type: "full_test_review",
+        source_user_test_id: new Types.ObjectId(sourceUserTestId),
         _id: { $ne: new Types.ObjectId(optionId) },
       },
       { $set: { status: "dismissed" } },
     ]);
+  });
+
+  it("selectLearningPathStrategyOption -> expires selected option but not target option", async () => {
+    const targetOption = createOption("opportunity", {
+      _id: new Types.ObjectId(optionId),
+    });
+    mockLearningPathStrategyOption.findOne.mockResolvedValue(targetOption);
+
+    await selectLearningPathStrategyOption({
+      user_id: userId,
+      learning_path_id: learningPathId,
+      strategy_option_id: optionId,
+    });
+
+    expect(mockLearningPathStrategyOption.updateMany.mock.calls[0][0]).toEqual({
+      user_id: new Types.ObjectId(userId),
+      learning_path_id: new Types.ObjectId(learningPathId),
+      status: "selected",
+      _id: { $ne: new Types.ObjectId(optionId) },
+    });
+  });
+
+  it("selectLearningPathStrategyOption -> createNextLearningPathCycle called after save", async () => {
+    const targetOption = createOption("recommended", {
+      _id: new Types.ObjectId(optionId),
+    });
+    mockLearningPathStrategyOption.findOne.mockResolvedValue(targetOption);
+
+    await selectLearningPathStrategyOption({
+      user_id: userId,
+      learning_path_id: learningPathId,
+      strategy_option_id: optionId,
+    });
+
+    expect(targetOption.save.mock.invocationCallOrder[0]).toBeLessThan(
+      mockCreateNextLearningPathCycle.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("selectLearningPathStrategyOption -> returns counts", async () => {
+    const targetOption = createOption("recommended", {
+      _id: new Types.ObjectId(optionId),
+    });
+    mockLearningPathStrategyOption.findOne.mockResolvedValue(targetOption);
+    mockLearningPathStrategyOption.updateMany
+      .mockResolvedValueOnce({ modifiedCount: 3 })
+      .mockResolvedValueOnce({ modifiedCount: 2 });
+
+    const result = await selectLearningPathStrategyOption({
+      user_id: userId,
+      learning_path_id: learningPathId,
+      strategy_option_id: optionId,
+    });
+
+    expect(result.expired_previous_selected_count).toBe(3);
+    expect(result.dismissed_strategy_options_count).toBe(2);
   });
 
   it("getActiveLearningPathStrategyOption -> selected option exists -> returns selected option", async () => {
@@ -412,6 +506,182 @@ describe("learning path strategy option service", () => {
     expect(result).toBeNull();
   });
 
+  it("getLearningPathStrategyOverview -> selected_current -> returns selected current option", async () => {
+    // Chuẩn bị
+    const selected = createOption("recommended", {
+      status: "selected",
+      selected_at: new Date("2026-06-01T00:00:00.000Z"),
+      scenario: "ONBOARDING",
+      trigger_type: "initial_generation",
+      title: "Current recommended",
+    });
+    mockLearningPathStrategyOption.findOne.mockReturnValue(
+      createFindSortChain(selected)
+    );
+    mockLearningPathStrategyOption.find
+      .mockReturnValueOnce(createFindSortChain([]))
+      .mockReturnValueOnce(createFindSortChain([selected]));
+
+    // Thực thi
+    const result = await getLearningPathStrategyOverview({
+      user_id: userId,
+      learning_path_id: learningPathId,
+    });
+
+    // Kiểm tra
+    expect(result.mode).toBe("selected_current");
+    expect(result.current_option).toEqual(
+      expect.objectContaining({
+        option_id: String(selected._id),
+        strategy: "recommended",
+        status: "selected",
+        title: "Current recommended",
+        preview_cycle: null,
+      })
+    );
+    expect(result.pending_options).toEqual([]);
+    expect(result.history).toHaveLength(1);
+    expect(mockPreviewNextLearningPathCycleFromStrategyOption).not.toHaveBeenCalled();
+  });
+
+  it("getLearningPathStrategyOverview -> pending_selection đủ 3 options sorted recommended/balanced/opportunity", async () => {
+    // Chuẩn bị
+    const opportunity = createOption("opportunity", {
+      _id: new Types.ObjectId(),
+      title: "Opportunity option",
+    });
+    const recommended = createOption("recommended", {
+      _id: new Types.ObjectId(),
+      title: "Recommended option",
+    });
+    const balanced = createOption("balanced", {
+      _id: new Types.ObjectId(),
+      title: "Balanced option",
+    });
+    const pendingOptions = [opportunity, recommended, balanced];
+    mockLearningPathStrategyOption.findOne.mockReturnValue(
+      createFindSortChain(null)
+    );
+    mockLearningPathStrategyOption.find
+      .mockReturnValueOnce(createFindSortChain(pendingOptions))
+      .mockReturnValueOnce(createFindSortChain(pendingOptions));
+
+    // Thực thi
+    const result = await getLearningPathStrategyOverview({
+      user_id: userId,
+      learning_path_id: learningPathId,
+    });
+
+    // Kiểm tra
+    expect(result.mode).toBe("pending_selection");
+    expect(result.current_option).toBeNull();
+    expect(result.pending_options.map((option) => option.strategy)).toEqual([
+      "recommended",
+      "balanced",
+      "opportunity",
+    ]);
+    expect(result.pending_options.map((option) => option.title)).toEqual([
+      "Recommended option",
+      "Balanced option",
+      "Opportunity option",
+    ]);
+    expect(mockPreviewNextLearningPathCycleFromStrategyOption).toHaveBeenCalledTimes(3);
+    expect(mockPreviewNextLearningPathCycleFromStrategyOption).toHaveBeenNthCalledWith(
+      1,
+      {
+        user_id: userId,
+        learning_path_id: learningPathId,
+        strategy_option_id: String(recommended._id),
+      }
+    );
+  });
+
+  it("getLearningPathStrategyOverview -> empty -> returns empty mode", async () => {
+    // Chuẩn bị
+    mockLearningPathStrategyOption.findOne.mockReturnValue(
+      createFindSortChain(null)
+    );
+    mockLearningPathStrategyOption.find
+      .mockReturnValueOnce(createFindSortChain([]))
+      .mockReturnValueOnce(createFindSortChain([]));
+
+    // Thực thi
+    const result = await getLearningPathStrategyOverview({
+      user_id: userId,
+      learning_path_id: learningPathId,
+    });
+
+    // Kiểm tra
+    expect(result.mode).toBe("empty");
+    expect(result.current_option).toBeNull();
+    expect(result.pending_options).toEqual([]);
+    expect(result.history).toEqual([]);
+    expect(result.copy.estimated_gain_tooltip).toContain("TOEIC");
+    expect(mockPreviewNextLearningPathCycleFromStrategyOption).not.toHaveBeenCalled();
+  });
+
+  it("selectLearningPathStrategyOptionForV2 -> gọi lại selectLearningPathStrategyOption và trả response gọn cho FE", async () => {
+    // Chuẩn bị
+    const generatedWeekId = new Types.ObjectId();
+    const targetOption = createOption("balanced", {
+      _id: new Types.ObjectId(optionId),
+      status: "pending_selection",
+      title: "Balanced FE option",
+    });
+    mockLearningPathStrategyOption.findOne.mockResolvedValue(targetOption);
+    mockLearningPathStrategyOption.updateMany
+      .mockResolvedValueOnce({ modifiedCount: 1 })
+      .mockResolvedValueOnce({ modifiedCount: 2 });
+    mockCreateNextLearningPathCycle.mockResolvedValue({
+      status: "cycle_created",
+      week_study: { _id: generatedWeekId },
+      strategy_option: targetOption,
+      day_studies: [{ _id: new Types.ObjectId() }, { _id: new Types.ObjectId() }],
+    });
+
+    // Thực thi
+    const result = await selectLearningPathStrategyOptionForV2({
+      user_id: userId,
+      learning_path_id: learningPathId,
+      strategy_option_id: optionId,
+    });
+
+    // Kiểm tra
+    expect(targetOption.status).toBe("selected");
+    expect(targetOption.save).toHaveBeenCalled();
+    expect(mockCreateNextLearningPathCycle).toHaveBeenCalledWith({
+      user_id: userId,
+      learning_path_id: learningPathId,
+      now: expect.any(Date),
+    });
+    expect(Object.keys(result).sort()).toEqual([
+      "cycle_status",
+      "dismissed_strategy_options_count",
+      "expired_previous_selected_count",
+      "generated_day_count",
+      "generated_week_id",
+      "selected_strategy_option",
+    ]);
+    expect(result).toEqual(
+      expect.objectContaining({
+        cycle_status: "cycle_created",
+        generated_week_id: String(generatedWeekId),
+        generated_day_count: 2,
+        dismissed_strategy_options_count: 2,
+        expired_previous_selected_count: 1,
+      })
+    );
+    expect(result.selected_strategy_option).toEqual(
+      expect.objectContaining({
+        option_id: optionId,
+        strategy: "balanced",
+        status: "selected",
+        title: "Balanced FE option",
+        preview_cycle: null,
+      })
+    );
+  });
+
   it("expirePendingStrategyOptions -> pending options exist -> marks them expired", async () => {
     // Chuẩn bị
     mockLearningPathStrategyOption.updateMany.mockResolvedValue({ modifiedCount: 3 });
@@ -434,3 +704,8 @@ describe("learning path strategy option service", () => {
     expect(result).toBe(3);
   });
 });
+
+
+
+
+

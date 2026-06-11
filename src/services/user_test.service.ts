@@ -1,10 +1,14 @@
 import { PipelineStage, Types } from "mongoose";
-import { IUserTest, UserTest } from "../models";
+import { Group, IUserTest, UserTest } from "../models";
+import { UserTestSubmitType } from "../models/enums/UserTestSubmitType";
 import { TestStatus } from "../models/enums/TestStatus";
 import { IUserRecentTest } from "../dto/IUserRecentTest";
 import { IUserTestHistory } from "../dto/IUserTestHistory";
 import { PaginationResult } from "../dto/PaginationResult";
-import type { NormalizedTestResultV2 } from "../types/learning_path_v2";
+import type {
+  NormalizedTestResultV2,
+  RawUserTestLikeInput,
+} from "../types/learning_path_v2";
 
 export interface CreateLearningPathUserTestInput {
   user_id: string;
@@ -37,55 +41,88 @@ export const buildCompletedPartFromNormalizedResult = (
     .join(",");
 };
 
-const countCorrectAnswers = (normalizedResult: NormalizedTestResultV2): number => {
-  return normalizedResult.answers.filter((answer) => answer.is_correct === true)
-    .length;
-};
+export const getLatestUserTestBySubmitType = async (input: {
+  user_id: string;
+  submit_type: UserTestSubmitType;
+}): Promise<IUserTest | null> => {
+  const userIdCandidates: unknown[] = [input.user_id];
 
-/**
- * createLearningPathUserTestService chỉ dùng cho LearningPath v2.
- * UserTest lưu bài test đã submit, không phải ability snapshot và không ghi UserSkill.
- */
-export const createLearningPathUserTestService = async (
-  input: CreateLearningPathUserTestInput
-): Promise<IUserTest> => {
-  if (!input.test_id || !Types.ObjectId.isValid(input.test_id)) {
-    throw new Error("LearningPath v2 UserTest cần test_id hợp lệ.");
+  /*
+   * Support both string and ObjectId user_id because historical UserTest
+   * documents are not guaranteed to use one consistent type.
+   */
+  if (Types.ObjectId.isValid(input.user_id)) {
+    userIdCandidates.push(new Types.ObjectId(input.user_id));
   }
 
-  for (const answer of input.normalized_result.answers) {
-    if (typeof answer.is_correct !== "boolean") {
-      throw new Error(
-        "LearningPath v2 UserTest cần Layer 1 cung cấp is_correct cho mọi answer."
-      );
+  return UserTest.findOne({
+    user_id: { $in: userIdCandidates },
+    submit_type: input.submit_type,
+  }).sort({ submit_at: -1 });
+};
+
+export const buildRawUserTestLikeInputFromUserTest = async (
+  userTest: IUserTest
+): Promise<RawUserTestLikeInput> => {
+  const questionIds = (userTest.answers ?? [])
+    .map((answer) => answer.question_id)
+    .filter(Boolean);
+
+  const groups = await Group.find({
+    questions: { $in: questionIds },
+  })
+    .select("_id part questions")
+    .populate({
+      path: "questions",
+      select: "_id tags irt_difficulty weight correctAnswer",
+    })
+    .lean();
+
+  const questionMetaMap = new Map<
+    string,
+    {
+      part_type?: number;
+      tags: string[];
+      irt_difficulty: number;
+    }
+  >();
+
+  for (const group of groups as any[]) {
+    for (const question of group.questions ?? []) {
+      questionMetaMap.set(String(question._id), {
+        part_type: group.part,
+        tags: Array.isArray(question.tags) ? question.tags : [],
+        irt_difficulty:
+          typeof question.irt_difficulty === "number"
+            ? question.irt_difficulty
+            : typeof question.weight === "number"
+              ? question.weight
+              : 0,
+      });
     }
   }
 
-  const testObjectId = new Types.ObjectId(input.test_id);
-  const correctCount = countCorrectAnswers(input.normalized_result);
+  return {
+    test_id: String(userTest.test_id),
+    submitted_at: userTest.submit_at,
+    score: userTest.score,
+    duration: userTest.duration,
+    completedPart: userTest.completedPart,
+    parts: userTest.parts,
+    answers: (userTest.answers ?? []).map((answer) => {
+      const questionId = String(answer.question_id);
+      const meta = questionMetaMap.get(questionId);
 
-  return UserTest.create({
-    user_id: input.user_id,
-    test_id: testObjectId,
-    score: input.normalized_result.raw_score ?? correctCount,
-    answers: input.normalized_result.answers.map((answer) => ({
-      question_id: new Types.ObjectId(answer.question_id),
-      selectedOption: answer.selected_option ?? "",
-      isCorrect: answer.is_correct,
-    })),
-    parts: input.normalized_result.part_results.map((part) => ({
-      part_name:
-        part.part_name ?? (part.part_type ? `Part ${part.part_type}` : ""),
-      accuracy: part.accuracy,
-    })),
-    completedPart: buildCompletedPartFromNormalizedResult(
-      input.normalized_result
-    ),
-    duration: input.normalized_result.elapsed_seconds ?? 0,
-    submit_at: input.normalized_result.submitted_at ?? new Date(),
-    theta_overall: 0,
-    theta_parts: {},
-  });
+      return {
+        question_id: questionId,
+        selected_option: answer.selectedOption,
+        is_correct: answer.isCorrect,
+        part_type: meta?.part_type,
+        tags: meta?.tags ?? [],
+        irt_difficulty: meta?.irt_difficulty ?? 0,
+      };
+    }),
+  };
 };
 
 export const getRecentUserTestsService = async (

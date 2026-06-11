@@ -1,4 +1,4 @@
-import { Schema, model, Document, Types } from "mongoose";
+﻿import { Schema, model, Document, Types } from "mongoose";
 import { WeekStudyStatus } from "./enums/WeekStudyStatus";
 
 export interface IWeekStudy extends Document {
@@ -39,6 +39,23 @@ export interface IWeekStudy extends Document {
    * Field này giúp scheduler/debug biết cycle đang nhắm vào Part nào.
    */
   focus_part_types: number[];
+  /**
+   * Strategy option đang được dùng để tạo cycle này.
+   */
+  learning_path_strategy_option_id?: Types.ObjectId | null;
+
+  /**
+   * Assessment cuối cycle.
+   * Cycle 1/2/3 thường là mini_test.
+   * Cycle 4 là full_test.
+   */
+  assessment_type?: "mini_test" | "full_test" | null;
+
+  /**
+   * Thời lượng dự kiến của assessment cuối cycle.
+   * MVP: mini_test = 100 phút, full_test = 200 phút.
+   */
+  assessment_estimated_minutes?: number;
   created_at: Date;
   updated_at?: Date;
 }
@@ -96,6 +113,26 @@ const WeekStudySchema = new Schema<IWeekStudy>(
         message: "focus_part_types chỉ được chứa TOEIC Part từ 1 đến 7.",
       },
     },
+
+    learning_path_strategy_option_id: {
+      type: Schema.Types.ObjectId,
+      ref: "LearningPathStrategyOption",
+      default: null,
+      index: true,
+    },
+
+    assessment_type: {
+      type: String,
+      enum: ["mini_test", "full_test"],
+      default: null,
+      index: true,
+    },
+
+    assessment_estimated_minutes: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
   },
   {
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
@@ -103,3 +140,5 @@ const WeekStudySchema = new Schema<IWeekStudy>(
 );
 
 export const WeekStudy = model<IWeekStudy>("WeekStudy", WeekStudySchema);
+
+

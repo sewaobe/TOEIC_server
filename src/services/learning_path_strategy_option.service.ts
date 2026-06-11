@@ -1,4 +1,4 @@
-import { Types } from "mongoose";
+﻿import { Types } from "mongoose";
 import {
   ILearningPathStrategyOption,
   LearningPathScenarioSnapshot,
@@ -11,11 +11,11 @@ import type {
   LessonManagerNodeRole,
   LessonManagerUnitType,
 } from "../models/lesson_manager.model";
+import { createNextLearningPathCycle, previewNextLearningPathCycleFromStrategyOption } from "./week_study.service";
+import { LearningPathStrategyOverviewResponse, SelectLearningPathStrategyOptionResponse, StrategyHistoryItem, StrategyOptionView } from "../types/learning_strategies.type";
+import { getToeicSkillLabelVi } from "../utils/toeic_skill.util";
 
-type StrategyAbilityStatus = "weak" | "medium" | "strong";
-type StrategyAbilityTrend = "improving" | "stable" | "declining";
-
-export type RouteUnitOptionInput = {
+export type RoadmapUnitOptionInput = {
   lesson_manager_id: string;
   title: string;
   part_type: number;
@@ -29,14 +29,13 @@ export type RouteUnitOptionInput = {
   reason?: string;
 };
 
-export type StrategyAbilityHighlightInput = {
-  part_type?: number;
-  skill_key?: string;
-  label_vi?: string;
-  ability?: number;
-  status?: StrategyAbilityStatus;
-  trend?: StrategyAbilityTrend;
-  reason: string;
+export type PartRoadmapOptionInput = {
+  part_type: number;
+  cursor_index?: number;
+  target_minutes: number;
+  estimated_gain: number;
+  reaches_target: boolean;
+  units: RoadmapUnitOptionInput[];
 };
 
 export type CreateStrategyOptionPayload = {
@@ -55,9 +54,8 @@ export type CreateStrategyOptionPayload = {
   estimated_total_minutes: number;
   estimated_gain: number;
   reaches_target: boolean;
-  route_units: RouteUnitOptionInput[];
+  part_roadmaps: PartRoadmapOptionInput[];
   summary_reasons: string[];
-  ability_highlights: StrategyAbilityHighlightInput[];
   selected_at?: Date;
 };
 
@@ -92,9 +90,19 @@ type GetPendingStrategyOptionsInput = {
 };
 
 type SelectLearningPathStrategyOptionInput = {
-  learning_path_id: string;
-  option_id: string;
   user_id?: string;
+  learning_path_id: string;
+  strategy_option_id?: string;
+  option_id?: string;
+  now?: Date;
+};
+
+type SelectLearningPathStrategyOptionResult = {
+  selected_strategy_option: ILearningPathStrategyOption;
+  dismissed_strategy_options_count: number;
+  expired_previous_selected_count: number;
+  cycle_result: Awaited<ReturnType<typeof createNextLearningPathCycle>>;
+  status?: string;
 };
 
 type GetActiveLearningPathStrategyOptionInput = {
@@ -131,9 +139,12 @@ export const assertObjectId = (value: string, fieldName: string): void => {
   }
 };
 
-export const normalizeRouteUnits = (routeUnits: RouteUnitOptionInput[]) => {
+const normalizeRoadmapUnits = (
+  routeUnits: RoadmapUnitOptionInput[],
+  pathPrefix: string
+) => {
   if (!Array.isArray(routeUnits)) {
-    throw new Error("route_units phải là danh sách unit hợp lệ.");
+    throw new Error(`${pathPrefix} phai la danh sach unit hop le.`);
   }
 
   return routeUnits.map((unit, index) => {
@@ -141,11 +152,11 @@ export const normalizeRouteUnits = (routeUnits: RouteUnitOptionInput[]) => {
     const plannedMinutes = Number(unit.planned_minutes);
 
     if (!Number.isFinite(order)) {
-      throw new Error(`route_units[${index}].order phải là số hợp lệ.`);
+      throw new Error(`${pathPrefix}[${index}].order phai la so hop le.`);
     }
     if (!Number.isFinite(plannedMinutes) || plannedMinutes < 0) {
       throw new Error(
-        `route_units[${index}].planned_minutes phải là số không âm.`
+        `${pathPrefix}[${index}].planned_minutes phai la so khong am.`
       );
     }
 
@@ -153,13 +164,49 @@ export const normalizeRouteUnits = (routeUnits: RouteUnitOptionInput[]) => {
       ...unit,
       lesson_manager_id: toObjectId(
         unit.lesson_manager_id,
-        `route_units[${index}].lesson_manager_id`
+        `${pathPrefix}[${index}].lesson_manager_id`
       ),
       order,
       planned_minutes: plannedMinutes,
       target_tags: Array.isArray(unit.target_tags) ? unit.target_tags : [],
     };
   });
+};
+
+export const normalizePartRoadmaps = (
+  partRoadmaps: PartRoadmapOptionInput[]
+) => {
+  if (!Array.isArray(partRoadmaps)) {
+    throw new Error("part_roadmaps phai la danh sach roadmap hop le.");
+  }
+
+  return partRoadmaps
+    .map((roadmap, index) => {
+      const partType = Number(roadmap.part_type);
+      const cursorIndex = Number(roadmap.cursor_index ?? 0);
+
+      if (!Number.isInteger(partType) || partType < 1 || partType > 7) {
+        throw new Error(`part_roadmaps[${index}].part_type phai tu 1 den 7.`);
+      }
+
+      if (!Number.isInteger(cursorIndex) || cursorIndex < 0) {
+        throw new Error(`part_roadmaps[${index}].cursor_index phai khong am.`);
+      }
+
+      return {
+        ...roadmap,
+        part_type: partType,
+        cursor_index: cursorIndex,
+        target_minutes: Number(roadmap.target_minutes ?? 0),
+        estimated_gain: Number(roadmap.estimated_gain ?? 0),
+        reaches_target: Boolean(roadmap.reaches_target),
+        units: normalizeRoadmapUnits(
+          roadmap.units ?? [],
+          `part_roadmaps[${index}].units`
+        ),
+      };
+    })
+    .sort((a, b) => a.part_type - b.part_type);
 };
 
 export const sortOptionsByStrategy = <T extends { strategy: LearningPathStrategyType }>(
@@ -236,9 +283,8 @@ const buildCreatePayload = (
   estimated_total_minutes: input.estimated_total_minutes,
   estimated_gain: input.estimated_gain,
   reaches_target: input.reaches_target,
-  route_units: normalizeRouteUnits(input.route_units ?? []),
+  part_roadmaps: normalizePartRoadmaps(input.part_roadmaps ?? []),
   summary_reasons: input.summary_reasons ?? [],
-  ability_highlights: input.ability_highlights ?? [],
   selected_at: overrides.selected_at,
 });
 
@@ -287,13 +333,19 @@ export const createFullTestStrategyOptions = async (
   const learningPathId = toObjectId(input.learning_path_id, "learning_path_id");
   validateThreeStrategies(input.options);
 
+  const userId = toObjectId(input.user_id, "user_id");
+
   /**
-   * FULLTEST_MONTHLY tạo 3 option pending để user chọn sau. Khi tạo batch mới, chỉ expire
-   * pending cũ; selected option hiện tại vẫn active để mini test tiếp tục đúng main path
-   * cho tới khi user thật sự chọn option mới.
+   * FULLTEST_MONTHLY tạo batch route mới sau full test.
+   * Route selected cũ không còn active nữa, còn pending cũ là batch lỗi thời.
+   * Vì vậy cả selected/pending cũ đều chuyển expired trước khi tạo 3 option mới.
    */
   await LearningPathStrategyOption.updateMany(
-    { learning_path_id: learningPathId, status: "pending_selection" },
+    {
+      user_id: userId,
+      learning_path_id: learningPathId,
+      status: { $in: ["selected", "pending_selection"] },
+    },
     { $set: { status: "expired" } }
   );
 
@@ -343,23 +395,30 @@ export const getPendingStrategyOptions = async (
 
 export const selectLearningPathStrategyOption = async (
   input: SelectLearningPathStrategyOptionInput
-): Promise<ILearningPathStrategyOption> => {
+): Promise<SelectLearningPathStrategyOptionResult> => {
+  const now = input.now ?? new Date();
   const learningPathId = toObjectId(input.learning_path_id, "learning_path_id");
-  const optionId = toObjectId(input.option_id, "option_id");
-  const query: Record<string, unknown> = {
-    _id: optionId,
-    learning_path_id: learningPathId,
-  };
-  if (input.user_id) {
-    query.user_id = toObjectId(input.user_id, "user_id");
+  if (!input.user_id) {
+    throw new Error("user_id là bắt buộc khi chọn strategy option.");
   }
+  const strategyOptionId = input.strategy_option_id ?? input.option_id;
+  if (!strategyOptionId) {
+    throw new Error("strategy_option_id là bắt buộc khi chọn strategy option.");
+  }
+  const userId = toObjectId(input.user_id, "user_id");
+  const optionId = toObjectId(strategyOptionId, "strategy_option_id");
 
-  const option = await LearningPathStrategyOption.findOne(query);
+  const option = await LearningPathStrategyOption.findOne({
+    _id: optionId,
+    user_id: userId,
+    learning_path_id: learningPathId,
+    status: "pending_selection",
+  });
   if (!option) {
-    throw new Error("Không tìm thấy strategy option cần chọn.");
+    throw new Error("Không tìm thấy strategy option pending để chọn.");
   }
-  if (option.status === "selected") {
-    return option;
+  if (option.trigger_type !== "full_test_review") {
+    throw new Error("Chỉ strategy option sau full test mới cần user chọn.");
   }
   if (option.status !== "pending_selection") {
     throw new Error("Chỉ có thể chọn option đang pending_selection.");
@@ -370,39 +429,59 @@ export const selectLearningPathStrategyOption = async (
    * option mới thành selected. Mini test dùng selected option gần nhất để đi tiếp active
    * main path, còn sibling pending cùng source test được dismissed vì user đã chọn xong.
    */
-  await LearningPathStrategyOption.updateMany(
+  /*
+   * expired = route cũ không còn active sau khi user chọn route mới.
+   * MongoDB standalone hiện chưa dùng transaction; service ghi tuần tự và tầng gọi
+   * API sẽ cần guard active cycle nếu expose endpoint sau này.
+   */
+  const expiredResult = await LearningPathStrategyOption.updateMany(
     {
+      user_id: userId,
       learning_path_id: learningPathId,
       status: "selected",
-      _id: { $ne: optionId },
+      _id: { $ne: option._id },
     },
     { $set: { status: "expired" } }
   );
 
-  const selectedOption = await LearningPathStrategyOption.findOneAndUpdate(
-    { _id: optionId, learning_path_id: learningPathId },
-    { $set: { status: "selected", selected_at: new Date() } },
-    { new: true }
+  /*
+   * selected = option user chọn để tiếp tục active route.
+   * Service này không tạo DayStudy và không generate test thật.
+   */
+  option.status = "selected";
+  option.selected_at = now;
+  await option.save();
+
+  /*
+   * dismissed = option cùng batch full test nhưng user không chọn.
+   */
+  const dismissedResult = await LearningPathStrategyOption.updateMany(
+    {
+      user_id: userId,
+      learning_path_id: learningPathId,
+      status: "pending_selection",
+      trigger_type: option.trigger_type,
+      source_user_test_id: option.source_user_test_id,
+      _id: { $ne: option._id },
+    },
+    { $set: { status: "dismissed" } }
   );
 
-  if (!selectedOption) {
-    throw new Error("Không thể cập nhật strategy option đã chọn.");
-  }
+  /*
+   * createNextLearningPathCycle chỉ chạy sau khi target option đã selected.
+   */
+  const cycleResult = await createNextLearningPathCycle({
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    now,
+  });
 
-  const sourceUserTestId = option.source_user_test_id;
-  if (sourceUserTestId) {
-    await LearningPathStrategyOption.updateMany(
-      {
-        learning_path_id: learningPathId,
-        source_user_test_id: sourceUserTestId,
-        status: "pending_selection",
-        _id: { $ne: optionId },
-      },
-      { $set: { status: "dismissed" } }
-    );
-  }
-
-  return selectedOption;
+  return {
+    selected_strategy_option: option,
+    dismissed_strategy_options_count: getModifiedCount(dismissedResult),
+    expired_previous_selected_count: getModifiedCount(expiredResult),
+    cycle_result: cycleResult,
+  };
 };
 
 export const getActiveLearningPathStrategyOption = async (
@@ -436,4 +515,282 @@ export const expirePendingStrategyOptions = async (
     $set: { status: "expired" },
   });
   return getModifiedCount(result);
+};
+
+const STRATEGY_COPY: Record<
+  LearningPathStrategyType,
+  { label: string; description: string }
+> = {
+  recommended: {
+    label: "Đề xuất",
+    description:
+      "Tập trung thứ tự ưu tiên vào các kỹ năng có tác động cao để tối ưu tiến bộ.",
+  },
+  balanced: {
+    label: "Cân bằng",
+    description:
+      "Cân bằng giữa cải thiện điểm yếu và duy trì ổn định các kỹ năng mạnh.",
+  },
+  opportunity: {
+    label: "Cơ hội tăng điểm",
+    description:
+      "Tập trung vào các Part/skill có dư địa để tạo bước nhảy điểm số.",
+  },
+};
+
+const SCENARIO_COPY: Record<
+  LearningPathScenarioSnapshot,
+  { label: string; description: string }
+> = {
+  ONBOARDING: {
+    label: "Khởi động lộ trình",
+    description:
+      "Chiến lược đầu tiên sau Entry Test, ưu tiên nền tảng và các Part cần củng cố.",
+  },
+  FULLTEST_MONTHLY: {
+    label: "Điều chỉnh sau Full Test",
+    description:
+      "Tạo lại các hướng học dựa trên kết quả Full Test mới nhất.",
+  },
+  PRE_DEADLINE: {
+    label: "Tăng tốc trước hạn",
+    description:
+      "Ưu tiên nội dung có tác động cao vì thời gian còn lại không nhiều.",
+  },
+  BEHIND_SCHEDULE: {
+    label: "Bù tiến độ",
+    description:
+      "Tối ưu lại kế hoạch vì tiến độ thực tế đang chậm hơn dự kiến.",
+  },
+};
+
+const STATUS_LABEL: Record<LearningPathStrategyOptionStatus, string> = {
+  selected: "Đang áp dụng",
+  pending_selection: "Cần chọn",
+  dismissed: "Không được chọn",
+  expired: "Đã thay thế",
+};
+
+const TRIGGER_LABEL: Record<LearningPathStrategyOptionTrigger, string> = {
+  initial_generation: "Entry Test",
+  mini_test_completion: "Mini Test",
+  full_test_review: "Full Test",
+  manual_adjustment: "Điều chỉnh thủ công",
+};
+
+const ESTIMATED_GAIN_TOOLTIP = "Dự kiến tăng là điểm ước lượng của hệ thống, được tính từ tổng tác động dự kiến của các bài học trong chiến lược. Con số này dùng để so sánh và tối ưu hướng học trong thời gian còn lại, không phải cam kết điểm TOEIC sau khi học.";
+
+const roundToTwo = (value: number): number => Math.round(value * 100) / 100;
+
+const toNullableString = (value: unknown): string | null => {
+  if (!value) return null;
+  return String(value);
+};
+
+const mapFocusSkillLabels = (focusSkillKeys: string[]): string[] => {
+  return (focusSkillKeys ?? [])
+    .map((skillKey) => getToeicSkillLabelVi(skillKey) ?? skillKey)
+    .filter(Boolean)
+};
+
+const mapStrategyOptionToView = async (input: {
+  option: ILearningPathStrategyOption;
+  user_id: string;
+  learning_path_id: string;
+  include_preview?: boolean;
+}): Promise<StrategyOptionView> => {
+  const strategyCopy = STRATEGY_COPY[input.option.strategy];
+  const scenarioCopy = SCENARIO_COPY[input.option.scenario];
+
+  const previewCycle = input.include_preview
+    ? await previewNextLearningPathCycleFromStrategyOption({
+        user_id: input.user_id,
+        learning_path_id: input.learning_path_id,
+        strategy_option_id: String(input.option._id),
+      })
+    : null;
+
+  return {
+    option_id: String(input.option._id),
+
+    strategy: input.option.strategy,
+    strategy_label: strategyCopy.label,
+    strategy_description: strategyCopy.description,
+
+    scenario: input.option.scenario,
+    scenario_label: scenarioCopy.label,
+    scenario_description: scenarioCopy.description,
+
+    status: input.option.status,
+    status_label: STATUS_LABEL[input.option.status],
+
+    title: input.option.title,
+    description: input.option.description ?? "",
+
+    focus_part_types: input.option.focus_part_types ?? [],
+    focus_skill_keys: input.option.focus_skill_keys ?? [],
+    focus_skill_labels: mapFocusSkillLabels(input.option.focus_skill_keys ?? []),
+
+    estimated_total_minutes: input.option.estimated_total_minutes ?? 0,
+    estimated_total_hours: roundToTwo(
+      (input.option.estimated_total_minutes ?? 0) / 60
+    ),
+    estimated_gain: input.option.estimated_gain ?? 0,
+
+    summary_reasons: input.option.summary_reasons ?? [],
+
+    preview_cycle: previewCycle,
+
+    trigger_type: input.option.trigger_type,
+    source_user_test_id: toNullableString(input.option.source_user_test_id),
+    source_week_study_id: toNullableString(input.option.source_week_study_id),
+
+    created_at: input.option.created_at,
+    selected_at: input.option.selected_at,
+  };
+};
+
+const mapStrategyOptionToHistoryItem = (
+  option: ILearningPathStrategyOption
+): StrategyHistoryItem => {
+  const strategyCopy = STRATEGY_COPY[option.strategy];
+  const scenarioCopy = SCENARIO_COPY[option.scenario];
+
+  return {
+    option_id: String(option._id),
+    trigger_type: option.trigger_type,
+    trigger_label: TRIGGER_LABEL[option.trigger_type],
+
+    strategy: option.strategy,
+    strategy_label: strategyCopy.label,
+
+    scenario: option.scenario,
+    scenario_label: scenarioCopy.label,
+
+    status: option.status,
+    status_label: STATUS_LABEL[option.status],
+
+    title: option.title,
+    description: option.description ?? "",
+
+    focus_part_types: option.focus_part_types ?? [],
+    estimated_gain: option.estimated_gain ?? 0,
+    summary_reason: option.summary_reasons?.[0] ?? "",
+
+    source_user_test_id: toNullableString(option.source_user_test_id),
+    source_week_study_id: toNullableString(option.source_week_study_id),
+
+    created_at: option.created_at,
+    selected_at: option.selected_at,
+  };
+};
+
+export const getLearningPathStrategyOverview = async (input: {
+  user_id: string;
+  learning_path_id: string;
+}): Promise<LearningPathStrategyOverviewResponse> => {
+  const userId = toObjectId(input.user_id, "user_id");
+  const learningPathId = toObjectId(
+    input.learning_path_id,
+    "learning_path_id"
+  );
+
+  const [selectedOption, pendingOptionsRaw, historyOptions] =
+    await Promise.all([
+      LearningPathStrategyOption.findOne({
+        user_id: userId,
+        learning_path_id: learningPathId,
+        status: "selected",
+      }).sort({ selected_at: -1, created_at: -1 }),
+
+      LearningPathStrategyOption.find({
+        user_id: userId,
+        learning_path_id: learningPathId,
+        status: "pending_selection",
+      }).sort({ created_at: -1 }),
+
+      LearningPathStrategyOption.find({
+        user_id: userId,
+        learning_path_id: learningPathId,
+      }).sort({ created_at: -1 }),
+    ]);
+
+  const pendingOptions = sortOptionsByStrategy(pendingOptionsRaw);
+
+  const mode =
+    pendingOptions.length > 0
+      ? "pending_selection"
+      : selectedOption
+        ? "selected_current"
+        : "empty";
+
+  const currentOption = selectedOption
+    ? await mapStrategyOptionToView({
+        option: selectedOption,
+        user_id: input.user_id,
+        learning_path_id: input.learning_path_id,
+        include_preview: false,
+      })
+    : null;
+
+  const pendingOptionViews = await Promise.all(
+    pendingOptions.map((option) =>
+      mapStrategyOptionToView({
+        option,
+        user_id: input.user_id,
+        learning_path_id: input.learning_path_id,
+        include_preview: true,
+      })
+    )
+  );
+
+  return {
+    mode,
+    current_option: currentOption,
+    pending_options: pendingOptionViews,
+
+    history: historyOptions.map(mapStrategyOptionToHistoryItem),
+
+    copy: {
+      estimated_gain_tooltip: ESTIMATED_GAIN_TOOLTIP,
+      strategy_note:
+        "TOEIC Smart tối ưu hướng học dựa trên năng lực hiện tại và thời gian học còn lại. Mini Test cập nhật năng lực; Full Test tạo các lựa chọn chiến lược mới.",
+    },
+  };
+};
+
+export const selectLearningPathStrategyOptionForV2 = async (input: {
+  user_id: string;
+  learning_path_id: string;
+  strategy_option_id: string;
+}): Promise<SelectLearningPathStrategyOptionResponse> => {
+  const result = await selectLearningPathStrategyOption({
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    strategy_option_id: input.strategy_option_id,
+  });
+
+  const selectedView = await mapStrategyOptionToView({
+    option: result.selected_strategy_option,
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    include_preview: false,
+  });
+
+  return {
+    selected_strategy_option: selectedView,
+    dismissed_strategy_options_count:
+      result.dismissed_strategy_options_count,
+    expired_previous_selected_count:
+      result.expired_previous_selected_count,
+    cycle_status: result.cycle_result.status,
+    generated_week_id:
+      result.cycle_result.status === "cycle_created"
+        ? String(result.cycle_result.week_study._id)
+        : null,
+    generated_day_count:
+      result.cycle_result.status === "cycle_created"
+        ? result.cycle_result.day_studies.length
+        : 0,
+  };
 };

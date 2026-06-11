@@ -1,4 +1,4 @@
-import { Schema, model, Document, Types } from "mongoose";
+﻿import { Schema, model, Document, Types } from "mongoose";
 import { PartType } from "./enums/PartType";
 import type {
   LessonManagerNodeRole,
@@ -18,7 +18,9 @@ export type LearningPathStrategyOptionStatus =
 
 export type LearningPathStrategyOptionTrigger =
   | "initial_generation"
-  | "full_test_review";
+  | "full_test_review"
+  | "mini_test_completion"
+  | "manual_adjustment";
 
 export type LearningPathScenarioSnapshot =
   | "ONBOARDING"
@@ -26,7 +28,7 @@ export type LearningPathScenarioSnapshot =
   | "PRE_DEADLINE"
   | "BEHIND_SCHEDULE";
 
-export interface IRouteUnitSnapshot {
+export interface ILearningPathStrategyRoadmapUnit {
   lesson_manager_id: Types.ObjectId;
 
   /**
@@ -40,6 +42,10 @@ export interface IRouteUnitSnapshot {
     to: number;
   };
   unit_type: LessonManagerUnitType;
+  /**
+   * node_role chỉ còn normal/support trong snapshot route.
+   * Entry/target là khái niệm runtime, không phải trạng thái cố định của LessonManager.
+   */
   node_role: LessonManagerNodeRole;
   target_tags: string[];
 
@@ -68,18 +74,13 @@ export interface IRouteUnitSnapshot {
   reason?: string;
 }
 
-export interface IStrategyAbilityHighlight {
-  /**
-   * Dùng để hiển thị các bằng chứng chính từ UserSkill tại thời điểm tạo option.
-   * Đây không thay thế UserSkill, chỉ là snapshot nhẹ cho user hiểu vì sao route được gợi ý.
-   */
-  part_type?: PartType;
-  skill_key?: string;
-  label_vi?: string;
-  ability?: number;
-  status?: "weak" | "medium" | "strong";
-  trend?: "improving" | "stable" | "declining";
-  reason: string;
+export interface ILearningPathStrategyPartRoadmap {
+  part_type: PartType;
+  cursor_index: number;
+  target_minutes: number;
+  estimated_gain: number;
+  reaches_target: boolean;
+  units: ILearningPathStrategyRoadmapUnit[];
 }
 
 export interface ILearningPathStrategyOption extends Document {
@@ -134,11 +135,12 @@ export interface ILearningPathStrategyOption extends Document {
   estimated_gain: number;
   reaches_target: boolean;
 
-  /**
-   * Route tổng quát mà user có thể xem trước.
-   * Đây là snapshot path, không phải WeekStudy/DayStudy đã persist.
+    /**
+   * part_roadmaps là 7 roadmap riêng cho 7 TOEIC Part tại thời điểm tạo strategy.
+   * Đây là định hướng dài hạn theo từng Part, không phải lịch học tuyến tính cố định.
+   * Beam Search sẽ chọn cycle tiếp theo từ các roadmap này.
    */
-  route_units: IRouteUnitSnapshot[];
+  part_roadmaps: ILearningPathStrategyPartRoadmap[];
 
   /**
    * Lý do tổng quan cho option.
@@ -146,18 +148,13 @@ export interface ILearningPathStrategyOption extends Document {
    */
   summary_reasons: string[];
 
-  /**
-   * Bằng chứng năng lực chính tại thời điểm tạo option.
-   * Giúp user tin tưởng vì sao hệ thống gợi ý route này.
-   */
-  ability_highlights: IStrategyAbilityHighlight[];
-
   selected_at?: Date;
   created_at: Date;
   updated_at?: Date;
 }
 
-const RouteUnitSnapshotSchema = new Schema<IRouteUnitSnapshot>(
+const LearningPathStrategyRoadmapUnitSchema =
+  new Schema<ILearningPathStrategyRoadmapUnit>(
   {
     lesson_manager_id: {
       type: Schema.Types.ObjectId,
@@ -196,7 +193,7 @@ const RouteUnitSnapshotSchema = new Schema<IRouteUnitSnapshot>(
 
     node_role: {
       type: String,
-      enum: ["entry", "normal", "target", "support"],
+      enum: ["normal", "support"],
       required: true,
     },
 
@@ -227,50 +224,47 @@ const RouteUnitSnapshotSchema = new Schema<IRouteUnitSnapshot>(
       default: "",
     },
   },
-  { _id: false }
-);
+    { _id: false }
+  );
 
-const StrategyAbilityHighlightSchema = new Schema<IStrategyAbilityHighlight>(
-  {
-    part_type: {
-      type: Number,
-      enum: Object.values(PartType).filter((value) => typeof value === "number"),
-    },
+const LearningPathStrategyPartRoadmapSchema =
+  new Schema<ILearningPathStrategyPartRoadmap>(
+    {
+      part_type: {
+        type: Number,
+        enum: Object.values(PartType).filter((value) => typeof value === "number"),
+        required: true,
+      },
 
-    skill_key: {
-      type: String,
-      default: "",
-      index: true,
-    },
+      cursor_index: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
 
-    label_vi: {
-      type: String,
-      default: "",
-    },
+      target_minutes: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
 
-    ability: {
-      type: Number,
-      min: 0,
-      max: 1,
-    },
+      estimated_gain: {
+        type: Number,
+        default: 0,
+      },
 
-    status: {
-      type: String,
-      enum: ["weak", "medium", "strong"],
-    },
+      reaches_target: {
+        type: Boolean,
+        default: false,
+      },
 
-    trend: {
-      type: String,
-      enum: ["improving", "stable", "declining"],
+      units: {
+        type: [LearningPathStrategyRoadmapUnitSchema],
+        default: [],
+      },
     },
-
-    reason: {
-      type: String,
-      required: true,
-    },
-  },
-  { _id: false }
-);
+    { _id: false }
+  );
 
 const LearningPathStrategyOptionSchema =
   new Schema<ILearningPathStrategyOption>(
@@ -291,7 +285,7 @@ const LearningPathStrategyOptionSchema =
 
       trigger_type: {
         type: String,
-        enum: ["initial_generation", "full_test_review"],
+        enum: ["initial_generation", "full_test_review", "manual_adjustment", "mini_test_completion"],
         required: true,
         index: true,
       },
@@ -383,18 +377,13 @@ const LearningPathStrategyOptionSchema =
         default: false,
       },
 
-      route_units: {
-        type: [RouteUnitSnapshotSchema],
+      part_roadmaps: {
+        type: [LearningPathStrategyPartRoadmapSchema],
         default: [],
       },
 
       summary_reasons: {
         type: [String],
-        default: [],
-      },
-
-      ability_highlights: {
-        type: [StrategyAbilityHighlightSchema],
         default: [],
       },
 
@@ -447,3 +436,5 @@ export const LearningPathStrategyOption =
     "LearningPathStrategyOption",
     LearningPathStrategyOptionSchema
   );
+
+
