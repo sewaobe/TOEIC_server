@@ -91,8 +91,8 @@ export const DEFAULT_BEAM_SEARCH_CYCLE_CONFIG: BeamSearchCycleConfigV2 = {
   min_learning_minutes: 480,
   ideal_learning_minutes: 900,
   max_learning_minutes: 1500,
-  mini_test_estimated_minutes: 100,
-  full_test_estimated_minutes: 200,
+  mini_test_estimated_minutes: 60,
+  full_test_estimated_minutes: 120,
 
   /*
    * max_focus_part_types giới hạn độ rộng tổng của cycle.
