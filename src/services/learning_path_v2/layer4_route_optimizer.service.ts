@@ -122,6 +122,9 @@ const SCENARIO_UNIT_TYPE_MULTIPLIER: Record<
   },
 };
 
+const MAX_RUNTIME_START_CANDIDATES = 5;
+const MAX_DEBUG_CANDIDATE_PATHS = 20;
+
 const roundToTwo = (value: number): number => Math.round(value * 100) / 100;
 
 const clamp = (value: number, min: number, max: number): number =>
@@ -576,15 +579,18 @@ export const buildRuntimeStartPaths = (
    * weight là numeric signal chính để match ability hiện tại.
    * Chọn candidate gần ability không có nghĩa là bỏ qua bài nền trước đó; missing prerequisites luôn được prepend.
    */
-  const startPaths = scoredCandidates.map((candidate) =>
-    buildPathForNode(candidate.node)
-  );
+  const startPaths = scoredCandidates
+    .slice(0, MAX_RUNTIME_START_CANDIDATES)
+    .map((candidate) =>
+      buildPathForNode(candidate.node)
+    );
 
   if (startPaths.length > 0) return startPaths;
 
   return input.nodes
     .filter((node) => node.prerequisite_unit_ids.length === 0)
     .sort((a, b) => a.weight - b.weight || a.id.localeCompare(b.id))
+    .slice(0, MAX_RUNTIME_START_CANDIDATES)
     .map((node) => [node]);
 };
 
@@ -602,6 +608,10 @@ type PathStopReason =
 
 type TerminalPathState = PathState & {
   stop_reason: PathStopReason;
+};
+
+type DebugTerminalPathState = TerminalPathState & {
+  path_index: number;
 };
 
 const comparePathState = (candidate: PathState, current: PathState): PathState => {
@@ -655,6 +665,7 @@ const appendSegmentToState = (input: {
   partBudgetMinutes: number;
   completedUnitIds?: string[];
   skillAbilities?: SkillAbilityInputV2[];
+  getNodeGain: (node: LessonManagerRouteNodeV2) => number;
 }): PathState | null => {
   let totalMinutes = input.baseState.totalMinutes;
   let totalGain = input.baseState.totalGain;
@@ -676,15 +687,7 @@ const appendSegmentToState = (input: {
       return null;
     }
 
-    const gain = calculateNodeGain({
-      node,
-      scenario: input.scenario,
-      strategy: input.strategy,
-      target_score: input.targetScore,
-      part_ability: input.partAbility,
-      completed_unit_ids: input.completedUnitIds,
-      skill_abilities: input.skillAbilities,
-    });
+    const gain = input.getNodeGain(node);
 
     totalGain = roundToTwo(totalGain + gain);
     reachesTarget = reachesTarget || isNodeCoveringTarget(node, input.targetScore);
@@ -735,6 +738,26 @@ export const optimizePartPath = (
     strategy: input.strategy,
   });
 
+  const nodeGainCache = new Map<string, number>();
+
+  const getNodeGain = (node: LessonManagerRouteNodeV2): number => {
+    const cached = nodeGainCache.get(node.id);
+    if (cached !== undefined) return cached;
+
+    const gain = calculateNodeGain({
+      node,
+      scenario: input.scenario,
+      strategy: input.strategy,
+      target_score: input.target_score,
+      part_ability: input.part_ability,
+      completed_unit_ids: input.completed_unit_ids,
+      skill_abilities: input.skill_abilities,
+    });
+
+    nodeGainCache.set(node.id, gain);
+    return gain;
+  };
+
   /*
    * A1 duyệt graph riêng từng Part theo next_unit_ids, không ghép 7 graph thành graph vật lý.
    * Time budget là hard constraint; target node chỉ là hướng/bonus, không phải cam kết phải đạt.
@@ -746,8 +769,45 @@ export const optimizePartPath = (
     totalGain: 0,
     reachesTarget: false,
   };
-  const terminalPaths: TerminalPathState[] = [];
+  const topTerminalPaths: DebugTerminalPathState[] = [];
   const terminalPathKeys = new Set<string>();
+  let terminalPathCount = 0;
+
+  const getPathRankScore = (path: PathState): number => {
+    const targetBonus = path.reachesTarget
+      ? Math.min(0.25, path.totalGain * 0.05)
+      : 0;
+
+    return path.totalGain + targetBonus;
+  };
+
+  const compareDebugTerminalPath = (
+    a: DebugTerminalPathState,
+    b: DebugTerminalPathState
+  ): number => {
+    const aScore = getPathRankScore(a);
+    const bScore = getPathRankScore(b);
+
+    if (aScore !== bScore) return bScore - aScore;
+    if (a.totalMinutes !== b.totalMinutes) {
+      return a.totalMinutes - b.totalMinutes;
+    }
+
+    const aIds = a.nodes.map((node) => node.id).join("|");
+    const bIds = b.nodes.map((node) => node.id).join("|");
+
+    if (aIds !== bIds) return aIds.localeCompare(bIds);
+    return a.path_index - b.path_index;
+  };
+
+  const pushTopTerminalPath = (path: DebugTerminalPathState): void => {
+    topTerminalPaths.push(path);
+    topTerminalPaths.sort(compareDebugTerminalPath);
+
+    if (topTerminalPaths.length > MAX_DEBUG_CANDIDATE_PATHS) {
+      topTerminalPaths.length = MAX_DEBUG_CANDIDATE_PATHS;
+    }
+  };
 
   const collectTerminalPath = (
     state: PathState,
@@ -759,10 +819,15 @@ export const optimizePartPath = (
     if (terminalPathKeys.has(key)) return;
 
     terminalPathKeys.add(key);
-    terminalPaths.push({
+
+    const terminalPath: DebugTerminalPathState = {
       ...state,
       stop_reason: stopReason,
-    });
+      path_index: terminalPathCount,
+    };
+
+    terminalPathCount += 1;
+    pushTopTerminalPath(terminalPath);
 
     best = comparePathState(state, best);
   };
@@ -787,18 +852,7 @@ export const optimizePartPath = (
       totalMinutes += node.planned_completion_time;
       if (totalMinutes > input.part_budget_minutes) return null;
 
-      totalGain = roundToTwo(
-        totalGain +
-        calculateNodeGain({
-          node,
-          scenario: input.scenario,
-          strategy: input.strategy,
-          target_score: input.target_score,
-          part_ability: input.part_ability,
-          completed_unit_ids: input.completed_unit_ids,
-          skill_abilities: input.skill_abilities,
-        })
-      );
+      totalGain = roundToTwo(totalGain + getNodeGain(node));
       reachesTarget =
         reachesTarget || isNodeCoveringTarget(node, input.target_score);
       currentPathIds.add(node.id);
@@ -858,6 +912,7 @@ export const optimizePartPath = (
         partBudgetMinutes: input.part_budget_minutes,
         completedUnitIds: input.completed_unit_ids,
         skillAbilities: input.skill_abilities,
+        getNodeGain,
       });
 
       if (!nextState) {
@@ -886,7 +941,7 @@ export const optimizePartPath = (
     walk(prefixState);
   }
 
-  if (terminalPaths.length === 0) {
+  if (terminalPathCount === 0) {
     return {
       part_type: input.part_type,
       target_minutes: input.part_budget_minutes,
@@ -898,12 +953,12 @@ export const optimizePartPath = (
   }
 
   const bestPathKey = best.nodes.map((node) => node.id).join("|");
-  const terminalPathDebugItems = terminalPaths
-    .map((path, index) => {
+  const terminalPathDebugItems = topTerminalPaths
+    .map((path) => {
       const pathKey = path.nodes.map((node) => node.id).join("|");
 
       return {
-        path_index: index,
+        path_index: path.path_index,
         is_best: pathKey === bestPathKey,
         stop_reason: path.stop_reason,
         reaches_target: path.reachesTarget,
@@ -922,15 +977,7 @@ export const optimizePartPath = (
           planned_minutes: node.planned_completion_time,
           next_unit_ids: node.next_unit_ids,
           prerequisite_unit_ids: node.prerequisite_unit_ids,
-          gain: calculateNodeGain({
-            node,
-            scenario: input.scenario,
-            strategy: input.strategy,
-            target_score: input.target_score,
-            part_ability: input.part_ability,
-            completed_unit_ids: input.completed_unit_ids,
-            skill_abilities: input.skill_abilities,
-          }),
+          gain: getNodeGain(node),
         })),
       };
     })
@@ -951,7 +998,9 @@ export const optimizePartPath = (
     target_score: input.target_score,
     part_ability: input.part_ability,
     part_budget_minutes: input.part_budget_minutes,
-    terminal_path_count: terminalPaths.length,
+    terminal_path_count: terminalPathCount,
+    logged_path_count: terminalPathDebugItems.length,
+    debug_path_limit: MAX_DEBUG_CANDIDATE_PATHS,
     best_total_minutes: best.totalMinutes,
     best_total_gain: roundToTwo(best.totalGain),
     best_reaches_target: best.reachesTarget,
@@ -960,15 +1009,7 @@ export const optimizePartPath = (
   });
 
   const plannedNodes = best.nodes.map((node, index) => {
-    const gain = calculateNodeGain({
-      node,
-      scenario: input.scenario,
-      strategy: input.strategy,
-      target_score: input.target_score,
-      part_ability: input.part_ability,
-      completed_unit_ids: input.completed_unit_ids,
-      skill_abilities: input.skill_abilities,
-    });
+    const gain = getNodeGain(node);
 
     return toPlannedRouteUnit(node, index, gain, getScenarioReason(input.scenario));
   });
@@ -997,15 +1038,7 @@ export const optimizePartPath = (
       next_unit_ids: node.next_unit_ids,
       prerequisite_unit_ids: node.prerequisite_unit_ids,
 
-      estimated_gain: calculateNodeGain({
-        node,
-        scenario: input.scenario,
-        strategy: input.strategy,
-        target_score: input.target_score,
-        part_ability: input.part_ability,
-        skill_abilities: input.skill_abilities,
-        completed_unit_ids: input.completed_unit_ids,
-      }),
+      estimated_gain: getNodeGain(node),
 
       skill_debug: buildNodeSkillDebugSnapshot({
         node,
