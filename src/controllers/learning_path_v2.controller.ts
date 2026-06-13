@@ -15,7 +15,11 @@ import {
 } from "../services/user_test.service";
 import { UserTestSubmitType } from "../models/enums/UserTestSubmitType";
 import { LearningPath } from "../models";
-import { getLearningPathStrategyOverview, selectLearningPathStrategyOptionForV2 } from "../services/learning_path_strategy_option.service";
+import { getLearningPathStrategyOptionPreview, getLearningPathStrategyOverview, selectLearningPathStrategyOptionForV2 } from "../services/learning_path_strategy_option.service";
+import {
+  submitLearningPathV2Assessment,
+  type LearningPathV2AssessmentType,
+} from "../services/learning_path_v2/learning_path_v2_assessment.service";
 
 const toDateOrUndefined = (value: unknown): Date | undefined => {
   if (!value) {
@@ -394,6 +398,89 @@ export const selectLearningPathV2StrategyOptionController = async (
     });
 
     res.status(200).json(ApiResponse.success(result));
+  } catch (error) {
+    handleLearningPathV2ControllerError(error, res, next);
+  }
+};
+
+export const getLearningPathV2StrategyOptionPreviewController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { learningPathId, optionId } = req.params;
+    const userId = req.user?._id;
+
+    if (!userId) {
+      res.status(401).json(ApiResponse.fail("KhÃ´ng tÃ¬m tháº¥y user_id."));
+      return;
+    }
+
+    const result = await getLearningPathStrategyOptionPreview({
+      user_id: String(userId),
+      learning_path_id: learningPathId,
+      strategy_option_id: optionId,
+    });
+
+    res.status(200).json(ApiResponse.success(result));
+  } catch (error) {
+    handleLearningPathV2ControllerError(error, res, next);
+  }
+};
+
+export const submitLearningPathV2AssessmentController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { learningPathId } = req.params;
+    const userId = req.user?._id;
+
+    if (!userId) {
+      res.status(401).json(ApiResponse.fail("Không tìm thấy user_id."));
+      return;
+    }
+
+    const {
+      test_id,
+      testId,
+      answers,
+      duration,
+      assessment_type,
+      week_study_id,
+      day_study_id,
+    } = req.body ?? {};
+    const normalizedAssessmentType = assessment_type as LearningPathV2AssessmentType;
+
+    if (
+      !learningPathId ||
+      !(test_id || testId) ||
+      !Array.isArray(answers) ||
+      !Number.isFinite(Number(duration)) ||
+      !["mini_test", "full_test"].includes(normalizedAssessmentType)
+    ) {
+      res.status(400).json(ApiResponse.fail("Payload assessment không hợp lệ."));
+      return;
+    }
+
+    const result = await submitLearningPathV2Assessment({
+      user_id: String(userId),
+      learning_path_id: learningPathId,
+      test_id: String(test_id ?? testId),
+      answers,
+      duration: Number(duration),
+      assessment_type: normalizedAssessmentType,
+      week_study_id:
+        typeof week_study_id === "string" ? week_study_id : undefined,
+      day_study_id:
+        typeof day_study_id === "string" ? day_study_id : undefined,
+    });
+
+    res
+      .status(200)
+      .json(ApiResponse.success(result, "Nộp assessment LearningPath v2 thành công."));
   } catch (error) {
     handleLearningPathV2ControllerError(error, res, next);
   }

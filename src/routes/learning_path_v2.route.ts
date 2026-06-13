@@ -4,9 +4,11 @@ import {
   getLearningPathV2GenerationContextController,
   getLearningPathV2OverviewController,
   getLearningPathV2SkillMapController,
+  getLearningPathV2StrategyOptionPreviewController,
   getLearningPathV2StrategyController,
   initialGenerateLearningPathV2Controller,
   selectLearningPathV2StrategyOptionController,
+  submitLearningPathV2AssessmentController,
   upsertLearningPathV2SetupController,
 } from "../controllers/learning_path_v2.controller";
 import { verifyAccessToken } from "../middlewares/verifyAccessToken.middleware";
@@ -24,6 +26,11 @@ router.post(
   verifyAccessToken,
   initialGenerateLearningPathV2Controller
 );
+router.post(
+  "/:learningPathId/assessments/submit",
+  verifyAccessToken,
+  submitLearningPathV2AssessmentController
+);
 router.get(
   "/:learningPathId/current-cycle",
   verifyAccessToken,
@@ -40,6 +47,12 @@ router.get(
   "/:learningPathId/strategy",
   verifyAccessToken,
   getLearningPathV2StrategyController
+);
+
+router.get(
+  "/:learningPathId/strategy-options/:optionId/preview",
+  verifyAccessToken,
+  getLearningPathV2StrategyOptionPreviewController
 );
 
 router.post(

@@ -712,6 +712,7 @@ export const getLearningPathStrategyOverview = async (input: {
       LearningPathStrategyOption.find({
         user_id: userId,
         learning_path_id: learningPathId,
+        status: "expired",
       }).sort({ created_at: -1 }),
     ]);
 
@@ -739,7 +740,7 @@ export const getLearningPathStrategyOverview = async (input: {
         option,
         user_id: input.user_id,
         learning_path_id: input.learning_path_id,
-        include_preview: true,
+        include_preview: false,
       })
     )
   );
@@ -757,6 +758,33 @@ export const getLearningPathStrategyOverview = async (input: {
         "TOEIC Smart tối ưu hướng học dựa trên năng lực hiện tại và thời gian học còn lại. Mini Test cập nhật năng lực; Full Test tạo các lựa chọn chiến lược mới.",
     },
   };
+};
+
+export const getLearningPathStrategyOptionPreview = async (input: {
+  user_id: string;
+  learning_path_id: string;
+  strategy_option_id: string;
+}) => {
+  const userId = toObjectId(input.user_id, "user_id");
+  const learningPathId = toObjectId(input.learning_path_id, "learning_path_id");
+  const optionId = toObjectId(input.strategy_option_id, "strategy_option_id");
+
+  const option = await LearningPathStrategyOption.findOne({
+    _id: optionId,
+    user_id: userId,
+    learning_path_id: learningPathId,
+    status: { $in: ["pending_selection", "selected"] },
+  });
+
+  if (!option) {
+    throw new Error("Không tìm thấy strategy option để preview.");
+  }
+
+  return previewNextLearningPathCycleFromStrategyOption({
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    strategy_option_id: input.strategy_option_id,
+  });
 };
 
 export const selectLearningPathStrategyOptionForV2 = async (input: {

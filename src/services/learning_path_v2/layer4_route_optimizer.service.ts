@@ -1378,10 +1378,27 @@ export const buildNextCycleByBeamSearch = (
     completedStates.length > 0
       ? completedStates
       : states.filter((state) => state.selected_roadmap_units.length > 0);
-  const validStates = candidateFinalStates.filter(
+  const focusSet = new Set(input.focus_part_types);
+  const focusCoveredStates = candidateFinalStates.filter((state) =>
+    input.focus_part_types.every((partType) => state.part_types.includes(partType))
+  );
+
+  if (focusSet.size > 0 && focusCoveredStates.length === 0) {
+    return {
+      plan_type: "route_completed",
+      selected_roadmap_units: [],
+      assessment: null,
+      reason:
+        "Không đủ unit khả dụng để tạo cycle bao phủ tất cả Part trọng tâm hiện tại.",
+    };
+  }
+
+  const candidateStates =
+    focusCoveredStates.length > 0 ? focusCoveredStates : candidateFinalStates;
+  const validStates = candidateStates.filter(
     (state) => state.total_minutes >= learningConfig.min
   );
-  const best = [...(validStates.length > 0 ? validStates : candidateFinalStates)].sort(
+  const best = [...(validStates.length > 0 ? validStates : candidateStates)].sort(
     compareBeamSearchStates
   )[0];
 
@@ -1405,15 +1422,21 @@ export const buildNextCycleByBeamSearch = (
       };
     })
     .filter((item) => item.selected_count > 0);
-  const selectedSkillKeys = best.skill_keys.slice(0, config.max_focus_skill_keys);
-  const selectedPartTypes = best.part_types.slice(0, config.max_focus_part_types);
+  const selectedSkillKeys =
+    input.focus_skill_keys && input.focus_skill_keys.length > 0
+      ? input.focus_skill_keys.slice(0, config.max_focus_skill_keys)
+      : best.skill_keys.slice(0, config.max_focus_skill_keys);
+  const selectedPartTypes = input.focus_part_types.slice(
+    0,
+    config.max_focus_part_types
+  );
 
   logLearningPathV2DebugSafe("layer4.beam_search_cycle", {
     stage: "layer4",
     strategy: input.strategy,
     scenario: input.scenario,
     focus_part_types: input.focus_part_types,
-    selected_part_types: selectedPartTypes,
+    selected_part_types: best.part_types,
     selected_skill_keys_sample: selectedSkillKeys.slice(0, 10),
     selected_roadmap_units_count: best.selected_roadmap_units.length,
     estimated_learning_minutes: best.total_minutes,
