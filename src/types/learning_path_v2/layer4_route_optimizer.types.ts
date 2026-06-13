@@ -70,6 +70,8 @@ export interface PlannedRouteUnitV2 {
   planned_minutes: number;
   estimated_gain: number;
   reason: string;
+  unit_source?: "strategy" | "alternative";
+  source_reason?: string;
 }
 
 export interface LearningPathStrategyRoadmapUnitV2 {
@@ -84,6 +86,8 @@ export interface LearningPathStrategyRoadmapUnitV2 {
   planned_minutes: number;
   estimated_gain: number;
   reason: string;
+  unit_source?: "strategy" | "alternative";
+  source_reason?: string;
 }
 
 export interface LearningPathStrategyPartRoadmapV2 {
@@ -181,6 +185,7 @@ export interface BuildNextCycleByBeamSearchInputV2 {
   strategy: LearningPathStrategyV2;
   scenario: LearningPathScenarioV2;
   focus_part_types: number[];
+  focus_skill_keys?: string[];
   mini_tests_completed_since_last_full_test: number;
   config?: Partial<BeamSearchCycleConfigV2>;
 }

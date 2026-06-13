@@ -72,6 +72,9 @@ export interface ILearningPathStrategyRoadmapUnit {
    * Ví dụ: "Part 5 đang yếu", "Phù hợp target 600", "Core skill có gain cao".
    */
   reason?: string;
+
+  unit_source?: "strategy" | "alternative";
+  source_reason?: string;
 }
 
 export interface ILearningPathStrategyPartRoadmap {
@@ -220,6 +223,17 @@ const LearningPathStrategyRoadmapUnitSchema =
     },
 
     reason: {
+      type: String,
+      default: "",
+    },
+
+    unit_source: {
+      type: String,
+      enum: ["strategy", "alternative"],
+      default: "strategy",
+    },
+
+    source_reason: {
       type: String,
       default: "",
     },

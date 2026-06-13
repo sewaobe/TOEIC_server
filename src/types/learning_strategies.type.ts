@@ -26,6 +26,8 @@ export type StrategyCyclePreviewUnit = {
     planned_minutes: number;
     estimated_gain?: number;
     reason?: string;
+    unit_source?: "strategy" | "alternative";
+    source_reason?: string;
 };
 
 export type StrategyCyclePreviewGroup = {
