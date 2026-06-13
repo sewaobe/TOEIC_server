@@ -155,7 +155,7 @@ describe("mini_test.util", () => {
     mockGroup.updateMany.mockResolvedValue({ modifiedCount: 9 });
   });
 
-  it("generateLearningPathMiniTest -> creates APPROVED mini test from 3 focus parts with 40/35/25 group quotas", async () => {
+  it("generateLearningPathMiniTest -> creates APPROVED mini test from 3 focus parts with about 20 questions per part", async () => {
     const result = await generateLearningPathMiniTest({
       user_id: userId,
       learning_path_id: learningPathId,
@@ -174,13 +174,13 @@ describe("mini_test.util", () => {
     expect(mockGroup.find).toHaveBeenCalledWith({ part: 3 });
     expect(mockGroup.insertMany).toHaveBeenCalledTimes(1);
     const clonedDocs = mockGroup.insertMany.mock.calls[0][0];
-    expect(clonedDocs).toHaveLength(9);
-    expect(
-      clonedDocs.reduce(
-        (sum: number, doc: any) => sum + (doc.questions?.length ?? 0),
-        0
-      )
-    ).toBe(100);
+    expect(clonedDocs.length).toBeGreaterThanOrEqual(3);
+    const totalQuestions = clonedDocs.reduce(
+      (sum: number, doc: any) => sum + (doc.questions?.length ?? 0),
+      0
+    );
+    expect(totalQuestions).toBeGreaterThanOrEqual(60);
+    expect(totalQuestions).toBeLessThanOrEqual(90);
     expect(mockTest.create).toHaveBeenCalledWith(
       expect.objectContaining({
         title: "Learning Path Mini Test - Cycle 2",
@@ -196,15 +196,25 @@ describe("mini_test.util", () => {
     );
   });
 
-  it("generateLearningPathMiniTest -> requires exactly 3 focus parts", async () => {
-    await expect(
-      generateLearningPathMiniTest({
-        user_id: userId,
-        learning_path_id: learningPathId,
-        cycle_no: 1,
-        focus_part_types: [1, 2],
-        focus_skill_keys: ["focus_p1"],
-      })
-    ).rejects.toThrow("3 focus_part_types");
+  it("generateLearningPathMiniTest -> supports 2 rolling focus parts", async () => {
+    const result = await generateLearningPathMiniTest({
+      user_id: userId,
+      learning_path_id: learningPathId,
+      cycle_no: 1,
+      focus_part_types: [1, 2],
+      focus_skill_keys: ["focus_p1"],
+    });
+
+    expect(result.status).toBe(TestStatus.APPROVED);
+    const clonedDocs = mockGroup.insertMany.mock.calls[0][0];
+    const totalQuestions = clonedDocs.reduce(
+      (sum: number, doc: any) => sum + (doc.questions?.length ?? 0),
+      0
+    );
+    expect(totalQuestions).toBeGreaterThanOrEqual(40);
+    expect(totalQuestions).toBeLessThanOrEqual(70);
+    expect(mockGroup.find).toHaveBeenCalledWith({ part: 1 });
+    expect(mockGroup.find).toHaveBeenCalledWith({ part: 2 });
+    expect(mockGroup.find).not.toHaveBeenCalledWith({ part: 3 });
   });
 });

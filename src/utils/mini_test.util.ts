@@ -56,6 +56,9 @@ const BASE_QUESTION_DISTRIBUTION: Record<number, number> = {
   7: 16, // 16 câu (tuỳ cấu trúc group Part 7 trong DB)
 }; // 6+20+15+15+20+9+15 = 100
 
+const buildPartQuestionQuotas = (focusPartCount: number): number[] =>
+  PART_QUOTAS_BY_ABILITY_ASC.slice(0, focusPartCount).map(() => 20);
+
 /************************************************************
  * Helper: tính trung bình difficulty & số câu của 1 group
  ************************************************************/
@@ -552,8 +555,8 @@ export async function generateLearningPathMiniTest(
   const focusPartTypes = uniqueNumbers(input.focus_part_types).slice(0, 3);
   const focusSkillKeys = new Set(uniqueStrings(input.focus_skill_keys));
 
-  if (focusPartTypes.length !== 3) {
-    throw new Error("Mini test cần đúng 3 focus_part_types.");
+  if (focusPartTypes.length === 0) {
+    throw new Error("Mini test cần ít nhất 1 focus_part_types.");
   }
 
   const userSkill = await UserSkill.findOne({
@@ -574,6 +577,7 @@ export async function generateLearningPathMiniTest(
     const rightAbility = partByType.get(right)?.ability ?? 1;
     return leftAbility - rightAbility;
   });
+  const partQuestionQuotas = buildPartQuestionQuotas(sortedFocusParts.length);
 
   const selectedCandidates: MiniTestGroupCandidate[] = [];
 
@@ -589,7 +593,7 @@ export async function generateLearningPathMiniTest(
     });
     const partSelectedCandidates = selectMiniTestGroupsForPart({
       candidates,
-      partQuestionTarget: PART_QUOTAS_BY_ABILITY_ASC[index],
+      partQuestionTarget: partQuestionQuotas[index] ?? 0,
       targetDifficulty: abilityToTargetDifficulty(userSkillPart.ability),
     });
 

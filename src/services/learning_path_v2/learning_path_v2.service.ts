@@ -50,6 +50,7 @@ import { evaluateLearningPathScenario } from "./layer3_strategy_decision.service
 import { buildStrategyRoutePlan } from "./layer4_route_optimizer.service";
 import { logLearningPathV2DebugSafe } from "./learning_path_v2_debug_logger";
 import { createSchedulerDecisionLog } from "./scheduler_decision_log.service";
+import { emitToUser } from "../../socket/emitToUser.socket";
 
 import { DayStudy, WeekStudy } from "../../models";
 import type { IDayStudy } from "../../models/day_study.model";
@@ -79,6 +80,44 @@ export interface LearningPathV2AbilityPipelineOutput {
 type Layer4PipelineResult = NonNullable<
   LearningPathV2AbilityPipelineOutput["layer4_result"]
 >;
+
+const isAssessmentPipelineTrigger = (
+  triggerType: LearningPathV2AbilityPipelineInput["trigger_type"]
+): triggerType is "mini_test_completion" | "full_test_review" =>
+  triggerType === "mini_test_completion" || triggerType === "full_test_review";
+
+const getAssessmentTypeFromTrigger = (
+  triggerType: "mini_test_completion" | "full_test_review"
+): "mini_test" | "full_test" =>
+  triggerType === "mini_test_completion" ? "mini_test" : "full_test";
+
+const emitLearningPathAssessmentEvent = (input: {
+  user_id: string;
+  learning_path_id: string;
+  trigger_type: LearningPathV2AbilityPipelineInput["trigger_type"];
+  event: string;
+  payload: Record<string, unknown>;
+}): void => {
+  if (!isAssessmentPipelineTrigger(input.trigger_type)) return;
+
+  try {
+    emitToUser(input.user_id, input.event, {
+      learning_path_id: input.learning_path_id,
+      trigger_type: input.trigger_type,
+      assessment_type: getAssessmentTypeFromTrigger(input.trigger_type),
+      ...input.payload,
+    });
+  } catch (error) {
+    logLearningPathV2DebugSafe("pipeline.assessment_emit_failed", {
+      stage: "pipeline",
+      user_id: input.user_id,
+      learning_path_id: input.learning_path_id,
+      trigger_type: input.trigger_type,
+      event: input.event,
+      error,
+    });
+  }
+};
 
 type StrategyOptionPayloadInput = {
   plan: BuildStrategyRoutePlanOutputV2;
@@ -473,6 +512,8 @@ const mapRoutePlanToStrategyOptionPayload = (input: StrategyOptionPayloadInput) 
       planned_minutes: unit.planned_minutes,
       estimated_gain: unit.estimated_gain,
       reason: unit.reason,
+      unit_source: unit.unit_source ?? "strategy",
+      source_reason: unit.source_reason ?? "",
     })),
   })),
   summary_reasons: input.plan.summary_reasons,
@@ -661,6 +702,7 @@ const createInitialSelectedOptionAndCycle = async (input: {
     user_id: input.originalInput.user_id,
     learning_path_id: input.originalInput.learning_path_id,
     now: input.normalizedResult.submitted_at ?? new Date(),
+    user_skill: input.userSkill,
   });
 
   if (cycleResult.status === "cycle_created" && selectedOption) {
@@ -826,20 +868,91 @@ const handleMiniTestCompletionCycle = async (input: {
   originalInput: LearningPathV2AbilityPipelineInput;
   learningPath: ILearningPath;
   userTest: IUserTest;
+  userSkill: IUserSkill;
+  scenarioDecision: LearningScenarioDecisionV2;
 }): Promise<Layer4PipelineResult> => {
   /*
-   * Mini test không tạo lại route option. Nó chỉ cập nhật counter và tiếp tục
-   * active graph đã chọn.
+   * Mini test không tạo lại route option. Counter chỉ được commit sau khi cycle
+   * kế tiếp tạo thành công để không làm lệch lịch full test khi hết nội dung.
    */
-  input.learningPath.mini_tests_completed_since_last_full_test =
+  const nextMiniTestCount =
     (input.learningPath.mini_tests_completed_since_last_full_test ?? 0) + 1;
-  await input.learningPath.save();
 
   const cycleResult = await createNextLearningPathCycle({
     user_id: input.originalInput.user_id,
     learning_path_id: input.originalInput.learning_path_id,
     now: input.userTest.submit_at,
+    user_skill: input.userSkill,
+    mini_tests_completed_since_last_full_test_override: nextMiniTestCount,
+    scenario_override: input.scenarioDecision.scenario,
   });
+
+  if (cycleResult.status === "cycle_created") {
+    input.learningPath.mini_tests_completed_since_last_full_test =
+      nextMiniTestCount;
+    await input.learningPath.save();
+
+    const cycleDayStudyMinutes = sumDayStudyPlannedMinutes(
+      cycleResult.day_studies
+    );
+    const alternativeUnits = cycleResult.plan.selected_roadmap_units.filter(
+      (unit) => unit.unit_source === "alternative"
+    );
+
+    try {
+      await createSchedulerDecisionLog({
+        user_id: input.originalInput.user_id,
+        learning_path_id: input.originalInput.learning_path_id,
+        learning_path_strategy_option_id: String(cycleResult.strategy_option._id),
+        trigger_type: "mini_test_completion",
+        generated_week_id: String(cycleResult.week_study._id),
+        strategy: cycleResult.strategy_option.strategy,
+        scenario: input.scenarioDecision.scenario,
+        status: "applied",
+        reasons: cycleResult.strategy_option.summary_reasons ?? [],
+        warnings: [],
+        input_snapshot: {
+          current_score: input.userTest.score,
+          target_score: input.learningPath.target_score,
+          weekly_available_minutes: cycleDayStudyMinutes,
+          test_type: "mini",
+          part_abilities: mapUserSkillPartsToSchedulerSnapshot(input.userSkill),
+          skill_abilities: mapUserSkillSkillsToSchedulerSnapshot(input.userSkill),
+          extra: {
+            source_user_test_id: String(input.userTest._id),
+            source_test_id: String(input.userTest.test_id),
+            target_completion_date: input.learningPath.target_completion_date,
+            focus_part_types: cycleResult.plan.focus_part_types,
+            focus_skill_keys: cycleResult.plan.focus_skill_keys,
+            mini_tests_completed_since_last_full_test: nextMiniTestCount,
+            alternative_unit_count: alternativeUnits.length,
+            alternative_lesson_manager_ids: alternativeUnits.map(
+              (unit) => unit.lesson_manager_id
+            ),
+          },
+        },
+        selected_lesson_manager_ids: cycleResult.plan.selected_roadmap_units.map(
+          (unit) => unit.lesson_manager_id
+        ),
+        output_summary: {
+          planned_minutes: cycleDayStudyMinutes,
+          selected_unit_count: cycleResult.plan.selected_roadmap_units.length,
+          ...countCycleActivities(cycleResult.day_studies),
+        },
+        created_by: input.originalInput.user_id,
+      });
+    } catch (error) {
+      logLearningPathV2DebugSafe("scheduler_decision_log.create_failed", {
+        stage: "scheduler_decision_log",
+        user_id: input.originalInput.user_id,
+        learning_path_id: input.originalInput.learning_path_id,
+        trigger_type: "mini_test_completion",
+        selected_strategy_option_id: cycleResult.strategy_option._id,
+        week_study_id: cycleResult.week_study._id,
+        error,
+      });
+    }
+  }
 
   return {
     selected_strategy_option: cycleResult.strategy_option,
@@ -1010,6 +1123,23 @@ export const runLearningPathV2AbilityPipeline = async (
     // UserSkill là snapshot đã merge bằng EWMA + trend slope từ history mới nhất.
     const userSkill = await updateUserSkillFromHistory(userSkillHistory);
 
+    const latestUserSkillPartAbilities =
+      mapUserSkillPartsToSchedulerSnapshot(userSkill);
+
+    emitLearningPathAssessmentEvent({
+      user_id: input.user_id,
+      learning_path_id: input.learning_path_id,
+      trigger_type: input.trigger_type,
+      event: "learning_path_assessment_abilities",
+      payload: {
+        source_user_test_id: String(userTest._id),
+        ability_profile: abilityProfile,
+        submitted_part_abilities: abilityProfile.part_abilities,
+        user_skill_parts: latestUserSkillPartAbilities,
+        part_abilities: latestUserSkillPartAbilities,
+      },
+    });
+
     // Layer 3 quyết scenario dựa trên trigger, deadline, pace và focus skill delta.
     const scenarioDecision = await evaluateLearningPathScenario({
       trigger_type: normalizedResult.trigger_type,
@@ -1079,6 +1209,8 @@ export const runLearningPathV2AbilityPipeline = async (
           originalInput: input,
           learningPath,
           userTest,
+          userSkill,
+          scenarioDecision,
         });
         break;
 
@@ -1092,6 +1224,25 @@ export const runLearningPathV2AbilityPipeline = async (
       learning_path_id: input.learning_path_id,
       trigger_type: input.trigger_type,
       ...summarizeLayer4ResultForLog(layer4Result),
+    });
+
+    emitLearningPathAssessmentEvent({
+      user_id: input.user_id,
+      learning_path_id: input.learning_path_id,
+      trigger_type: input.trigger_type,
+      event: "learning_path_assessment_completed",
+      payload: {
+        source_user_test_id: String(userTest._id),
+        requires_strategy_selection: input.trigger_type === "full_test_review",
+        layer4_result: summarizeLayer4ResultForLog(layer4Result),
+        strategy_options:
+          layer4Result?.strategy_options?.map((option) => ({
+            option_id: String(option._id),
+            strategy: option.strategy,
+            status: option.status,
+            trigger_type: option.trigger_type,
+          })) ?? [],
+      },
     });
 
     return {
@@ -1111,6 +1262,16 @@ export const runLearningPathV2AbilityPipeline = async (
       trigger_type: input.trigger_type,
       source_user_test_id: userTest._id,
       error,
+    });
+    emitLearningPathAssessmentEvent({
+      user_id: input.user_id,
+      learning_path_id: input.learning_path_id,
+      trigger_type: input.trigger_type,
+      event: "learning_path_assessment_error",
+      payload: {
+        source_user_test_id: String(userTest._id),
+        message: error instanceof Error ? error.message : "Pipeline failed",
+      },
     });
     throw error;
   }
@@ -1137,6 +1298,8 @@ type LearningPathV2OverviewResult = CurrentLearningPathCycleV2Result & {
   pending_strategy_options: ILearningPathStrategyOption[];
   week_studies: IWeekStudy[];
   roadmap_canvas: {
+    requires_strategy_selection: boolean;
+    strategy_selection_reason: "full_test_review_pending" | null;
     current_cycle: {
       week_study_id: string;
       cycle_no: number;
@@ -1147,6 +1310,7 @@ type LearningPathV2OverviewResult = CurrentLearningPathCycleV2Result & {
     } | null;
     current_learning: RoadmapCanvasCurrentLearning | null;
     units: RoadmapCanvasUnitStatusItem[];
+    part_roadmaps: RoadmapCanvasPartRoadmap[];
   }
 };
 
@@ -1249,6 +1413,7 @@ export const getLearningPathV2Overview = async (
     user_id: input.user_id,
     status: "pending_selection",
   }).sort({ created_at: -1 });
+  const requiresStrategySelection = pendingOptions.length > 0;
 
   const weekStudies =
     weekStudyIds.length > 0
@@ -1265,6 +1430,31 @@ export const getLearningPathV2Overview = async (
   const dayStudies = currentWeekStudy
     ? await loadDayStudiesForWeek(currentWeekStudy)
     : [];
+  const allDayStudiesRaw =
+    weekStudies.length > 0
+      ? await DayStudy.find({
+        week_id: { $in: weekStudies.map((week) => week._id) },
+      }).sort({ dayOfWeek: 1 })
+      : [];
+  const weekOrderById = new Map(
+    weekStudies.map((week, index) => [String(week._id), index])
+  );
+  const allDayStudies = [...allDayStudiesRaw].sort((a, b) => {
+    const weekOrderA = weekOrderById.get(String(a.week_id)) ?? 0;
+    const weekOrderB = weekOrderById.get(String(b.week_id)) ?? 0;
+
+    if (weekOrderA !== weekOrderB) {
+      return weekOrderA - weekOrderB;
+    }
+
+    return (a.dayOfWeek ?? 0) - (b.dayOfWeek ?? 0);
+  });
+  const roadmapStrategyOptions = await loadRoadmapCanvasStrategyOptions({
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    weekStudies,
+    selectedOption,
+  });
 
   return {
     learning_path: learningPath,
@@ -1280,7 +1470,11 @@ export const getLearningPathV2Overview = async (
     roadmap_canvas: buildRoadmapCanvasSnapshot({
       selectedOption,
       currentWeekStudy,
-      dayStudies,
+      weekStudies,
+      allDayStudies,
+      roadmapStrategyOptions,
+      includeProjection: !requiresStrategySelection,
+      requiresStrategySelection,
     }),
   };
 };
@@ -1293,6 +1487,34 @@ type RoadmapCanvasUnitStatusItem = {
   status: RoadmapCanvasUnitStatus;
 };
 
+type RoadmapCanvasUnit = {
+  lesson_manager_id: string;
+  title: string;
+  part_type: number;
+  unit_type: string;
+  node_role?: string;
+  target_tags?: string[];
+  order: number;
+  planned_minutes?: number;
+  estimated_gain?: number;
+  reason?: string;
+  unit_source?: "strategy" | "alternative";
+  source_reason?: string;
+  score_band?: {
+    from?: number;
+    to?: number;
+  };
+};
+
+type RoadmapCanvasPartRoadmap = {
+  part_type: number;
+  cursor_index: number;
+  target_minutes: number;
+  estimated_gain: number;
+  reaches_target: boolean;
+  units: RoadmapCanvasUnit[];
+};
+
 type RoadmapCanvasCurrentLearning = {
   lesson_manager_id: string;
   day_study_id: string;
@@ -1302,18 +1524,170 @@ type RoadmapCanvasCurrentLearning = {
   kind?: string;
 };
 
+const getRoadmapLessonManagerIdFromSession = (
+  session: IDayStudy["sessions"][number]
+): string | null => {
+  const lessonManagerId =
+    session.lesson_manager_id ??
+    session.items?.find((item) => item.source_lesson_manager_id)
+      ?.source_lesson_manager_id;
+
+  return lessonManagerId ? String(lessonManagerId) : null;
+};
+
+const buildStrategyUnitLookup = (
+  strategyOptions: ILearningPathStrategyOption[]
+): Map<string, RoadmapCanvasUnit> => {
+  const lookup = new Map<string, RoadmapCanvasUnit>();
+
+  for (const option of strategyOptions) {
+    for (const roadmap of option.part_roadmaps ?? []) {
+      for (const unit of roadmap.units ?? []) {
+        const lessonManagerId = String(unit.lesson_manager_id);
+        if (lookup.has(lessonManagerId)) continue;
+
+        lookup.set(lessonManagerId, {
+          lesson_manager_id: lessonManagerId,
+          title: unit.title,
+          part_type: Number(unit.part_type ?? roadmap.part_type),
+          unit_type: unit.unit_type,
+          node_role: unit.node_role,
+          target_tags: unit.target_tags ?? [],
+          order: unit.order ?? 0,
+          planned_minutes: unit.planned_minutes ?? 0,
+          estimated_gain: unit.estimated_gain,
+          reason: unit.reason,
+          unit_source: unit.unit_source ?? "strategy",
+          source_reason: unit.source_reason,
+          score_band: unit.score_band,
+        });
+      }
+    }
+  }
+
+  return lookup;
+};
+
+const pushRoadmapCanvasUnit = (
+  roadmapByPart: Map<number, RoadmapCanvasPartRoadmap>,
+  unit: RoadmapCanvasUnit
+) => {
+  const partType = Number(unit.part_type);
+  if (!Number.isInteger(partType) || partType < 1 || partType > 7) return;
+
+  const roadmap =
+    roadmapByPart.get(partType) ??
+    {
+      part_type: partType,
+      cursor_index: 0,
+      target_minutes: 0,
+      estimated_gain: 0,
+      reaches_target: false,
+      units: [],
+    };
+
+  if (
+    roadmap.units.some(
+      (existing) =>
+        String(existing.lesson_manager_id) === String(unit.lesson_manager_id)
+    )
+  ) {
+    roadmapByPart.set(partType, roadmap);
+    return;
+  }
+
+  roadmap.units.push({
+    ...unit,
+    order: roadmap.units.length,
+  });
+  roadmapByPart.set(partType, roadmap);
+};
+
+const seedRoadmapCanvasParts = (): Map<number, RoadmapCanvasPartRoadmap> => {
+  const roadmapByPart = new Map<number, RoadmapCanvasPartRoadmap>();
+
+  for (let partType = 1; partType <= 7; partType += 1) {
+    roadmapByPart.set(partType, {
+      part_type: partType,
+      cursor_index: 0,
+      target_minutes: 0,
+      estimated_gain: 0,
+      reaches_target: false,
+      units: [],
+    });
+  }
+
+  return roadmapByPart;
+};
+
+const loadRoadmapCanvasStrategyOptions = async (input: {
+  user_id: string;
+  learning_path_id: string;
+  weekStudies: IWeekStudy[];
+  selectedOption?: ILearningPathStrategyOption | null;
+}): Promise<ILearningPathStrategyOption[]> => {
+  const optionIds = new Set<string>();
+
+  if (input.selectedOption?._id) {
+    optionIds.add(String(input.selectedOption._id));
+  }
+
+  for (const week of input.weekStudies) {
+    if (week.learning_path_strategy_option_id) {
+      optionIds.add(String(week.learning_path_strategy_option_id));
+    }
+  }
+
+  if (optionIds.size === 0) return [];
+
+  return LearningPathStrategyOption.find({
+    _id: { $in: [...optionIds].map((id) => new Types.ObjectId(id)) },
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+  });
+};
+
 const buildRoadmapCanvasSnapshot = (input: {
   selectedOption?: ILearningPathStrategyOption | null;
   currentWeekStudy?: IWeekStudy | null;
-  dayStudies: IDayStudy[];
+  weekStudies: IWeekStudy[];
+  allDayStudies: IDayStudy[];
+  roadmapStrategyOptions: ILearningPathStrategyOption[];
+  includeProjection: boolean;
+  requiresStrategySelection: boolean;
 }) => {
   const currentCycleLessonManagerIds = new Set<string>();
+  const completedLessonManagerIds = new Set<string>();
+  const weekStatusById = new Map(
+    input.weekStudies.map((week) => [String(week._id), week.status])
+  );
   let currentLearning: RoadmapCanvasCurrentLearning | null = null;
 
-  for (const day of input.dayStudies ?? []) {
+  const strategyUnitByLessonManagerId = buildStrategyUnitLookup(
+    input.roadmapStrategyOptions
+  );
+  const roadmapByPart = seedRoadmapCanvasParts();
+
+  for (const day of input.allDayStudies ?? []) {
+    const weekStatus = weekStatusById.get(String(day.week_id));
+    const isCurrentWeek =
+      input.currentWeekStudy &&
+      String(day.week_id) === String(input.currentWeekStudy._id);
+
     for (const session of day.sessions ?? []) {
-      if (session.lesson_manager_id) {
-        currentCycleLessonManagerIds.add(String(session.lesson_manager_id));
+      const sessionLessonManagerId = getRoadmapLessonManagerIdFromSession(session);
+      if (!sessionLessonManagerId) continue;
+
+      if (isCurrentWeek) {
+        currentCycleLessonManagerIds.add(sessionLessonManagerId);
+      }
+
+      const isCompleted =
+        weekStatus === WeekStudyStatus.COMPLETED ||
+        day.status === WeekStudyStatus.COMPLETED ||
+        session.status === WeekStudyStatus.COMPLETED;
+      if (isCompleted) {
+        completedLessonManagerIds.add(sessionLessonManagerId);
       }
 
       if (!currentLearning && session.status === WeekStudyStatus.IN_PROGRESS) {
@@ -1321,9 +1695,7 @@ const buildRoadmapCanvasSnapshot = (input: {
           (item) => item.status === WeekStudyStatus.IN_PROGRESS
         );
 
-        const lessonManagerId =
-          session.lesson_manager_id ??
-          inProgressItem?.source_lesson_manager_id;
+        const lessonManagerId = session.lesson_manager_id ?? inProgressItem?.source_lesson_manager_id;
 
         if (lessonManagerId) {
           currentLearning = {
@@ -1336,6 +1708,51 @@ const buildRoadmapCanvasSnapshot = (input: {
           };
         }
       }
+
+      const strategyUnit = strategyUnitByLessonManagerId.get(
+        sessionLessonManagerId
+      );
+      pushRoadmapCanvasUnit(roadmapByPart, {
+        lesson_manager_id: sessionLessonManagerId,
+        title:
+          strategyUnit?.title ??
+          session.lesson_manager_title ??
+          `Part ${session.part_type ?? 0}`,
+        part_type: Number(strategyUnit?.part_type ?? session.part_type ?? 0),
+        unit_type: strategyUnit?.unit_type ?? "mixed_practice",
+        node_role: strategyUnit?.node_role ?? "normal",
+        target_tags: strategyUnit?.target_tags ?? [],
+        order: 0,
+        planned_minutes:
+          strategyUnit?.planned_minutes ?? session.planned_minutes ?? 0,
+        estimated_gain: strategyUnit?.estimated_gain,
+        reason: strategyUnit?.reason ?? session.scheduler_reason,
+        unit_source: strategyUnit?.unit_source ?? "strategy",
+        source_reason: strategyUnit?.source_reason,
+        score_band: strategyUnit?.score_band,
+      });
+    }
+  }
+
+  if (input.includeProjection && input.selectedOption) {
+    for (const roadmap of input.selectedOption.part_roadmaps ?? []) {
+      for (const unit of roadmap.units ?? []) {
+        pushRoadmapCanvasUnit(roadmapByPart, {
+          lesson_manager_id: String(unit.lesson_manager_id),
+          title: unit.title,
+          part_type: Number(unit.part_type ?? roadmap.part_type),
+          unit_type: unit.unit_type,
+          node_role: unit.node_role,
+          target_tags: unit.target_tags ?? [],
+          order: unit.order ?? 0,
+          planned_minutes: unit.planned_minutes ?? 0,
+          estimated_gain: unit.estimated_gain,
+          reason: unit.reason,
+          unit_source: unit.unit_source ?? "strategy",
+          source_reason: unit.source_reason,
+          score_band: unit.score_band,
+        });
+      }
     }
   }
 
@@ -1344,13 +1761,29 @@ const buildRoadmapCanvasSnapshot = (input: {
 
   const units: RoadmapCanvasUnitStatusItem[] = [];
 
-  for (const roadmap of input.selectedOption?.part_roadmaps ?? []) {
-    const cursorIndex = Math.min(
-      Math.max(0, roadmap.cursor_index ?? 0),
-      roadmap.units?.length ?? 0
-    );
+  const partRoadmaps = [...roadmapByPart.values()]
+    .sort((a, b) => a.part_type - b.part_type)
+    .map((roadmap) => {
+      const cursorIndex = roadmap.units.filter((unit) =>
+        completedLessonManagerIds.has(String(unit.lesson_manager_id))
+      ).length;
 
-    for (const [index, unit] of (roadmap.units ?? []).entries()) {
+      return {
+        ...roadmap,
+        cursor_index: cursorIndex,
+        target_minutes: roadmap.units.reduce(
+          (total, unit) => total + (unit.planned_minutes ?? 0),
+          0
+        ),
+        estimated_gain: roadmap.units.reduce(
+          (total, unit) => total + (unit.estimated_gain ?? 0),
+          0
+        ),
+      };
+    });
+
+  for (const roadmap of partRoadmaps) {
+    for (const unit of roadmap.units ?? []) {
       const lessonManagerId = String(unit.lesson_manager_id);
 
       let status: RoadmapCanvasUnitStatus = "locked";
@@ -1359,7 +1792,7 @@ const buildRoadmapCanvasSnapshot = (input: {
         status = "current";
       } else if (currentCycleLessonManagerIds.has(lessonManagerId)) {
         status = "in_cycle";
-      } else if (index < cursorIndex) {
+      } else if (completedLessonManagerIds.has(lessonManagerId)) {
         status = "completed";
       }
 
@@ -1371,6 +1804,10 @@ const buildRoadmapCanvasSnapshot = (input: {
   }
 
   return {
+    requires_strategy_selection: input.requiresStrategySelection,
+    strategy_selection_reason: input.requiresStrategySelection
+      ? ("full_test_review_pending" as const)
+      : null,
     current_cycle: input.currentWeekStudy
       ? {
         week_study_id: String(input.currentWeekStudy._id),
@@ -1383,6 +1820,7 @@ const buildRoadmapCanvasSnapshot = (input: {
       : null,
     current_learning: currentLearning,
     units,
+    part_roadmaps: partRoadmaps,
   };
 };
 
@@ -1488,6 +1926,17 @@ const loadLearningPathSkillMapBase = async (input: {
     throw new Error("Không tìm thấy LearningPath.");
   }
 
+  const weekStudyIds = learningPath.week_study_ids ?? [];
+  const currentWeekStudy =
+    weekStudyIds.length > 0
+      ? await WeekStudy.findOne({
+          _id: { $in: weekStudyIds },
+          status: WeekStudyStatus.IN_PROGRESS,
+        })
+          .sort({ no: -1 })
+          .lean<IWeekStudy | null>()
+      : null;
+
   const userSkill = await UserSkill.findOne({
     user_id: input.user_id,
     context_type: "learning_path",
@@ -1498,22 +1947,14 @@ const loadLearningPathSkillMapBase = async (input: {
     return {
       learningPath,
       userSkill: null,
-      selectedOption: null,
+      currentWeekStudy,
     };
   }
-
-  const selectedOption = await LearningPathStrategyOption.findOne({
-    user_id: input.user_id,
-    learning_path_id: input.learning_path_id,
-    status: "selected",
-  })
-    .sort({ selected_at: -1, created_at: -1 })
-    .lean<ILearningPathStrategyOption | null>();
 
   return {
     learningPath,
     userSkill,
-    selectedOption,
+    currentWeekStudy,
   };
 };
 
@@ -1562,10 +2003,10 @@ const loadSkillMapLatestEvidence = async (input: {
 
 const buildSkillMapPartsTab = async (input: {
   userSkill: IUserSkill | null;
-  selectedOption?: ILearningPathStrategyOption | null;
+  currentWeekStudy?: IWeekStudy | null;
   evidence?: SkillMapEvidenceMaps;
 }) => {
-  const focusPartSet = new Set(input.selectedOption?.focus_part_types ?? []);
+  const focusPartSet = new Set(input.currentWeekStudy?.focus_part_types ?? []);
 
   const parts = (input.userSkill?.parts ?? [])
     .map((part) => {
@@ -1622,7 +2063,7 @@ const buildSkillMapPartsTab = async (input: {
 
 const buildSkillMapSkillsTab = async (input: {
   userSkill: IUserSkill | null;
-  selectedOption?: ILearningPathStrategyOption | null;
+  currentWeekStudy?: IWeekStudy | null;
   evidence?: SkillMapEvidenceMaps;
   status?: string;
   part_type?: number;
@@ -1632,7 +2073,7 @@ const buildSkillMapSkillsTab = async (input: {
 }) => {
   const statusFilter = normalizeStatusFilter(input.status);
   const skillGroupFilter = normalizeSkillGroupFilter(input.skill_group);
-  const focusSkillSet = new Set(input.selectedOption?.focus_skill_keys ?? []);
+  const focusSkillSet = new Set(input.currentWeekStudy?.focus_skill_keys ?? []);
   const query = input.q?.trim().toLowerCase();
 
   let skills = (input.userSkill?.parts ?? []).flatMap((part) =>
@@ -1855,7 +2296,7 @@ export const getLearningPathV2SkillMap = async (
 ) => {
   const tab = normalizeSkillMapTab(input.tab);
 
-  const { userSkill, selectedOption } = await loadLearningPathSkillMapBase({
+  const { userSkill, currentWeekStudy } = await loadLearningPathSkillMapBase({
     user_id: input.user_id,
     learning_path_id: input.learning_path_id,
   });
@@ -1871,7 +2312,7 @@ export const getLearningPathV2SkillMap = async (
     case "skills":
       return buildSkillMapSkillsTab({
         userSkill,
-        selectedOption,
+        currentWeekStudy,
         evidence,
         status: input.status,
         part_type: input.part_type,
@@ -1892,7 +2333,7 @@ export const getLearningPathV2SkillMap = async (
     default:
       return buildSkillMapPartsTab({
         userSkill,
-        selectedOption,
+        currentWeekStudy,
         evidence,
       });
   }
