@@ -56,7 +56,9 @@ import { DayStudy, WeekStudy } from "../../models";
 import type { IDayStudy } from "../../models/day_study.model";
 import type { IWeekStudy } from "../../models/week_study.model";
 import { WeekStudyStatus } from "../../models/enums/WeekStudyStatus";
+import { SessionType } from "../../models/enums/SessionType";
 import { getToeicSkillLabelVi } from "../../utils/toeic_skill.util";
+import { updateUserProgress } from "../user_progress.service";
 
 export type LearningPathV2AbilityPipelineInput =
   | BuildInitialLearningPathPlanInput
@@ -1283,6 +1285,16 @@ type LearningPathV2ReadInput = {
   learning_path_id: string;
 };
 
+export class LearningPathV2MockLearningError extends Error {
+  statusCode: number;
+
+  constructor(message: string, statusCode = 400) {
+    super(message);
+    this.name = "LearningPathV2MockLearningError";
+    this.statusCode = statusCode;
+  }
+}
+
 type CurrentCycleResponse = {
   week_study: IWeekStudy;
   day_studies: IDayStudy[];
@@ -1294,9 +1306,13 @@ type CurrentLearningPathCycleV2Result = {
   current_cycle: CurrentCycleResponse | null;
 };
 
+type LearningPathV2OverviewWeek = Record<string, unknown> & {
+  days: IDayStudy[];
+};
+
 type LearningPathV2OverviewResult = CurrentLearningPathCycleV2Result & {
   pending_strategy_options: ILearningPathStrategyOption[];
-  week_studies: IWeekStudy[];
+  week_studies: LearningPathV2OverviewWeek[];
   roadmap_canvas: {
     requires_strategy_selection: boolean;
     strategy_selection_reason: "full_test_review_pending" | null;
@@ -1355,6 +1371,232 @@ const findCurrentWeekStudy = async (
 
 const loadDayStudiesForWeek = (weekStudy: IWeekStudy): Promise<IDayStudy[]> =>
   DayStudy.find({ week_id: weekStudy._id }).sort({ dayOfWeek: 1 });
+
+type MockLearningAssessmentLocator = {
+  dayIndex: number;
+  sessionIndex: number;
+  itemIndex: number;
+  kind: SessionType.MINI_TEST | SessionType.FULL_TEST;
+  assessmentTestId: string | null;
+};
+
+export type MockLearningPathV2Result = {
+  learning_path_id: string;
+  week_study_id: string;
+  assessment_day_study_id: string;
+  assessment_type: "mini_test" | "full_test";
+  assessment_test_id: string | null;
+  completed_day_count: number;
+  completed_session_count: number;
+  completed_item_count: number;
+};
+
+const findLastAssessmentItem = (
+  dayStudies: IDayStudy[]
+): MockLearningAssessmentLocator | null => {
+  const assessmentKinds = new Set<SessionType>([
+    SessionType.MINI_TEST,
+    SessionType.FULL_TEST,
+  ]);
+
+  for (let dayIndex = dayStudies.length - 1; dayIndex >= 0; dayIndex -= 1) {
+    const sessions = dayStudies[dayIndex].sessions ?? [];
+
+    for (
+      let sessionIndex = sessions.length - 1;
+      sessionIndex >= 0;
+      sessionIndex -= 1
+    ) {
+      const items = sessions[sessionIndex].items ?? [];
+
+      for (let itemIndex = items.length - 1; itemIndex >= 0; itemIndex -= 1) {
+        const item = items[itemIndex];
+
+        if (!assessmentKinds.has(item.kind)) {
+          continue;
+        }
+
+        return {
+          dayIndex,
+          sessionIndex,
+          itemIndex,
+          kind: item.kind as SessionType.MINI_TEST | SessionType.FULL_TEST,
+          assessmentTestId: item.activity_id ? String(item.activity_id) : null,
+        };
+      }
+    }
+  }
+
+  return null;
+};
+
+const isBeforeAssessment = (
+  dayIndex: number,
+  sessionIndex: number,
+  itemIndex: number,
+  locator: MockLearningAssessmentLocator
+) =>
+  dayIndex < locator.dayIndex ||
+  (dayIndex === locator.dayIndex && sessionIndex < locator.sessionIndex) ||
+  (dayIndex === locator.dayIndex &&
+    sessionIndex === locator.sessionIndex &&
+    itemIndex < locator.itemIndex);
+
+const isAfterAssessment = (
+  dayIndex: number,
+  sessionIndex: number,
+  itemIndex: number,
+  locator: MockLearningAssessmentLocator
+) =>
+  dayIndex > locator.dayIndex ||
+  (dayIndex === locator.dayIndex && sessionIndex > locator.sessionIndex) ||
+  (dayIndex === locator.dayIndex &&
+    sessionIndex === locator.sessionIndex &&
+    itemIndex > locator.itemIndex);
+
+export const mockCompleteLearningPathV2CurrentWeek = async (
+  input: LearningPathV2ReadInput
+): Promise<MockLearningPathV2Result> => {
+  const learningPath = await loadActiveLearningPath(input);
+  const weekStudyIds = learningPath.week_study_ids ?? [];
+
+  if (weekStudyIds.length === 0) {
+    throw new LearningPathV2MockLearningError(
+      "Chưa có cycle đang học để mock."
+    );
+  }
+
+  const weekStudy = await WeekStudy.findOne({
+    _id: { $in: weekStudyIds },
+    status: WeekStudyStatus.IN_PROGRESS,
+  }).sort({ no: -1 });
+
+  if (!weekStudy) {
+    throw new LearningPathV2MockLearningError(
+      "Chưa có cycle đang học để mock."
+    );
+  }
+
+  const dayStudies = await loadDayStudiesForWeek(weekStudy);
+
+  if (dayStudies.length === 0) {
+    throw new LearningPathV2MockLearningError(
+      "Cycle hiện tại chưa có DayStudy để mock."
+    );
+  }
+
+  const assessmentLocator = findLastAssessmentItem(dayStudies);
+
+  if (!assessmentLocator) {
+    throw new LearningPathV2MockLearningError(
+      "Không tìm thấy bài Mini Test hoặc Full Test cuối tuần để mock."
+    );
+  }
+
+  const assessmentDay = dayStudies[assessmentLocator.dayIndex];
+  const assessmentSession =
+    assessmentDay.sessions[assessmentLocator.sessionIndex];
+  const assessmentItem = assessmentSession.items[assessmentLocator.itemIndex];
+
+  if (assessmentItem.status === WeekStudyStatus.COMPLETED) {
+    throw new LearningPathV2MockLearningError(
+      "Tuần học này đã hoàn tất bài kiểm tra cuối.",
+      409
+    );
+  }
+
+  let completedDayCount = 0;
+  let completedSessionCount = 0;
+  let completedItemCount = 0;
+  const changedDayStudies = new Set<IDayStudy>();
+
+  dayStudies.forEach((dayStudy, dayIndex) => {
+    if (dayIndex < assessmentLocator.dayIndex) {
+      if (dayStudy.status !== WeekStudyStatus.COMPLETED) {
+        completedDayCount += 1;
+      }
+      dayStudy.status = WeekStudyStatus.COMPLETED;
+    } else if (dayIndex === assessmentLocator.dayIndex) {
+      dayStudy.status = WeekStudyStatus.IN_PROGRESS;
+    } else {
+      dayStudy.status = WeekStudyStatus.LOCK;
+    }
+
+    dayStudy.sessions.forEach((session, sessionIndex) => {
+      if (
+        dayIndex < assessmentLocator.dayIndex ||
+        (dayIndex === assessmentLocator.dayIndex &&
+          sessionIndex < assessmentLocator.sessionIndex)
+      ) {
+        if (session.status !== WeekStudyStatus.COMPLETED) {
+          completedSessionCount += 1;
+        }
+        session.status = WeekStudyStatus.COMPLETED;
+      } else if (
+        dayIndex === assessmentLocator.dayIndex &&
+        sessionIndex === assessmentLocator.sessionIndex
+      ) {
+        session.status = WeekStudyStatus.IN_PROGRESS;
+      } else {
+        session.status = WeekStudyStatus.LOCK;
+      }
+
+      session.items.forEach((item, itemIndex) => {
+        if (
+          isBeforeAssessment(
+            dayIndex,
+            sessionIndex,
+            itemIndex,
+            assessmentLocator
+          )
+        ) {
+          if (item.status !== WeekStudyStatus.COMPLETED) {
+            completedItemCount += 1;
+          }
+          item.status = WeekStudyStatus.COMPLETED;
+        } else if (
+          dayIndex === assessmentLocator.dayIndex &&
+          sessionIndex === assessmentLocator.sessionIndex &&
+          itemIndex === assessmentLocator.itemIndex
+        ) {
+          item.status = WeekStudyStatus.IN_PROGRESS;
+        } else if (
+          isAfterAssessment(dayIndex, sessionIndex, itemIndex, assessmentLocator)
+        ) {
+          item.status = WeekStudyStatus.LOCK;
+        }
+      });
+    });
+
+    dayStudy.markModified("sessions");
+    changedDayStudies.add(dayStudy);
+  });
+
+  await Promise.all([...changedDayStudies].map((dayStudy) => dayStudy.save()));
+
+  try {
+    await updateUserProgress(
+      new Types.ObjectId(input.user_id),
+      new Types.ObjectId(input.learning_path_id)
+    );
+  } catch (error) {
+    console.error("Lỗi khi cập nhật UserProgress sau mock learning:", error);
+  }
+
+  return {
+    learning_path_id: input.learning_path_id,
+    week_study_id: String(weekStudy._id),
+    assessment_day_study_id: String(assessmentDay._id),
+    assessment_type:
+      assessmentLocator.kind === SessionType.MINI_TEST
+        ? "mini_test"
+        : "full_test",
+    assessment_test_id: assessmentLocator.assessmentTestId,
+    completed_day_count: completedDayCount,
+    completed_session_count: completedSessionCount,
+    completed_item_count: completedItemCount,
+  };
+};
 
 const loadSelectedStrategyOptionForWeek = async (input: {
   user_id: string;
@@ -1449,6 +1691,21 @@ export const getLearningPathV2Overview = async (
 
     return (a.dayOfWeek ?? 0) - (b.dayOfWeek ?? 0);
   });
+  const dayStudiesByWeekId = new Map<string, IDayStudy[]>();
+
+  for (const dayStudy of allDayStudies) {
+    const weekId = String(dayStudy.week_id);
+    const weekDays = dayStudiesByWeekId.get(weekId) ?? [];
+    weekDays.push(dayStudy);
+    dayStudiesByWeekId.set(weekId, weekDays);
+  }
+
+  const overviewWeekStudies: LearningPathV2OverviewWeek[] = weekStudies.map(
+    (week) => ({
+      ...week.toObject(),
+      days: dayStudiesByWeekId.get(String(week._id)) ?? [],
+    })
+  );
   const roadmapStrategyOptions = await loadRoadmapCanvasStrategyOptions({
     user_id: input.user_id,
     learning_path_id: input.learning_path_id,
@@ -1460,7 +1717,7 @@ export const getLearningPathV2Overview = async (
     learning_path: learningPath,
     selected_strategy_option: selectedOption,
     pending_strategy_options: pendingOptions,
-    week_studies: weekStudies,
+    week_studies: overviewWeekStudies,
     current_cycle: currentWeekStudy
       ? {
         week_study: currentWeekStudy,
@@ -1788,12 +2045,12 @@ const buildRoadmapCanvasSnapshot = (input: {
 
       let status: RoadmapCanvasUnitStatus = "locked";
 
-      if (lessonManagerId === currentLearningLessonManagerId) {
+      if (completedLessonManagerIds.has(lessonManagerId)) {
+        status = "completed";
+      } else if (lessonManagerId === currentLearningLessonManagerId) {
         status = "current";
       } else if (currentCycleLessonManagerIds.has(lessonManagerId)) {
         status = "in_cycle";
-      } else if (completedLessonManagerIds.has(lessonManagerId)) {
-        status = "completed";
       }
 
       units.push({

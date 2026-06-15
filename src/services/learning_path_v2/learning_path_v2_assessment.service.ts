@@ -1,10 +1,14 @@
 import { Types } from "mongoose";
-import { DayStudy, LearningPath, UserTest } from "../../models";
+import { DayStudy, LearningPath, UserTest, WeekStudy } from "../../models";
 import type { IUserTest } from "../../models";
+import type { IDayStudy } from "../../models/day_study.model";
+import { SessionType } from "../../models/enums/SessionType";
 import { UserTestSubmitType } from "../../models/enums/UserTestSubmitType";
+import { WeekStudyStatus } from "../../models/enums/WeekStudyStatus";
 import { emitToUser } from "../../socket/emitToUser.socket";
 import { submitMiniTestService, submitTest } from "../test.service";
 import { buildRawUserTestLikeInputFromUserTest } from "../user_test.service";
+import { updateUserProgress } from "../user_progress.service";
 import { runLearningPathV2AbilityPipeline } from "./learning_path_v2.service";
 
 export type LearningPathV2AssessmentType = "mini_test" | "full_test";
@@ -54,6 +58,123 @@ const findSavedUserTest = async (userTestId: unknown): Promise<IUserTest> => {
   }
 
   return saved;
+};
+
+const getAssessmentSessionType = (
+  assessmentType: LearningPathV2AssessmentType
+): SessionType.MINI_TEST | SessionType.FULL_TEST =>
+  assessmentType === "mini_test" ? SessionType.MINI_TEST : SessionType.FULL_TEST;
+
+const loadAssessmentDayStudy = async (input: {
+  day_study_id?: string;
+  week_study_id?: string;
+  assessment_type: LearningPathV2AssessmentType;
+}): Promise<IDayStudy | null> => {
+  const assessmentKind = getAssessmentSessionType(input.assessment_type);
+
+  if (input.day_study_id && Types.ObjectId.isValid(input.day_study_id)) {
+    const dayStudy = await DayStudy.findById(input.day_study_id);
+    if (
+      dayStudy?.sessions?.some((session) =>
+        session.items?.some((item) => item.kind === assessmentKind)
+      )
+    ) {
+      return dayStudy;
+    }
+  }
+
+  if (!input.week_study_id || !Types.ObjectId.isValid(input.week_study_id)) {
+    return null;
+  }
+
+  const dayStudies = await DayStudy.find({
+    week_id: input.week_study_id,
+  }).sort({ dayOfWeek: -1 });
+
+  return (
+    dayStudies.find((dayStudy) =>
+      dayStudy.sessions?.some((session) =>
+        session.items?.some((item) => item.kind === assessmentKind)
+      )
+    ) ?? null
+  );
+};
+
+const completeAssessmentDayStudy = async (input: {
+  day_study_id?: string;
+  week_study_id?: string;
+  learning_path_id: string;
+  user_id: string;
+  assessment_type: LearningPathV2AssessmentType;
+}): Promise<void> => {
+  const assessmentKind = getAssessmentSessionType(input.assessment_type);
+  const dayStudy = await loadAssessmentDayStudy({
+    day_study_id: input.day_study_id,
+    week_study_id: input.week_study_id,
+    assessment_type: input.assessment_type,
+  });
+
+  if (!dayStudy) {
+    throw new Error("Không tìm thấy DayStudy assessment để cập nhật trạng thái.");
+  }
+
+  let foundAssessmentItem = false;
+
+  dayStudy.sessions.forEach((session) => {
+    session.items.forEach((item) => {
+      if (item.kind === assessmentKind) {
+        item.status = WeekStudyStatus.COMPLETED;
+        foundAssessmentItem = true;
+      }
+    });
+
+    if (
+      session.items.length > 0 &&
+      session.items.every((item) => item.status === WeekStudyStatus.COMPLETED)
+    ) {
+      session.status = WeekStudyStatus.COMPLETED;
+    }
+  });
+
+  if (!foundAssessmentItem) {
+    throw new Error("Không tìm thấy item Mini Test hoặc Full Test trong DayStudy.");
+  }
+
+  if (
+    dayStudy.sessions.length > 0 &&
+    dayStudy.sessions.every(
+      (session) => session.status === WeekStudyStatus.COMPLETED
+    )
+  ) {
+    dayStudy.status = WeekStudyStatus.COMPLETED;
+  }
+
+  dayStudy.markModified("sessions");
+  await dayStudy.save();
+
+  const weekStudyId = input.week_study_id ?? String(dayStudy.week_id);
+  const weekDayStudies = await DayStudy.find({ week_id: weekStudyId }).select(
+    "status"
+  );
+  const isWeekCompleted =
+    weekDayStudies.length > 0 &&
+    weekDayStudies.every((day) => day.status === WeekStudyStatus.COMPLETED);
+
+  if (isWeekCompleted) {
+    await WeekStudy.findByIdAndUpdate(weekStudyId, {
+      status: WeekStudyStatus.COMPLETED,
+      ended_at: new Date(),
+    });
+  }
+
+  try {
+    await updateUserProgress(
+      toObjectId(input.user_id, "user_id"),
+      toObjectId(input.learning_path_id, "learning_path_id")
+    );
+  } catch (error) {
+    console.error("Lỗi khi cập nhật UserProgress sau assessment:", error);
+  }
 };
 
 const emitAssessmentSubmitted = (input: {
@@ -125,6 +246,14 @@ export const submitLearningPathV2Assessment = async (
           "full_test",
           UserTestSubmitType.FULL_TEST
         );
+
+  await completeAssessmentDayStudy({
+    day_study_id: input.day_study_id,
+    week_study_id: weekStudyId,
+    learning_path_id: input.learning_path_id,
+    user_id: input.user_id,
+    assessment_type: input.assessment_type,
+  });
 
   const userTestId =
     "userTestId" in submitResult ? submitResult.userTestId : submitResult.resultId;

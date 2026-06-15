@@ -7,6 +7,7 @@ import {
   getLearningPathV2StrategyOptionPreviewController,
   getLearningPathV2StrategyController,
   initialGenerateLearningPathV2Controller,
+  mockLearningPathV2CurrentWeekController,
   selectLearningPathV2StrategyOptionController,
   submitLearningPathV2AssessmentController,
   upsertLearningPathV2SetupController,
@@ -30,6 +31,11 @@ router.post(
   "/:learningPathId/assessments/submit",
   verifyAccessToken,
   submitLearningPathV2AssessmentController
+);
+router.post(
+  "/:learningPathId/mock-learning",
+  verifyAccessToken,
+  mockLearningPathV2CurrentWeekController
 );
 router.get(
   "/:learningPathId/current-cycle",

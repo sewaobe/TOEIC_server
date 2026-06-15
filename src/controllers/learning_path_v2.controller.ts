@@ -6,6 +6,8 @@ import {
   getLearningPathV2GenerationContext,
   getLearningPathV2Overview,
   getLearningPathV2SkillMap,
+  LearningPathV2MockLearningError,
+  mockCompleteLearningPathV2CurrentWeek,
   runLearningPathV2AbilityPipeline,
   upsertLearningPathV2Setup,
 } from "../services/learning_path_v2/learning_path_v2.service";
@@ -299,6 +301,43 @@ export const getLearningPathV2OverviewController = async (
 
     res.status(200).json(ApiResponse.success(result));
   } catch (error) {
+    handleLearningPathV2ControllerError(error, res, next);
+  }
+};
+
+export const mockLearningPathV2CurrentWeekController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { learningPathId } = req.params;
+    const userId = req.user?._id;
+
+    if (!userId) {
+      res.status(401).json(ApiResponse.fail("Không tìm thấy user_id."));
+      return;
+    }
+
+    const result = await mockCompleteLearningPathV2CurrentWeek({
+      user_id: String(userId),
+      learning_path_id: learningPathId,
+    });
+
+    res
+      .status(200)
+      .json(
+        ApiResponse.success(
+          result,
+          "Đã hoàn thành nhanh các bài học trong tuần. Bài kiểm tra cuối đã sẵn sàng."
+        )
+      );
+  } catch (error) {
+    if (error instanceof LearningPathV2MockLearningError) {
+      res.status(error.statusCode).json(ApiResponse.fail(error.message));
+      return;
+    }
+
     handleLearningPathV2ControllerError(error, res, next);
   }
 };
