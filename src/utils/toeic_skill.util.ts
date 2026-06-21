@@ -770,8 +770,16 @@ export const normalizeToeicSkillTags = (
   rawTags: string[],
   partType?: number
 ): NormalizedToeicSkill[] => {
-  // Tag chưa nằm trong taxonomy thì bỏ qua, không xem là lỗi.
-  return rawTags
+  const normalized = rawTags
     .map((rawTag) => normalizeToeicSkillTag(rawTag, partType))
-    .filter((skill): skill is NormalizedToeicSkill => Boolean(skill));
+    .filter(
+      (skill): skill is NormalizedToeicSkill =>
+        Boolean(skill)
+    );
+
+  return Array.from(
+    new Map(
+      normalized.map((skill) => [skill.key, skill])
+    ).values()
+  );
 };
