@@ -23,6 +23,7 @@ import type {
   SkillGroupDistributionV2,
 } from "../../types/learning_path_v2";
 import { logLearningPathV2DebugSafe } from "./learning_path_v2_debug_logger";
+import { getTargetSkillGroupDistribution } from "./skill_roi_optimizer.service";
 
 type AllocationQuota = Record<RoutePartBucketV2, number>;
 
@@ -163,16 +164,9 @@ export const calculateRuntimeStartScore = (
   return clamp(score, 0, 1.2);
 };
 
-const getTargetScoreDistribution = (targetScore: number): SkillGroupDistributionV2 => {
-  if (targetScore <= 500) return { basic: 0.5, core: 0.4, advanced: 0.1 };
-  if (targetScore <= 700) return { basic: 0.25, core: 0.55, advanced: 0.2 };
-  if (targetScore <= 850) return { basic: 0.15, core: 0.45, advanced: 0.4 };
-  return { basic: 0.1, core: 0.35, advanced: 0.55 };
-};
-
 export const calculateTargetSkillGroupDistribution = (
   targetScore: number
-): SkillGroupDistributionV2 => getTargetScoreDistribution(targetScore);
+): SkillGroupDistributionV2 => getTargetSkillGroupDistribution(targetScore);
 
 const resolveSkillGroupsFromTags = (
   targetTags: string[],
@@ -308,7 +302,7 @@ export const calculateNodeGain = (input: CalculateNodeGainInput): number => {
   const nodeDistribution =
     input.skill_group_distribution ??
     calculateSkillGroupDistribution(input.node.target_tags, input.node.part_type);
-  const targetDistribution = getTargetScoreDistribution(input.target_score);
+  const targetDistribution = getTargetSkillGroupDistribution(input.target_score);
 
   const difficultyFit = Math.max(
     0,
