@@ -1,5 +1,4 @@
-﻿// src/services/day_study.service.ts
-import { Types } from "mongoose";
+﻿import { Types } from "mongoose";
 import {
   DayStudy,
   IDayStudy,
@@ -11,7 +10,10 @@ import type { ILessonManager, RecommendedActivity } from "../models/lesson_manag
 import type { IWeekStudy } from "../models/week_study.model";
 import { SessionType } from "../models/enums/SessionType";
 import { WeekStudyStatus } from "../models/enums/WeekStudyStatus";
-import type { PlannedRouteUnitV2 } from "../types/learning_path_v2";
+import type {
+  PlannedRouteUnitV2,
+  SkillRoiUnitResultV3,
+} from "../types/learning_path_v2";
 
 type CreateDayStudiesForWeekStudyCycleInput = {
   user_id: string;
@@ -255,8 +257,9 @@ const buildAssessmentDayPayload = (input: {
     : WeekStudyStatus.IN_PROGRESS;
 
   /*
-   * Assessment cuối cycle là DayStudy riêng, chưa generate đề thật.
-   */
+  * Assessment cuối cycle là một DayStudy riêng,
+  * liên kết với đề assessment đã được tạo.
+  */
   return {
     week_id: input.week_id,
     dayOfWeek: input.stage_no,
@@ -393,6 +396,171 @@ export const createDayStudiesForWeekStudyCycle = async (
   };
 };
 
+
+export type CreateDayStudiesForSkillFocusedCycleInput = {
+  user_id: string;
+  learning_path_id: string;
+  week_study_id: string;
+  assessment_test_id: Types.ObjectId;
+  selected_units: SkillRoiUnitResultV3[];
+};
+
+export type CreateDayStudiesForSkillFocusedCycleResult = {
+  week_study: IWeekStudy;
+  day_studies: IDayStudy[];
+};
+
+const buildSingleLessonManagerDayPayload = (input: {
+  week_id: Types.ObjectId;
+  stage_no: number;
+  unit: SkillRoiUnitResultV3;
+  lesson_manager: ILessonManager;
+}) => {
+  const isFirstDay = input.stage_no === 1;
+  const dayStatus = isFirstDay
+    ? WeekStudyStatus.IN_PROGRESS
+    : WeekStudyStatus.LOCK;
+
+  const activities = [
+    ...(input.lesson_manager.recommended_activity_order ?? []),
+  ].sort(
+    (left, right) =>
+      (left.order ?? 0) - (right.order ?? 0)
+  );
+
+  // Một LessonManager luôn tạo đúng một Session trong đúng một DayStudy.
+  // Toàn bộ activity của LessonManager được giữ nguyên thứ tự trong Session này.
+  const items = activities.map((activity, index) => ({
+    kind: mapActivityTypeToSessionType(activity.activity_type),
+    activity_id: activity.activity_id,
+    status:
+      isFirstDay && index === 0
+        ? WeekStudyStatus.IN_PROGRESS
+        : WeekStudyStatus.LOCK,
+    source_lesson_manager_id: input.lesson_manager._id,
+    estimated_minutes: activity.estimated_minutes,
+    is_required: activity.is_required ?? true,
+    order: index + 1,
+  }));
+
+  return {
+    week_id: input.week_id,
+    dayOfWeek: input.stage_no,
+    status: dayStatus,
+    accuracy_overall: 0,
+    sessions: [
+      {
+        session_no: 1,
+        accuracy: 0,
+        status: dayStatus,
+        part_type: input.unit.part_type,
+        lesson_manager_id: input.lesson_manager._id,
+        lesson_manager_title: input.lesson_manager.title,
+        planned_minutes:
+          input.unit.planned_minutes ||
+          input.lesson_manager.planned_completion_time ||
+          0,
+        actual_minutes: 0,
+        scheduler_reason: input.unit.reason ?? "",
+        items,
+      },
+    ],
+  };
+};
+
+/**
+ * Tạo execution schedule V3 theo quy tắc cố định:
+ * 1 LessonManager = 1 DayStudy = 1 Session.
+ * Assessment luôn là DayStudy cuối cùng của cycle.
+ */
+export const createDayStudiesForSkillFocusedCycle = async (
+  input: CreateDayStudiesForSkillFocusedCycleInput
+): Promise<CreateDayStudiesForSkillFocusedCycleResult> => {
+  const learningPath = await LearningPath.findOne({
+    _id: input.learning_path_id,
+    user_id: input.user_id,
+    isActive: true,
+  });
+
+  if (!learningPath) {
+    throw new Error("Không tìm thấy LearningPath để tạo DayStudy V3.");
+  }
+
+  const weekStudy = await WeekStudy.findById(input.week_study_id);
+  if (!weekStudy) {
+    throw new Error("Không tìm thấy WeekStudy để tạo DayStudy V3.");
+  }
+
+  if ((weekStudy.days ?? []).length > 0) {
+    throw new Error("WeekStudy đã có DayStudy, không tạo lại.");
+  }
+
+  if (
+    !weekStudy.assessment_type ||
+    !weekStudy.assessment_estimated_minutes ||
+    weekStudy.assessment_estimated_minutes <= 0
+  ) {
+    throw new Error("WeekStudy chưa có assessment cuối cycle.");
+  }
+
+  if (input.selected_units.length === 0) {
+    throw new Error("Skill-focused cycle phải có ít nhất một LessonManager.");
+  }
+
+  const selectedIds = input.selected_units.map(
+    (unit) => new Types.ObjectId(unit.lesson_manager_id)
+  );
+  const lessonManagers = (await LessonManager.find({
+    _id: { $in: selectedIds },
+  })) as ILessonManager[];
+  const lessonManagerById = new Map(
+    lessonManagers.map((lessonManager) => [
+      String(lessonManager._id),
+      lessonManager,
+    ])
+  );
+
+  // Giữ đúng thứ tự package do ROI engine đã chọn; query MongoDB không đảm bảo thứ tự $in.
+  const learningDayPayloads = input.selected_units.map((unit, index) => {
+    const lessonManager = lessonManagerById.get(unit.lesson_manager_id);
+    if (!lessonManager) {
+      throw new Error(
+        `Không tìm thấy LessonManager đã được ROI engine chọn: ${unit.lesson_manager_id}`
+      );
+    }
+
+    return buildSingleLessonManagerDayPayload({
+      week_id: weekStudy._id,
+      stage_no: index + 1,
+      unit,
+      lesson_manager: lessonManager,
+    });
+  });
+
+  const assessmentPayload = buildAssessmentDayPayload({
+    week_id: weekStudy._id,
+    stage_no: learningDayPayloads.length + 1,
+    assessment_type: weekStudy.assessment_type,
+    assessment_estimated_minutes: weekStudy.assessment_estimated_minutes,
+    assessment_test_id: input.assessment_test_id,
+    has_learning_days: learningDayPayloads.length > 0,
+  });
+
+  const created = await DayStudy.create([
+    ...learningDayPayloads,
+    assessmentPayload,
+  ]);
+  const dayStudies = Array.isArray(created) ? created : [created];
+
+  weekStudy.days = dayStudies.map((day) => day._id as Types.ObjectId);
+  await weekStudy.save();
+
+  return {
+    week_study: weekStudy,
+    day_studies: dayStudies,
+  };
+};
+
 export async function completeActivityAndUnlockNext(
   dayStudyId: string | Types.ObjectId,
   completedActivityId: string | Types.ObjectId
@@ -473,8 +641,3 @@ export async function completeActivityAndUnlockNext(
   // Lưu lại thay đổi của ngày hiện tại
   return await currentDay.save();
 }
-
-
-
-
-

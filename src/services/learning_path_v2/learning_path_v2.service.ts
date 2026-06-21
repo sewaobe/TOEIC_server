@@ -49,7 +49,10 @@ import { createNextLearningPathCycle } from "../week_study.service";
 import { evaluateLearningPathScenario } from "./layer3_strategy_decision.service";
 import { buildStrategyRoutePlan } from "./layer4_route_optimizer.service";
 import { logLearningPathV2DebugSafe } from "./learning_path_v2_debug_logger";
-import { createSchedulerDecisionLog } from "./scheduler_decision_log.service";
+import {
+  createSkillFocusedCycle,
+  type CreateSkillFocusedCycleResult,
+} from "./skill_focused_cycle.service";
 import { emitToUser } from "../../socket/emitToUser.socket";
 
 import { DayStudy, WeekStudy } from "../../models";
@@ -75,7 +78,10 @@ export interface LearningPathV2AbilityPipelineOutput {
   layer4_result?: {
     strategy_options?: ILearningPathStrategyOption[];
     selected_strategy_option?: ILearningPathStrategyOption | null;
-    cycle_result?: Awaited<ReturnType<typeof createNextLearningPathCycle>> | null;
+    cycle_result?:
+    | CreateSkillFocusedCycleResult
+    | Awaited<ReturnType<typeof createNextLearningPathCycle>>
+    | null;
   };
 }
 
@@ -92,9 +98,11 @@ export class LearningPathV3SchedulerNotReadyError extends Error {
   }
 }
 
-export const assertLearningPathV3SchedulerReady = (): void => {
-  throw new LearningPathV3SchedulerNotReadyError();
-};
+/**
+ * Giữ export để các caller cũ tiếp tục compile.
+ * Checkpoint 3 đã mở lại Skill ROI scheduler nên guard không còn chặn pipeline.
+ */
+export const assertLearningPathV3SchedulerReady = (): void => undefined;
 
 type Layer4PipelineResult = NonNullable<
   LearningPathV2AbilityPipelineOutput["layer4_result"]
@@ -675,116 +683,31 @@ const sumDayStudyPlannedMinutes = (dayStudies?: IDayStudy[]): number => {
   }, 0);
 };
 
-const createInitialSelectedOptionAndCycle = async (input: {
+const createInitialCycle = async (input: {
   originalInput: LearningPathV2AbilityPipelineInput;
   learningPath: ILearningPath;
   userTest: IUserTest;
   userSkill: IUserSkill;
   normalizedResult: NormalizedTestResultV2;
 }): Promise<Layer4PipelineResult> => {
-  const plan = await buildRoutePlanForStrategy({
-    learningPath: input.learningPath,
-    userSkill: input.userSkill,
-    strategy: "maximize_skill_roi",
-    scenario: "ONBOARDING",
-    now: input.normalizedResult.submitted_at ?? new Date(),
-  });
-
-  await LearningPathStrategyOption.updateMany(
-    {
-      learning_path_id: input.originalInput.learning_path_id,
-      user_id: input.originalInput.user_id,
-      status: "selected",
-    },
-    { $set: { status: "expired" } }
-  );
-
-  /*
-   * Initial generation auto-select strategy ROI để user có cycle đầu tiên ngay,
-   * không cần chọn option.
-   */
-  const selectedOption = await LearningPathStrategyOption.create(
-    mapRoutePlanToStrategyOptionPayload({
-      plan,
-      user_id: input.originalInput.user_id,
-      learning_path_id: input.originalInput.learning_path_id,
-      trigger_type: "initial_generation",
-      source_user_test_id: input.userTest._id,
-      status: "selected",
-      title: "Lộ trình khởi đầu được đề xuất",
-      description: "Hệ thống tự chọn lộ trình tối ưu ROI sau entry test.",
-      scenario: "ONBOARDING",
-    })
-  );
-
-  const cycleResult = await createNextLearningPathCycle({
+  const cycleResult = await createSkillFocusedCycle({
     user_id: input.originalInput.user_id,
     learning_path_id: input.originalInput.learning_path_id,
-    now: input.normalizedResult.submitted_at ?? new Date(),
-    user_skill: input.userSkill,
+    trigger_type: "initial_generation",
+    scenario: "ONBOARDING",
+    source_user_test_id: input.userTest._id,
+    current_score: input.userTest.score,
+    now: input.normalizedResult.submitted_at ?? input.userTest.submit_at ?? new Date(),
   });
 
-  if (cycleResult.status === "cycle_created" && selectedOption) {
-    const cycleDayStudyMinutes = sumDayStudyPlannedMinutes(
-      cycleResult.day_studies
-    );
-
-    try {
-      await createSchedulerDecisionLog({
-        user_id: input.originalInput.user_id,
-        learning_path_id: input.originalInput.learning_path_id,
-        learning_path_strategy_option_id: String(selectedOption._id),
-        trigger_type: "initial_generation",
-        generated_week_id: String(cycleResult.week_study._id),
-        strategy: selectedOption.strategy,
-        scenario: selectedOption.scenario,
-        status: "applied",
-        reasons: selectedOption.summary_reasons ?? [],
-        warnings: [],
-        input_snapshot: {
-          current_score: input.userTest.score,
-          target_score: input.learningPath.target_score,
-          weekly_available_minutes: cycleDayStudyMinutes,
-          test_type: "entry",
-          part_abilities: mapUserSkillPartsToSchedulerSnapshot(input.userSkill),
-          skill_abilities: mapUserSkillSkillsToSchedulerSnapshot(input.userSkill),
-          extra: {
-            source_user_test_id: String(input.userTest._id),
-            source_test_id: String(input.userTest.test_id),
-            target_completion_date: input.learningPath.target_completion_date,
-          },
-        },
-        selected_lesson_manager_ids: cycleResult.plan.selected_roadmap_units.map(
-          (unit) => unit.lesson_manager_id
-        ),
-        output_summary: {
-          planned_minutes: cycleDayStudyMinutes,
-          selected_unit_count: cycleResult.plan.selected_roadmap_units.length,
-          ...countCycleActivities(cycleResult.day_studies),
-        },
-        created_by: input.originalInput.user_id,
-      });
-    } catch (error) {
-      logLearningPathV2DebugSafe("scheduler_decision_log.create_failed", {
-        stage: "scheduler_decision_log",
-        user_id: input.originalInput.user_id,
-        learning_path_id: input.originalInput.learning_path_id,
-        trigger_type: "initial_generation",
-        selected_strategy_option_id: selectedOption._id,
-        week_study_id: cycleResult.week_study._id,
-        error,
-      });
-    }
-  }
-
   return {
-    strategy_options: [selectedOption],
-    selected_strategy_option: selectedOption,
+    strategy_options: [],
+    selected_strategy_option: null,
     cycle_result: cycleResult,
   };
 };
 
-const createFullTestPendingOptions = async (input: {
+const createFullTestOptionAndCycle = async (input: {
   originalInput: LearningPathV2AbilityPipelineInput;
   learningPath: ILearningPath;
   userTest: IUserTest;
@@ -792,90 +715,25 @@ const createFullTestPendingOptions = async (input: {
   scenarioDecision: LearningScenarioDecisionV2;
   normalizedResult: NormalizedTestResultV2;
 }): Promise<Layer4PipelineResult> => {
-  input.learningPath.mini_tests_completed_since_last_full_test = 0;
-  input.learningPath.last_full_test_user_test_id = input.userTest._id;
-  input.learningPath.last_full_test_submitted_at = input.userTest.submit_at;
-  await input.learningPath.save();
-
-  /*
- * Phải lấy selected option cũ trước khi expire để giữ route frontier.
- * Full test tạo 3 option mới, nhưng không reset route từ đầu.
- */
-  const previousSelectedOption = await LearningPathStrategyOption.findOne({
-    learning_path_id: input.originalInput.learning_path_id,
+  // Full test tạo StrategyOption để lưu quyết định chiến lược ở mốc đánh giá tổng thể.
+  // Package Skill ROI đã chọn vẫn được dùng ngay để tạo cycle kế tiếp.
+  const cycleResult = await createSkillFocusedCycle({
     user_id: input.originalInput.user_id,
-    status: "selected",
-  }).sort({ selected_at: -1, created_at: -1 });
-
-  const routeFrontier = deriveRouteFrontierFromStrategyOption(
-    previousSelectedOption
-  );
-
-  logLearningPathV2DebugSafe("layer4.full_test_route_frontier", {
-    stage: "layer4",
     learning_path_id: input.originalInput.learning_path_id,
-    user_id: input.originalInput.user_id,
-    previous_strategy_option_id: previousSelectedOption?._id?.toString(),
-    completed_unit_count: routeFrontier.completed_unit_ids.length,
-    start_unit_ids_by_part: routeFrontier.start_unit_ids_by_part,
+    trigger_type: "full_test_review",
+    scenario: input.scenarioDecision.scenario,
+    source_user_test_id: input.userTest._id,
+    source_week_study_id: input.originalInput.week_study_id ?? null,
+    current_score: input.userTest.score,
+    now: input.normalizedResult.submitted_at ?? input.userTest.submit_at ?? new Date(),
   });
 
-  /*
- * Sau full test, route cũ không còn là active route nữa.
- * User phải chọn 1 trong 3 option pending mới rồi hệ thống mới tạo cycle tiếp theo.
- * Vì vậy selected cũ và pending cũ đều chuyển expired trước khi tạo batch mới.
- */
-  await LearningPathStrategyOption.updateMany(
-    {
-      learning_path_id: input.originalInput.learning_path_id,
-      user_id: input.originalInput.user_id,
-      status: { $in: ["selected", "pending_selection"] },
-    },
-    { $set: { status: "expired" } }
-  );
-
-  const scenario = toStrategyOptionScenario(input.scenarioDecision.scenario);
-  const strategies: LearningPathStrategyV2[] = ["maximize_skill_roi"];
-
-  const payloads = await Promise.all(
-    strategies.map(async (strategy) => {
-      const plan = await buildRoutePlanForStrategy({
-        learningPath: input.learningPath,
-        userSkill: input.userSkill,
-        strategy,
-        scenario,
-        now: input.normalizedResult.submitted_at ?? new Date(),
-        completed_unit_ids: routeFrontier.completed_unit_ids,
-        start_unit_ids_by_part: routeFrontier.start_unit_ids_by_part,
-      });
-
-      return mapRoutePlanToStrategyOptionPayload({
-        plan,
-        user_id: input.originalInput.user_id,
-        learning_path_id: input.originalInput.learning_path_id,
-        trigger_type: "full_test_review",
-        source_user_test_id: input.userTest._id,
-        source_week_study_id: input.originalInput.week_study_id ?? null,
-        status: "pending_selection",
-        title: `Lựa chọn ${strategy}`,
-        description: "Route được tạo sau full test để user tự chọn.",
-        scenario,
-      });
-    })
-  );
-
-  /*
-   * Full test review tạo 3 option pending để user tự chọn. Chỉ sau khi user chọn
-   * option mới tạo cycle tiếp theo.
-   */
-  const strategyOptions = await LearningPathStrategyOption.create(payloads);
-
   return {
-    strategy_options: Array.isArray(strategyOptions)
-      ? strategyOptions
-      : [strategyOptions],
-    selected_strategy_option: null,
-    cycle_result: null,
+    strategy_options: cycleResult.strategy_option
+      ? [cycleResult.strategy_option]
+      : [],
+    selected_strategy_option: cycleResult.strategy_option,
+    cycle_result: cycleResult,
   };
 };
 
@@ -886,91 +744,22 @@ const handleMiniTestCompletionCycle = async (input: {
   userSkill: IUserSkill;
   scenarioDecision: LearningScenarioDecisionV2;
 }): Promise<Layer4PipelineResult> => {
-  /*
-   * Mini test không tạo lại route option. Counter chỉ được commit sau khi cycle
-   * kế tiếp tạo thành công để không làm lệch lịch full test khi hết nội dung.
-   */
-  const nextMiniTestCount =
-    (input.learningPath.mini_tests_completed_since_last_full_test ?? 0) + 1;
-
-  const cycleResult = await createNextLearningPathCycle({
+  // Sau mini test, UserSkill đã được cập nhật trước khi hàm này chạy.
+  // Scheduler tạo cycle mới và chỉ ghi SchedulerDecisionLog, không tạo StrategyOption.
+  const cycleResult = await createSkillFocusedCycle({
     user_id: input.originalInput.user_id,
     learning_path_id: input.originalInput.learning_path_id,
-    now: input.userTest.submit_at,
-    user_skill: input.userSkill,
-    mini_tests_completed_since_last_full_test_override: nextMiniTestCount,
-    scenario_override: input.scenarioDecision.scenario,
+    trigger_type: "mini_test_completion",
+    scenario: input.scenarioDecision.scenario,
+    source_user_test_id: input.userTest._id,
+    source_week_study_id: input.originalInput.week_study_id ?? null,
+    current_score: input.userTest.score,
+    now: input.userTest.submit_at ?? new Date(),
   });
 
-  if (cycleResult.status === "cycle_created") {
-    input.learningPath.mini_tests_completed_since_last_full_test =
-      nextMiniTestCount;
-    await input.learningPath.save();
-
-    const cycleDayStudyMinutes = sumDayStudyPlannedMinutes(
-      cycleResult.day_studies
-    );
-    const alternativeUnits = cycleResult.plan.selected_roadmap_units.filter(
-      (unit) => unit.unit_source === "alternative"
-    );
-
-    try {
-      await createSchedulerDecisionLog({
-        user_id: input.originalInput.user_id,
-        learning_path_id: input.originalInput.learning_path_id,
-        learning_path_strategy_option_id: String(cycleResult.strategy_option._id),
-        trigger_type: "mini_test_completion",
-        generated_week_id: String(cycleResult.week_study._id),
-        strategy: cycleResult.strategy_option.strategy,
-        scenario: input.scenarioDecision.scenario,
-        status: "applied",
-        reasons: cycleResult.strategy_option.summary_reasons ?? [],
-        warnings: [],
-        input_snapshot: {
-          current_score: input.userTest.score,
-          target_score: input.learningPath.target_score,
-          weekly_available_minutes: cycleDayStudyMinutes,
-          test_type: "mini",
-          part_abilities: mapUserSkillPartsToSchedulerSnapshot(input.userSkill),
-          skill_abilities: mapUserSkillSkillsToSchedulerSnapshot(input.userSkill),
-          extra: {
-            source_user_test_id: String(input.userTest._id),
-            source_test_id: String(input.userTest.test_id),
-            target_completion_date: input.learningPath.target_completion_date,
-            focus_part_types: cycleResult.plan.focus_part_types,
-            focus_skill_keys: cycleResult.plan.focus_skill_keys,
-            mini_tests_completed_since_last_full_test: nextMiniTestCount,
-            alternative_unit_count: alternativeUnits.length,
-            alternative_lesson_manager_ids: alternativeUnits.map(
-              (unit) => unit.lesson_manager_id
-            ),
-          },
-        },
-        selected_lesson_manager_ids: cycleResult.plan.selected_roadmap_units.map(
-          (unit) => unit.lesson_manager_id
-        ),
-        output_summary: {
-          planned_minutes: cycleDayStudyMinutes,
-          selected_unit_count: cycleResult.plan.selected_roadmap_units.length,
-          ...countCycleActivities(cycleResult.day_studies),
-        },
-        created_by: input.originalInput.user_id,
-      });
-    } catch (error) {
-      logLearningPathV2DebugSafe("scheduler_decision_log.create_failed", {
-        stage: "scheduler_decision_log",
-        user_id: input.originalInput.user_id,
-        learning_path_id: input.originalInput.learning_path_id,
-        trigger_type: "mini_test_completion",
-        selected_strategy_option_id: cycleResult.strategy_option._id,
-        week_study_id: cycleResult.week_study._id,
-        error,
-      });
-    }
-  }
-
   return {
-    selected_strategy_option: cycleResult.strategy_option,
+    strategy_options: [],
+    selected_strategy_option: null,
     cycle_result: cycleResult,
   };
 };
@@ -1057,20 +846,22 @@ const summarizeLayer4ResultForLog = (result?: Layer4PipelineResult) => {
 };
 
 /**
- * Pipeline chạy Layer 1/2/3 rồi nối sang Layer 4 theo trigger.
- * - initial_generation: tạo selected ROI option và cycle đầu tiên.
- * - full_test_review: tạo một ROI option duy nhất.
- * - mini_test_completion: tiếp tục selected route và tạo cycle kế tiếp.
+ * Pipeline chạy Layer 1/2/3 rồi nối sang Skill ROI scheduler.
  *
- * WeekStudy service hiện đã tạo DayStudy và gắn placeholder assessment test.
- * Pipeline này không tạo UserTest mới; UserTest đã được tạo ở flow submit test.
+ * - initial_generation:
+ *   cập nhật ability rồi tạo cycle đầu tiên trực tiếp.
+ *
+ * - mini_test_completion:
+ *   cập nhật local ability rồi tạo cycle tiếp theo trực tiếp.
+ *
+ * - full_test_review:
+ *   đo lại toàn bộ ability, tạo StrategyOption và tạo cycle tiếp theo.
+ *
+ * Scheduler tự chọn package Skill ROI; user không cần chọn strategy.
  */
 export const runLearningPathV2AbilityPipeline = async (
   input: LearningPathV2AbilityPipelineInput
 ): Promise<LearningPathV2AbilityPipelineOutput> => {
-  // ROI engine sẽ mở lại pipeline ở checkpoint triển khai Skill-Focused Cycle.
-  assertLearningPathV3SchedulerReady();
-
   const rawResult = input.raw_result;
   const userTest = input.source_user_test;
 
@@ -1199,8 +990,7 @@ export const runLearningPathV2AbilityPipeline = async (
 
     switch (normalizedResult.trigger_type) {
       case "initial_generation":
-        // Entry test xong thì tự chọn route ROI và tạo cycle đầu tiên.
-        layer4Result = await createInitialSelectedOptionAndCycle({
+        layer4Result = await createInitialCycle({
           originalInput: input,
           learningPath,
           userTest,
@@ -1210,8 +1000,7 @@ export const runLearningPathV2AbilityPipeline = async (
         break;
 
       case "full_test_review":
-        // Full test chỉ tạo 3 option pending, không auto tạo WeekStudy.
-        layer4Result = await createFullTestPendingOptions({
+        layer4Result = await createFullTestOptionAndCycle({
           originalInput: input,
           learningPath,
           userTest,
@@ -1222,7 +1011,6 @@ export const runLearningPathV2AbilityPipeline = async (
         break;
 
       case "mini_test_completion":
-        // Mini test tiếp tục selected route hiện tại và tạo cycle kế tiếp.
         layer4Result = await handleMiniTestCompletionCycle({
           originalInput: input,
           learningPath,
@@ -1251,7 +1039,7 @@ export const runLearningPathV2AbilityPipeline = async (
       event: "learning_path_assessment_completed",
       payload: {
         source_user_test_id: String(userTest._id),
-        requires_strategy_selection: input.trigger_type === "full_test_review",
+        requires_strategy_selection: false,
         layer4_result: summarizeLayer4ResultForLog(layer4Result),
         strategy_options:
           layer4Result?.strategy_options?.map((option) => ({
@@ -2211,11 +1999,11 @@ const loadLearningPathSkillMapBase = async (input: {
   const currentWeekStudy =
     weekStudyIds.length > 0
       ? await WeekStudy.findOne({
-          _id: { $in: weekStudyIds },
-          status: WeekStudyStatus.IN_PROGRESS,
-        })
-          .sort({ no: -1 })
-          .lean<IWeekStudy | null>()
+        _id: { $in: weekStudyIds },
+        status: WeekStudyStatus.IN_PROGRESS,
+      })
+        .sort({ no: -1 })
+        .lean<IWeekStudy | null>()
       : null;
 
   const userSkill = await UserSkill.findOne({
@@ -2359,9 +2147,9 @@ const buildSkillMapSkillsTab = async (input: {
   const focusSkillSet = new Set(
     input.currentWeekStudy
       ? [
-          input.currentWeekStudy.primary_focus_skill_key,
-          ...(input.currentWeekStudy.covered_skill_keys ?? []),
-        ]
+        input.currentWeekStudy.primary_focus_skill_key,
+        ...(input.currentWeekStudy.covered_skill_keys ?? []),
+      ]
       : []
   );
   const query = input.q?.trim().toLowerCase();
@@ -2594,9 +2382,9 @@ export const getLearningPathV2SkillMap = async (
     tab === "history"
       ? undefined
       : await loadSkillMapLatestEvidence({
-          user_id: input.user_id,
-          learning_path_id: input.learning_path_id,
-        });
+        user_id: input.user_id,
+        learning_path_id: input.learning_path_id,
+      });
 
   switch (tab) {
     case "skills":
