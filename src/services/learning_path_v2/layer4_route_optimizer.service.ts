@@ -78,9 +78,8 @@ type BuildRuntimeStartPathsInput = {
 const PART_TYPES = [1, 2, 3, 4, 5, 6, 7];
 
 const STRATEGY_QUOTAS: Record<LearningPathStrategyV2, AllocationQuota> = {
-  recommended: { weak: 0.6, medium: 0.3, strong: 0.1 },
-  balanced: { weak: 0.45, medium: 0.35, strong: 0.2 },
-  opportunity: { weak: 0.3, medium: 0.5, strong: 0.2 },
+  // Giá trị tạm chỉ giữ planner cũ compile; không được dùng để tạo cycle trước checkpoint ROI.
+  maximize_skill_roi: { weak: 0.6, medium: 0.3, strong: 0.1 },
 };
 
 export const DEFAULT_BEAM_SEARCH_CYCLE_CONFIG: BeamSearchCycleConfigV2 = {
@@ -156,13 +155,9 @@ export const calculateRuntimeStartScore = (
    * part_ability và node.weight cùng scale 0 -> 1, nên runtime start ưu tiên node có weight gần ability hiện tại.
    * score_band là metadata TOEIC raw band để hiển thị/target_score, không so trực tiếp với part_ability normalized.
    */
-  if (input.scenario === "ONBOARDING" || input.strategy === "recommended") {
+  if (input.scenario === "ONBOARDING") {
     if (input.node.weight <= input.part_ability + 0.15) score += 0.08;
     if (input.node.weight > input.part_ability + 0.25) score -= 0.12;
-  }
-
-  if (input.strategy === "opportunity" && input.node.weight >= input.part_ability - 0.1) {
-    score += 0.06;
   }
 
   return clamp(score, 0, 1.2);
@@ -287,11 +282,9 @@ const calculateStrategyMultiplier = (
   node: LessonManagerRouteNodeV2,
   partAbility: number
 ): number => {
-  if (strategy === "balanced") return 1;
-  if (strategy === "recommended") {
-    return node.weight <= partAbility + 0.15 ? 1.08 : 0.96;
-  }
-  return node.weight >= partAbility - 0.1 ? 1.08 : 0.96;
+  // ROI engine sẽ thay heuristic theo strategy cũ bằng gain/giờ ở cấp skill.
+  void strategy;
+  return node.weight <= partAbility + 0.15 ? 1.08 : 0.96;
 };
 
 const getScenarioReason = (scenario: LearningPathScenarioV2): string => {
@@ -1516,9 +1509,7 @@ const getSummaryReasons = (
   strategy: LearningPathStrategyV2
 ): string[] => {
   const strategyReason: Record<LearningPathStrategyV2, string> = {
-    recommended: "Ưu tiên các Part yếu theo kết quả năng lực hiện tại.",
-    balanced: "Cân bằng giữa Part yếu và các Part cần duy trì.",
-    opportunity: "Ưu tiên vùng có khả năng tăng điểm nhanh hơn.",
+    maximize_skill_roi: "Tối đa hóa ROI dự kiến theo từng skill.",
   };
 
   return [

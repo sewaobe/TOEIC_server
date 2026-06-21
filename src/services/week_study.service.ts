@@ -43,6 +43,11 @@ type CreateNextLearningPathCycleInput = {
   user_skill?: IUserSkill | null;
 };
 
+/** Giữ guard cục bộ để tránh vòng phụ thuộc giữa WeekStudy service và pipeline orchestrator. */
+const assertLearningPathV3CycleCreationReady = (): void => {
+  throw new Error("Skill ROI scheduler chưa sẵn sàng.");
+};
+
 type CreateNextLearningPathCycleResult =
   | {
       status: "cycle_created";
@@ -501,6 +506,12 @@ const appendWeekStudyId = (
 export const createNextLearningPathCycle = async (
   input: CreateNextLearningPathCycleInput
 ): Promise<CreateNextLearningPathCycleResult> => {
+  /**
+   * Planner đa Part cũ không được phép sinh WeekStudy theo model V3.
+   * Checkpoint ROI sẽ thay phần thân hàm này bằng Skill ROI optimizer.
+   */
+  assertLearningPathV3CycleCreationReady();
+
   const now = input.now ?? new Date();
 
   logLearningPathV2DebugSafe("cycle.create.start", {
@@ -615,8 +626,10 @@ export const createNextLearningPathCycle = async (
     learning_path_id: input.learning_path_id,
     cycle_no: weekNo,
     assessment: plan.assessment,
-    focus_skill_keys: plan.focus_skill_keys,
-    focus_part_types: plan.focus_part_types,
+    // Adapter tạm chỉ để code cũ compile; guard ở đầu service ngăn planner đa Part chạy thực tế.
+    primary_focus_skill_key: plan.focus_skill_keys[0] ?? "",
+    covered_skill_keys: plan.focus_skill_keys.slice(1),
+    focus_part_type: plan.focus_part_types[0] ?? 0,
   });
 
   const weekStudyPayload = {
@@ -636,8 +649,21 @@ export const createNextLearningPathCycle = async (
       time_per_day: learningPath.time_per_day,
       days_per_week: learningPath.days_per_week,
     }),
-    focus_skill_keys: plan.focus_skill_keys,
-    focus_part_types: plan.focus_part_types,
+    primary_focus_skill_key: plan.focus_skill_keys[0] ?? "",
+    covered_skill_keys: plan.focus_skill_keys.slice(1),
+    focus_part_type: plan.focus_part_types[0] ?? 0,
+    cycle_mode: "main_learning" as const,
+    expected_skill_gain: plan.selected_roadmap_units.reduce(
+      (sum, unit) => sum + (unit.estimated_gain ?? 0),
+      0
+    ),
+    expected_roi_per_hour:
+      plan.estimated_learning_minutes > 0
+        ? plan.selected_roadmap_units.reduce(
+            (sum, unit) => sum + (unit.estimated_gain ?? 0),
+            0
+          ) / (plan.estimated_learning_minutes / 60)
+        : 0,
     learning_path_strategy_option_id: selectedOption._id,
     assessment_type: plan.assessment.type,
     assessment_estimated_minutes: plan.assessment.estimated_minutes,
@@ -779,8 +805,9 @@ export const previewNextLearningPathCycleFromStrategyOption = async (input: {
       assessment_type: null,
       assessment_estimated_minutes: 0,
       estimated_learning_minutes: 0,
-      focus_part_types: [],
-      focus_skill_keys: [],
+      primary_focus_skill_key: null,
+      covered_skill_keys: [],
+      focus_part_type: null,
       groups: [],
       route_completed_reason:
         "Không còn bài học phù hợp cho các Part yếu hiện tại sau khi thử main roadmap và bài thay thế.",
@@ -805,8 +832,9 @@ export const previewNextLearningPathCycleFromStrategyOption = async (input: {
       assessment_type: null,
       assessment_estimated_minutes: 0,
       estimated_learning_minutes: 0,
-      focus_part_types: [],
-      focus_skill_keys: [],
+      primary_focus_skill_key: null,
+      covered_skill_keys: [],
+      focus_part_type: null,
       groups: [],
       route_completed_reason: plan.reason,
     };
@@ -835,8 +863,9 @@ export const previewNextLearningPathCycleFromStrategyOption = async (input: {
     assessment_type: plan.assessment.type,
     assessment_estimated_minutes: plan.assessment.estimated_minutes,
     estimated_learning_minutes: plan.estimated_learning_minutes,
-    focus_part_types: plan.focus_part_types,
-    focus_skill_keys: plan.focus_skill_keys,
+    primary_focus_skill_key: plan.focus_skill_keys[0] ?? null,
+    covered_skill_keys: plan.focus_skill_keys.slice(1),
+    focus_part_type: plan.focus_part_types[0] ?? null,
     groups: groupPreviewUnitsByPart(units),
   };
 };

@@ -79,6 +79,23 @@ export interface LearningPathV2AbilityPipelineOutput {
   };
 }
 
+/**
+ * Checkpoint 1 đã đổi contract cycle sang V3 nhưng ROI engine chưa tồn tại.
+ * Chặn tại boundary này để không ghi UserSkill, option hoặc cycle nửa chừng.
+ */
+export class LearningPathV3SchedulerNotReadyError extends Error {
+  statusCode = 503;
+
+  constructor() {
+    super("Skill ROI scheduler chưa sẵn sàng.");
+    this.name = "LearningPathV3SchedulerNotReadyError";
+  }
+}
+
+export const assertLearningPathV3SchedulerReady = (): void => {
+  throw new LearningPathV3SchedulerNotReadyError();
+};
+
 type Layer4PipelineResult = NonNullable<
   LearningPathV2AbilityPipelineOutput["layer4_result"]
 >;
@@ -668,7 +685,7 @@ const createInitialSelectedOptionAndCycle = async (input: {
   const plan = await buildRoutePlanForStrategy({
     learningPath: input.learningPath,
     userSkill: input.userSkill,
-    strategy: "recommended",
+    strategy: "maximize_skill_roi",
     scenario: "ONBOARDING",
     now: input.normalizedResult.submitted_at ?? new Date(),
   });
@@ -683,7 +700,7 @@ const createInitialSelectedOptionAndCycle = async (input: {
   );
 
   /*
-   * Initial generation auto-select recommended để user có cycle đầu tiên ngay,
+   * Initial generation auto-select strategy ROI để user có cycle đầu tiên ngay,
    * không cần chọn option.
    */
   const selectedOption = await LearningPathStrategyOption.create(
@@ -695,7 +712,7 @@ const createInitialSelectedOptionAndCycle = async (input: {
       source_user_test_id: input.userTest._id,
       status: "selected",
       title: "Lộ trình khởi đầu được đề xuất",
-      description: "Hệ thống tự chọn lộ trình recommended sau entry test.",
+      description: "Hệ thống tự chọn lộ trình tối ưu ROI sau entry test.",
       scenario: "ONBOARDING",
     })
   );
@@ -818,11 +835,7 @@ const createFullTestPendingOptions = async (input: {
   );
 
   const scenario = toStrategyOptionScenario(input.scenarioDecision.scenario);
-  const strategies: LearningPathStrategyV2[] = [
-    "recommended",
-    "balanced",
-    "opportunity",
-  ];
+  const strategies: LearningPathStrategyV2[] = ["maximize_skill_roi"];
 
   const payloads = await Promise.all(
     strategies.map(async (strategy) => {
@@ -1045,8 +1058,8 @@ const summarizeLayer4ResultForLog = (result?: Layer4PipelineResult) => {
 
 /**
  * Pipeline chạy Layer 1/2/3 rồi nối sang Layer 4 theo trigger.
- * - initial_generation: tạo selected recommended option và cycle đầu tiên.
- * - full_test_review: tạo 3 pending options để user chọn.
+ * - initial_generation: tạo selected ROI option và cycle đầu tiên.
+ * - full_test_review: tạo một ROI option duy nhất.
  * - mini_test_completion: tiếp tục selected route và tạo cycle kế tiếp.
  *
  * WeekStudy service hiện đã tạo DayStudy và gắn placeholder assessment test.
@@ -1055,6 +1068,9 @@ const summarizeLayer4ResultForLog = (result?: Layer4PipelineResult) => {
 export const runLearningPathV2AbilityPipeline = async (
   input: LearningPathV2AbilityPipelineInput
 ): Promise<LearningPathV2AbilityPipelineOutput> => {
+  // ROI engine sẽ mở lại pipeline ở checkpoint triển khai Skill-Focused Cycle.
+  assertLearningPathV3SchedulerReady();
+
   const rawResult = input.raw_result;
   const userTest = input.source_user_test;
 
@@ -1170,8 +1186,8 @@ export const runLearningPathV2AbilityPipeline = async (
         scenarioDecision.comparable_focus_skill_count,
       newly_measured_focus_skill_count:
         scenarioDecision.newly_measured_focus_skill_count,
-      focus_part_types: scenarioDecision.focus_part_types,
-      focus_skill_keys_sample: scenarioDecision.focus_skill_keys?.slice(0, 10),
+      primary_focus_skill_key: scenarioDecision.primary_focus_skill_key,
+      focus_part_type: scenarioDecision.focus_part_type,
     });
 
     const learningPath = await loadLearningPathForScheduler({
@@ -1183,7 +1199,7 @@ export const runLearningPathV2AbilityPipeline = async (
 
     switch (normalizedResult.trigger_type) {
       case "initial_generation":
-        // Entry test xong thì tự chọn recommended route và tạo cycle đầu tiên.
+        // Entry test xong thì tự chọn route ROI và tạo cycle đầu tiên.
         layer4Result = await createInitialSelectedOptionAndCycle({
           originalInput: input,
           learningPath,
@@ -1320,8 +1336,12 @@ type LearningPathV2OverviewResult = CurrentLearningPathCycleV2Result & {
       week_study_id: string;
       cycle_no: number;
       status: WeekStudyStatus;
-      focus_part_types: number[];
-      focus_skill_keys: string[];
+      primary_focus_skill_key: string;
+      covered_skill_keys: string[];
+      focus_part_type: number;
+      cycle_mode: IWeekStudy["cycle_mode"];
+      expected_skill_gain: number;
+      expected_roi_per_hour: number;
       assessment_type: "mini_test" | "full_test" | null;
     } | null;
     current_learning: RoadmapCanvasCurrentLearning | null;
@@ -2070,8 +2090,12 @@ const buildRoadmapCanvasSnapshot = (input: {
         week_study_id: String(input.currentWeekStudy._id),
         cycle_no: input.currentWeekStudy.no,
         status: input.currentWeekStudy.status,
-        focus_part_types: input.currentWeekStudy.focus_part_types ?? [],
-        focus_skill_keys: input.currentWeekStudy.focus_skill_keys ?? [],
+        primary_focus_skill_key: input.currentWeekStudy.primary_focus_skill_key,
+        covered_skill_keys: input.currentWeekStudy.covered_skill_keys ?? [],
+        focus_part_type: input.currentWeekStudy.focus_part_type,
+        cycle_mode: input.currentWeekStudy.cycle_mode,
+        expected_skill_gain: input.currentWeekStudy.expected_skill_gain,
+        expected_roi_per_hour: input.currentWeekStudy.expected_roi_per_hour,
         assessment_type: input.currentWeekStudy.assessment_type ?? null,
       }
       : null,
@@ -2263,7 +2287,9 @@ const buildSkillMapPartsTab = async (input: {
   currentWeekStudy?: IWeekStudy | null;
   evidence?: SkillMapEvidenceMaps;
 }) => {
-  const focusPartSet = new Set(input.currentWeekStudy?.focus_part_types ?? []);
+  const focusPartSet = new Set(
+    input.currentWeekStudy ? [input.currentWeekStudy.focus_part_type] : []
+  );
 
   const parts = (input.userSkill?.parts ?? [])
     .map((part) => {
@@ -2311,7 +2337,7 @@ const buildSkillMapPartsTab = async (input: {
       strongest_parts: strongestParts,
       improving_parts: improvingParts,
       declining_parts: decliningParts,
-      focus_part_types: [...focusPartSet],
+      focus_part_type: input.currentWeekStudy?.focus_part_type ?? null,
       last_evaluated_at: input.userSkill?.last_evaluated_at,
     },
     parts,
@@ -2330,7 +2356,14 @@ const buildSkillMapSkillsTab = async (input: {
 }) => {
   const statusFilter = normalizeStatusFilter(input.status);
   const skillGroupFilter = normalizeSkillGroupFilter(input.skill_group);
-  const focusSkillSet = new Set(input.currentWeekStudy?.focus_skill_keys ?? []);
+  const focusSkillSet = new Set(
+    input.currentWeekStudy
+      ? [
+          input.currentWeekStudy.primary_focus_skill_key,
+          ...(input.currentWeekStudy.covered_skill_keys ?? []),
+        ]
+      : []
+  );
   const query = input.q?.trim().toLowerCase();
 
   let skills = (input.userSkill?.parts ?? []).flatMap((part) =>

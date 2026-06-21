@@ -8,8 +8,9 @@ export type GenerateAssessmentTestFromPlanInput = {
   learning_path_id: string;
   cycle_no: number;
   assessment: LearningCyclePlanV2["assessment"];
-  focus_skill_keys: string[];
-  focus_part_types: number[];
+  primary_focus_skill_key: string;
+  covered_skill_keys: string[];
+  focus_part_type: number;
 };
 
 export type GenerateAssessmentTestResult = {
@@ -23,8 +24,9 @@ export const generateMiniTestFromPlan = async (
     user_id: input.user_id,
     learning_path_id: input.learning_path_id,
     cycle_no: input.cycle_no,
-    focus_skill_keys: input.focus_skill_keys,
-    focus_part_types: input.focus_part_types,
+    primary_focus_skill_key: input.primary_focus_skill_key,
+    covered_skill_keys: input.covered_skill_keys,
+    focus_part_type: input.focus_part_type,
   });
 
   return { test_id: miniTest._id };

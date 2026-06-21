@@ -1,7 +1,8 @@
-import type {
-  AbilityStatus,
-  AbsoluteAbilityLevel,
-} from "../../models";
+import type { AbilityStatus } from "../../models";
+import type { UserSkillAbsoluteAbilityLevel } from "../user_skill.type";
+
+/** Alias công khai để Layer 2 không phụ thuộc vào SchedulerDecisionLog. */
+export type AbsoluteAbilityLevel = UserSkillAbsoluteAbilityLevel;
 import type {
   NormalizedTestResultV2,
   ToeicSkillGroupV2,

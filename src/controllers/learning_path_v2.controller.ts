@@ -2,10 +2,12 @@ import type { NextFunction, Request, Response } from "express";
 import { ApiResponse } from "../utils/ApiResponse";
 import {
   ensureLearningPathV2MentorAssigned,
+  assertLearningPathV3SchedulerReady,
   getCurrentLearningPathCycleV2,
   getLearningPathV2GenerationContext,
   getLearningPathV2Overview,
   getLearningPathV2SkillMap,
+  LearningPathV3SchedulerNotReadyError,
   LearningPathV2MockLearningError,
   mockCompleteLearningPathV2CurrentWeek,
   runLearningPathV2AbilityPipeline,
@@ -60,6 +62,11 @@ const handleLearningPathV2ControllerError = (
   res: Response,
   next: NextFunction
 ): void => {
+  if (error instanceof LearningPathV3SchedulerNotReadyError) {
+    res.status(error.statusCode).json(ApiResponse.fail(error.message));
+    return;
+  }
+
   if (
     error instanceof Error &&
     error.message.startsWith("Không tìm thấy LearningPath")
@@ -84,6 +91,12 @@ export const initialGenerateLearningPathV2Controller = async (
       res.status(401).json(ApiResponse.fail("Không tìm thấy user_id."));
       return;
     }
+
+    /**
+     * Chặn trước khi gán mentor hoặc cập nhật ability để checkpoint contract không tạo dữ liệu nửa chừng.
+     * Endpoint sẽ được mở lại khi Skill ROI engine có thể tạo WeekStudy V3 hoàn chỉnh.
+     */
+    assertLearningPathV3SchedulerReady();
 
     const learningPath = await LearningPath.findOne({
       _id: learningPathId,

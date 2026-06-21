@@ -1,10 +1,8 @@
 ﻿import type { ToeicSkillGroupV2 } from "./layer1_test_result.types";
 import type { LearningPathScenarioV2 } from "./layer3_strategy_decision.types";
 
-export type LearningPathStrategyV2 =
-  | "recommended"
-  | "balanced"
-  | "opportunity";
+/** Checkpoint V3 chỉ còn một strategy; ROI engine sẽ thay planner cũ ở checkpoint sau. */
+export type LearningPathStrategyV2 = "maximize_skill_roi";
 
 export type RoutePartBucketV2 = "weak" | "medium" | "strong";
 

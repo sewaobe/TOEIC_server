@@ -115,9 +115,7 @@ type ExpirePendingStrategyOptionsInput = {
 };
 
 const STRATEGY_ORDER: LearningPathStrategyType[] = [
-  "recommended",
-  "balanced",
-  "opportunity",
+  "maximize_skill_roi",
 ];
 
 const toObjectId = (value: string, fieldName: string): Types.ObjectId => {
@@ -217,11 +215,11 @@ export const sortOptionsByStrategy = <T extends { strategy: LearningPathStrategy
       STRATEGY_ORDER.indexOf(left.strategy) - STRATEGY_ORDER.indexOf(right.strategy)
   );
 
-export const validateThreeStrategies = (
+export const validateSingleStrategy = (
   options: Array<{ strategy: LearningPathStrategyType }>
 ): void => {
-  if (options.length !== 3) {
-    throw new Error("FULLTEST_MONTHLY phải có đúng 3 strategy option.");
+  if (options.length !== 1) {
+    throw new Error("FULLTEST_MONTHLY chỉ có một strategy option maximize_skill_roi.");
   }
 
   const strategies = options.map((option) => option.strategy);
@@ -235,7 +233,7 @@ export const validateThreeStrategies = (
   );
   if (!hasAllStrategies) {
     throw new Error(
-      "FULLTEST_MONTHLY phải gồm đủ recommended, balanced và opportunity."
+      "FULLTEST_MONTHLY phải dùng strategy maximize_skill_roi."
     );
   }
 };
@@ -313,12 +311,12 @@ export const createInitialRecommendedOption = async (
       {
         ...input,
         trigger_type: "initial_generation",
-        strategy: "recommended",
+        strategy: "maximize_skill_roi",
         scenario: "ONBOARDING",
       },
       {
         trigger_type: "initial_generation",
-        strategy: "recommended",
+        strategy: "maximize_skill_roi",
         scenario: "ONBOARDING",
         status: "selected",
         selected_at: selectedAt,
@@ -331,7 +329,7 @@ export const createFullTestStrategyOptions = async (
   input: CreateFullTestStrategyOptionsInput
 ): Promise<ILearningPathStrategyOption[]> => {
   const learningPathId = toObjectId(input.learning_path_id, "learning_path_id");
-  validateThreeStrategies(input.options);
+  validateSingleStrategy(input.options);
 
   const userId = toObjectId(input.user_id, "user_id");
 
@@ -364,7 +362,9 @@ export const createFullTestStrategyOptions = async (
         trigger_type: "full_test_review",
         strategy: option.strategy,
         scenario: option.scenario ?? "FULLTEST_MONTHLY",
-        status: "pending_selection",
+        // V3 chỉ còn một strategy nên không còn trạng thái chờ người dùng chọn option.
+        status: "selected",
+        selected_at: new Date(),
       }
     )
   );
@@ -521,20 +521,10 @@ const STRATEGY_COPY: Record<
   LearningPathStrategyType,
   { label: string; description: string }
 > = {
-  recommended: {
-    label: "Đề xuất",
+  maximize_skill_roi: {
+    label: "Tối ưu ROI skill",
     description:
-      "Tập trung thứ tự ưu tiên vào các kỹ năng có tác động cao để tối ưu tiến bộ.",
-  },
-  balanced: {
-    label: "Cân bằng",
-    description:
-      "Cân bằng giữa cải thiện điểm yếu và duy trì ổn định các kỹ năng mạnh.",
-  },
-  opportunity: {
-    label: "Cơ hội tăng điểm",
-    description:
-      "Tập trung vào các Part/skill có dư địa để tạo bước nhảy điểm số.",
+      "Scheduler V3 sẽ chọn skill có ROI dự kiến cao nhất khi ROI engine hoàn chỉnh.",
   },
 };
 
@@ -546,6 +536,14 @@ const SCENARIO_COPY: Record<
     label: "Khởi động lộ trình",
     description:
       "Chiến lược đầu tiên sau Entry Test, ưu tiên nền tảng và các Part cần củng cố.",
+  },
+  NORMAL_PROGRESS: {
+    label: "Tiến độ bình thường",
+    description: "Skill đang tiến bộ theo tín hiệu assessment gần nhất.",
+  },
+  PLATEAU: {
+    label: "Cần điều chỉnh",
+    description: "Skill chưa cải thiện đủ rõ và có thể cần remediation.",
   },
   FULLTEST_MONTHLY: {
     label: "Điều chỉnh sau Full Test",

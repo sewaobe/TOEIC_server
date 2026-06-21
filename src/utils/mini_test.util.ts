@@ -14,8 +14,9 @@ type GenerateLearningPathMiniTestInput = {
   user_id: string;
   learning_path_id: string;
   cycle_no: number;
-  focus_part_types: number[];
-  focus_skill_keys: string[];
+  primary_focus_skill_key: string;
+  covered_skill_keys: string[];
+  focus_part_type: number;
 };
 
 type MiniTestQuestionMeta = {
@@ -552,11 +553,13 @@ const createGeneratedMiniTest = async (input: {
 export async function generateLearningPathMiniTest(
   input: GenerateLearningPathMiniTestInput
 ) {
-  const focusPartTypes = uniqueNumbers(input.focus_part_types).slice(0, 3);
-  const focusSkillKeys = new Set(uniqueStrings(input.focus_skill_keys));
+  const focusPartTypes = [input.focus_part_type];
+  const focusSkillKeys = new Set(
+    uniqueStrings([input.primary_focus_skill_key, ...input.covered_skill_keys])
+  );
 
   if (focusPartTypes.length === 0) {
-    throw new Error("Mini test cần ít nhất 1 focus_part_types.");
+    throw new Error("Mini test cần focus_part_type hợp lệ.");
   }
 
   const userSkill = await UserSkill.findOne({

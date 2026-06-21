@@ -45,8 +45,12 @@ export type StrategyCyclePreview = {
     assessment_type?: StrategyAssessmentType | null;
     assessment_estimated_minutes?: number;
     estimated_learning_minutes: number;
-    focus_part_types: number[];
-    focus_skill_keys: string[];
+    primary_focus_skill_key?: string | null;
+    covered_skill_keys: string[];
+    focus_part_type?: number | null;
+    cycle_mode?: "main_learning" | "remediation" | "review" | "mixed_practice" | "exam_practice" | null;
+    expected_skill_gain?: number | null;
+    expected_roi_per_hour?: number | null;
     groups: StrategyCyclePreviewGroup[];
     route_completed_reason?: string;
 };

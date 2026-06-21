@@ -8,7 +8,6 @@ import {
   getLearningPathV2StrategyController,
   initialGenerateLearningPathV2Controller,
   mockLearningPathV2CurrentWeekController,
-  selectLearningPathV2StrategyOptionController,
   submitLearningPathV2AssessmentController,
   upsertLearningPathV2SetupController,
 } from "../controllers/learning_path_v2.controller";
@@ -59,12 +58,6 @@ router.get(
   "/:learningPathId/strategy-options/:optionId/preview",
   verifyAccessToken,
   getLearningPathV2StrategyOptionPreviewController
-);
-
-router.post(
-  "/:learningPathId/strategy-options/:optionId/select",
-  verifyAccessToken,
-  selectLearningPathV2StrategyOptionController
 );
 
 export default router;

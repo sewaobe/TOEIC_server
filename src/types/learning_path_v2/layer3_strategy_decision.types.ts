@@ -33,6 +33,6 @@ export interface LearningScenarioDecisionV2 {
   focus_delta?: number;
   comparable_focus_skill_count?: number;
   newly_measured_focus_skill_count?: number;
-  focus_skill_keys?: string[];
-  focus_part_types?: number[];
+  primary_focus_skill_key?: string;
+  focus_part_type?: number;
 }

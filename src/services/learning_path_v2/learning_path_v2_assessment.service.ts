@@ -9,7 +9,10 @@ import { emitToUser } from "../../socket/emitToUser.socket";
 import { submitMiniTestService, submitTest } from "../test.service";
 import { buildRawUserTestLikeInputFromUserTest } from "../user_test.service";
 import { updateUserProgress } from "../user_progress.service";
-import { runLearningPathV2AbilityPipeline } from "./learning_path_v2.service";
+import {
+  assertLearningPathV3SchedulerReady,
+  runLearningPathV2AbilityPipeline,
+} from "./learning_path_v2.service";
 
 export type LearningPathV2AssessmentType = "mini_test" | "full_test";
 
@@ -207,6 +210,12 @@ const emitAssessmentSubmitted = (input: {
 export const submitLearningPathV2Assessment = async (
   input: SubmitLearningPathV2AssessmentInput
 ) => {
+  /**
+   * Không submit test hoặc cập nhật DayStudy khi scheduler V3 chưa thể tạo cycle kế tiếp.
+   * Guard ở service bảo vệ cả các caller không đi qua HTTP controller.
+   */
+  assertLearningPathV3SchedulerReady();
+
   const learningPath = await LearningPath.findOne({
     _id: toObjectId(input.learning_path_id, "learning_path_id"),
     user_id: toObjectId(input.user_id, "user_id"),
