@@ -18,6 +18,7 @@ import type {
     LearningCyclePlanV2,
     LearningPathScenarioV2,
     PlannedRouteUnitV2,
+    SimulatedSkillRoiRoadmapV3,
     SkillRoiDecisionV3,
     SkillRoiUnitResultV3,
 } from "../../types/learning_path_v2";
@@ -27,11 +28,17 @@ import {
     selectBestSkillRoiOpportunity,
 } from "./skill_roi_optimizer.service";
 import {
+    simulateIdealSkillRoiRoadmap,
+} from "./skill_roi_roadmap_simulator.service";
+import {
     generateAssessmentTestFromPlan,
     type GenerateAssessmentTestResult,
     type LearningPathAssessmentPlanV3,
 } from "./learning_path_assessment.service";
-import { logLearningPathV2DebugSafe } from "./learning_path_v2_debug_logger";
+import {
+    logLearningPathV2Debug,
+    logLearningPathV2DebugSafe,
+} from "./learning_path_v2_debug_logger";
 import { createSchedulerDecisionLog } from "./scheduler_decision_log.service";
 import {
     createDayStudiesForSkillFocusedCycle,
@@ -40,6 +47,15 @@ import {
 const MINI_TEST_ESTIMATED_MINUTES = 60;
 const FULL_TEST_ESTIMATED_MINUTES = 120;
 const FULL_TEST_AFTER_MINI_TEST_COUNT = 3;
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * StrategyOption chỉ có hiệu lực đến Full test kế tiếp.
+ *
+ * Ba cycle đầu kết thúc bằng mini test.
+ * Cycle thứ tư kết thúc bằng full test và sẽ tạo lại roadmap
+ * từ kết quả ability thực tế.
+ */
 
 export type SkillFocusedCycleTriggerV3 = Extract<
     LearningPathStrategyOptionTrigger,
@@ -70,6 +86,7 @@ export type CreateSkillFocusedCycleResult = {
     week_study: IWeekStudy;
     day_studies: IDayStudy[];
     assessment_result: GenerateAssessmentTestResult;
+    roadmap_simulation: SimulatedSkillRoiRoadmapV3 | null;
 };
 
 export class NoEligibleSkillPackageError extends Error {
@@ -120,6 +137,31 @@ const calculateExpectedCompletionAt = (input: {
 
 const getNextCycleNo = (learningPath: ILearningPath): number =>
     (learningPath.week_study_ids?.length ?? 0) + 1;
+
+const calculateRoadmapAvailableMinutes = (input: {
+    now: Date;
+    target_completion_date?: Date | null;
+    time_per_day?: number;
+    days_per_week?: number;
+}): number => {
+    if (!input.time_per_day || input.time_per_day <= 0) {
+        throw new Error("LearningPath chưa có time_per_day.");
+    }
+
+    if (input.target_completion_date && input.target_completion_date > input.now) {
+        const daysRemaining = Math.ceil(
+            (input.target_completion_date.getTime() - input.now.getTime()) /
+            ONE_DAY_MS
+        );
+        const daysPerWeek = Math.min(Math.max(input.days_per_week ?? 7, 1), 7);
+        return Math.max(
+            1,
+            Math.round((daysRemaining * daysPerWeek / 7) * input.time_per_day)
+        );
+    }
+
+    return Math.max(1, Math.round(30 * input.time_per_day));
+};
 
 const resolveAssessmentPlan = (input: {
     trigger_type: SkillFocusedCycleTriggerV3;
@@ -271,6 +313,7 @@ const createSelectedStrategyOption = async (input: {
     source_user_test_id: Types.ObjectId;
     source_week_study_id?: Types.ObjectId;
     decision: SelectedSkillRoiDecisionV3;
+    roadmapSimulation: SimulatedSkillRoiRoadmapV3;
     lessonManagerById: Map<string, ILessonManager>;
     now: Date;
 }): Promise<ILearningPathStrategyOption> => {
@@ -279,6 +322,55 @@ const createSelectedStrategyOption = async (input: {
             input.decision.primary_focus_skill_key,
             input.decision.focus_part_type
         ) ?? input.decision.primary_focus_skill_key;
+
+    const toRoadmapUnit = (
+        unit: SkillRoiUnitResultV3,
+        order: number,
+        sourceReason: string
+    ) => {
+        const lessonManager = input.lessonManagerById.get(unit.lesson_manager_id);
+        if (!lessonManager) {
+            throw new Error(`Không tìm thấy LessonManager ${unit.lesson_manager_id} của simulated roadmap.`);
+        }
+
+        return {
+            lesson_manager_id: lessonManager._id,
+            title: lessonManager.title,
+            part_type: lessonManager.part_type,
+            score_band: lessonManager.score_band,
+            unit_type: lessonManager.unit_type,
+            node_role: lessonManager.node_role,
+            target_tags: lessonManager.target_tags ?? [],
+            order,
+            planned_minutes: unit.planned_minutes,
+            estimated_gain: unit.expected_skill_gain,
+            reason: unit.reason,
+            unit_source: "strategy" as const,
+            source_reason: sourceReason,
+        };
+    };
+
+    const cyclesByPart = new Map<
+        number,
+        SimulatedSkillRoiRoadmapV3["cycles"]
+    >();
+    for (const cycle of input.roadmapSimulation.cycles) {
+        const partCycles = cyclesByPart.get(cycle.focus_part_type) ?? [];
+        partCycles.push(cycle);
+        cyclesByPart.set(cycle.focus_part_type, partCycles);
+    }
+    const roadmapFocusPartTypes = Array.from(cyclesByPart.keys()).sort(
+        (left, right) => left - right
+    );
+    const roadmapFocusSkillKeys = Array.from(
+        new Set(
+            input.roadmapSimulation.cycles.flatMap((cycle) => [
+                cycle.primary_focus_skill_key,
+                ...cycle.covered_skill_keys,
+            ])
+        )
+    ).sort();
+    const firstCycle = input.roadmapSimulation.cycles[0];
 
     return LearningPathStrategyOption.create({
         user_id: input.user_id,
@@ -291,46 +383,59 @@ const createSelectedStrategyOption = async (input: {
         status: "selected",
         title: `Tập trung ${primaryLabel}`,
         description:
-            "Cycle được chọn tự động từ package LessonManager có ROI dự kiến cao nhất.",
-        focus_part_types: [input.decision.focus_part_type],
-        focus_skill_keys: [
-            input.decision.primary_focus_skill_key,
-            ...input.decision.covered_skill_keys,
-        ],
-        estimated_total_minutes:
-            input.decision.estimated_learning_minutes,
-        estimated_gain: input.decision.expected_skill_gain,
-        reaches_target: false,
-        part_roadmaps: [
-            {
-                part_type: input.decision.focus_part_type,
-                cursor_index: 0,
-                target_minutes: input.decision.estimated_learning_minutes,
-                estimated_gain: input.decision.expected_skill_gain,
-                reaches_target: false,
-                units: input.decision.selected_units.map((unit, index) => {
-                    const lessonManager = input.lessonManagerById.get(
-                        unit.lesson_manager_id
-                    )!;
+            "Lộ trình dự kiến được mô phỏng bằng cách liên tục chọn package LessonManager có Skill ROI cao nhất trên trạng thái năng lực dự kiến.",
+        focus_part_types: roadmapFocusPartTypes,
+        focus_skill_keys: roadmapFocusSkillKeys,
+        estimated_total_minutes: input.roadmapSimulation.total_used_minutes,
+        estimated_gain:
+            input.roadmapSimulation.planned_final_score -
+            input.roadmapSimulation.anchor_score,
+        reaches_target: input.roadmapSimulation.reaches_target,
+        // Compatibility projection only; roadmap_simulation.cycles is the V3 source of truth.
+        part_roadmaps: Array.from(cyclesByPart.entries())
+            .sort(([left], [right]) => left - right)
+            .map(([partType, partCycles]) => {
+                const units = partCycles.flatMap((cycle) => cycle.selected_units);
 
-                    return {
-                        lesson_manager_id: lessonManager._id,
-                        title: lessonManager.title,
-                        part_type: lessonManager.part_type,
-                        score_band: lessonManager.score_band,
-                        unit_type: lessonManager.unit_type,
-                        node_role: lessonManager.node_role,
-                        target_tags: lessonManager.target_tags ?? [],
-                        order: index,
-                        planned_minutes: unit.planned_minutes,
-                        estimated_gain: unit.expected_skill_gain,
-                        reason: unit.reason,
-                        unit_source: "strategy",
-                        source_reason: "Skill ROI package",
-                    };
-                }),
-            },
-        ],
+                return {
+                    part_type: partType,
+                    cursor_index:
+                        partType === firstCycle?.focus_part_type
+                            ? firstCycle.selected_units.length
+                            : 0,
+                    target_minutes: partCycles.reduce(
+                        (total, cycle) => total + cycle.estimated_learning_minutes,
+                        0
+                    ),
+                    estimated_gain: partCycles.reduce(
+                        (total, cycle) => total + cycle.planned_score_gain,
+                        0
+                    ),
+                    reaches_target: input.roadmapSimulation.reaches_target,
+                    units: units.map((unit, index) =>
+                        toRoadmapUnit(unit, index, "Ideal Skill ROI roadmap")
+                    ),
+                };
+            }),
+        roadmap_simulation: {
+            anchor_score: input.roadmapSimulation.anchor_score,
+            target_score: input.roadmapSimulation.target_score,
+            required_score_gain_per_hour: input.roadmapSimulation.required_score_gain_per_hour,
+            planned_final_score: input.roadmapSimulation.planned_final_score,
+            reaches_target: input.roadmapSimulation.reaches_target,
+            total_learning_minutes: input.roadmapSimulation.total_learning_minutes,
+            total_assessment_minutes: input.roadmapSimulation.total_assessment_minutes,
+            total_used_minutes: input.roadmapSimulation.total_used_minutes,
+            remaining_minutes: input.roadmapSimulation.remaining_minutes,
+            cycle_count: input.roadmapSimulation.cycle_count,
+            stop_reason: input.roadmapSimulation.stop_reason,
+            cycles: input.roadmapSimulation.cycles.map((cycle) => ({
+                ...cycle,
+                selected_units: cycle.selected_units.map((unit, index) =>
+                    toRoadmapUnit(unit, index, `Simulated cycle ${cycle.cycle_no}`)
+                ),
+            })),
+        },
         summary_reasons: [
             `Skill ${input.decision.primary_focus_skill_key} có package ROI cao nhất.`,
             `Expected gain: ${input.decision.expected_skill_gain}.`,
@@ -392,20 +497,172 @@ export const createSkillFocusedCycle = async (
         user_id: input.user_id,
         learning_path_id: input.learning_path_id,
     });
-    const decision = selectBestSkillRoiOpportunity(planningContext);
+    const shouldSimulateRoadmap =
+        input.trigger_type === "initial_generation" ||
+        input.trigger_type === "full_test_review";
+    let roadmapSimulation: SimulatedSkillRoiRoadmapV3 | null = null;
+    let decision: SkillRoiDecisionV3;
+
+    if (shouldSimulateRoadmap) {
+        if (typeof input.current_score !== "number" || !Number.isFinite(input.current_score)) {
+            throw new Error("Entry/Full test cần current_score để mô phỏng lộ trình.");
+        }
+
+        if (input.current_score >= (learningPath.target_score ?? 0)) {
+            throw new Error("Người học đã đạt target score, không cần tạo cycle mới.");
+        }
+
+        const completedIds = new Set(
+            planningContext.completed_lesson_manager_ids
+        );
+        const remainingLessonManagerCount =
+            planningContext.lesson_managers.filter(
+                (lessonManager) => !completedIds.has(lessonManager.id)
+            ).length;
+        const minLessonManagerCount = Math.max(
+            1,
+            planningContext.policy.min_lesson_manager_count
+        );
+        const maxCycleCount = Math.max(
+            1,
+            Math.floor(
+                remainingLessonManagerCount / minLessonManagerCount
+            )
+        );
+        const simulationStartedAt =
+            Date.now();
+
+        await logLearningPathV2Debug(
+            "skill_roi.roadmap_simulation_start",
+            {
+                stage: "skill_roi_simulation",
+                user_id: input.user_id,
+                learning_path_id:
+                    input.learning_path_id,
+                trigger_type:
+                    input.trigger_type,
+                lesson_manager_count:
+                    planningContext
+                        .lesson_managers.length,
+                skill_count:
+                    planningContext
+                        .skill_abilities.length,
+                max_cycle_count:
+                    maxCycleCount,
+            }
+        );
+        roadmapSimulation = await simulateIdealSkillRoiRoadmap({
+            anchor_score: input.current_score,
+            target_score: learningPath.target_score ?? 0,
+            available_total_minutes: calculateRoadmapAvailableMinutes({
+                now,
+                target_completion_date: learningPath.target_completion_date,
+                time_per_day: learningPath.time_per_day,
+                days_per_week: learningPath.days_per_week,
+            }),
+            planning_context: planningContext,
+            max_cycle_count: maxCycleCount,
+            on_progress: (progress) => {
+                logLearningPathV2DebugSafe(
+                    "skill_roi.roadmap_simulation_progress",
+                    {
+                        stage: "skill_roi_simulation",
+                        user_id: input.user_id,
+                        learning_path_id: input.learning_path_id,
+                        trigger_type: input.trigger_type,
+                        ...progress,
+                    }
+                );
+            },
+        });
+
+        await logLearningPathV2Debug(
+            "skill_roi.roadmap_simulation_complete",
+            {
+                stage: "skill_roi_simulation",
+                user_id: input.user_id,
+                learning_path_id:
+                    input.learning_path_id,
+                trigger_type:
+                    input.trigger_type,
+                elapsed_ms:
+                    Date.now() -
+                    simulationStartedAt,
+                simulated_cycle_count:
+                    roadmapSimulation.cycle_count,
+                stop_reason:
+                    roadmapSimulation.stop_reason,
+                planned_final_score:
+                    roadmapSimulation
+                        .planned_final_score,
+            }
+        );
+
+        if (!roadmapSimulation.first_decision) {
+            throw new Error(
+                `Không thể tạo cycle đầu từ simulation: ${roadmapSimulation.stop_reason}.`
+            );
+        }
+        decision = roadmapSimulation.first_decision;
+    } else {
+        decision = selectBestSkillRoiOpportunity(planningContext);
+    }
+
     if (decision.status !== "selected") {
+        const rejectionSummary = decision.candidates.reduce<
+            Record<string, number>
+        >((summary, candidate) => {
+            const reason = candidate.rejection_reason ?? "eligible";
+            summary[reason] = (summary[reason] ?? 0) + 1;
+            return summary;
+        }, {});
+
+        logLearningPathV2DebugSafe("skill_roi.no_eligible_skill", {
+            stage: "skill_roi",
+            user_id: input.user_id,
+            learning_path_id: input.learning_path_id,
+            trigger_type: input.trigger_type,
+
+            evaluated_skill_count: decision.evaluated_skill_count,
+            rejection_summary: rejectionSummary,
+
+            candidate_samples: decision.candidates
+                .filter((candidate) => candidate.selected_units.length > 0)
+                .slice(0, 10)
+                .map((candidate) => ({
+                    skill_key: candidate.skill_key,
+                    part_type: candidate.part_type,
+                    part_ability: candidate.part_ability,
+                    current_ability: candidate.current_ability,
+                    available_unit_count: candidate.available_unit_count,
+                    selected_unit_ids: candidate.selected_units.map(
+                        (unit) => unit.lesson_manager_id
+                    ),
+                    selected_unit_count: candidate.selected_units.length,
+                    rejection_reason: candidate.rejection_reason,
+                })),
+        });
+
         throw new NoEligibleSkillPackageError(decision);
     }
 
-    const lessonManagerById = await loadSelectedLessonManagers(
-        decision.selected_units
-    );
+    const unitsToLoad = roadmapSimulation
+        ? roadmapSimulation.cycles.flatMap((cycle) => cycle.selected_units)
+        : decision.selected_units;
+    const lessonManagerById = await loadSelectedLessonManagers(unitsToLoad);
     const cycleNo = getNextCycleNo(learningPath);
     const assessmentState = resolveAssessmentPlan({
         trigger_type: input.trigger_type,
         mini_tests_completed_since_last_full_test:
             learningPath.mini_tests_completed_since_last_full_test ?? 0,
     });
+    const firstSimulatedCycle = roadmapSimulation?.cycles[0];
+    if (
+        firstSimulatedCycle &&
+        firstSimulatedCycle.assessment_type !== assessmentState.assessment.type
+    ) {
+        throw new Error("Assessment của simulated cycle đầu không khớp runtime cadence.");
+    }
     const plan = buildCyclePlan({
         decision,
         assessment: assessmentState.assessment,
@@ -423,11 +680,14 @@ export const createSkillFocusedCycle = async (
         focus_part_type: decision.focus_part_type,
     });
 
-    let strategyOption: ILearningPathStrategyOption | null = null;
+    let createdStrategyOption: ILearningPathStrategyOption | null = null;
+    let activeStrategyOption: ILearningPathStrategyOption | null = null;
 
-    // StrategyOption chỉ được tạo sau full test.
-    // Initial test và mini test vẫn tạo cycle trực tiếp từ Skill ROI decision.
-    if (input.trigger_type === "full_test_review") {
+    // Entry và Full test tạo StrategyOption từ roadmap simulation.
+    // Mini test chỉ tạo cycle thích nghi và tiếp tục liên kết với baseline đang selected.
+    if (input.trigger_type === "initial_generation" ||
+        input.trigger_type === "full_test_review"
+    ) {
         await LearningPathStrategyOption.updateMany(
             {
                 learning_path_id: learningPathObjectId,
@@ -437,7 +697,11 @@ export const createSkillFocusedCycle = async (
             { $set: { status: "expired" } }
         );
 
-        strategyOption = await createSelectedStrategyOption({
+        if (!roadmapSimulation) {
+            throw new Error("Thiếu roadmap simulation khi tạo StrategyOption.");
+        }
+
+        createdStrategyOption = await createSelectedStrategyOption({
             user_id: userObjectId,
             learning_path_id: learningPathObjectId,
             trigger_type: input.trigger_type,
@@ -445,9 +709,17 @@ export const createSkillFocusedCycle = async (
             source_user_test_id: sourceUserTestId,
             source_week_study_id: sourceWeekStudyId,
             decision,
+            roadmapSimulation,
             lessonManagerById,
             now,
         });
+        activeStrategyOption = createdStrategyOption;
+    } else {
+        activeStrategyOption = await LearningPathStrategyOption.findOne({
+            learning_path_id: learningPathObjectId,
+            user_id: userObjectId,
+            status: "selected",
+        }).sort({ selected_at: -1, created_at: -1 });
     }
 
     const weekStudy = await WeekStudy.create({
@@ -471,7 +743,7 @@ export const createSkillFocusedCycle = async (
         cycle_mode: "main_learning",
         expected_skill_gain: decision.expected_skill_gain,
         expected_roi_per_hour: decision.expected_roi_per_hour,
-        learning_path_strategy_option_id: strategyOption?._id ?? null,
+        learning_path_strategy_option_id: activeStrategyOption?._id ?? null,
         assessment_type: assessmentState.assessment.type,
         assessment_estimated_minutes:
             assessmentState.assessment.estimated_minutes,
@@ -503,12 +775,32 @@ export const createSkillFocusedCycle = async (
         `Skill ${decision.primary_focus_skill_key} có package ROI cao nhất.`,
         `Expected gain: ${decision.expected_skill_gain}.`,
         `Expected ROI/giờ: ${decision.expected_roi_per_hour}.`,
+        `Projected Part ability: ${decision.projected_part_ability_before} → ${decision.projected_part_ability_after}.`,
+        `Ability-based TOEIC score gain proxy: ${decision.projected_score_gain}.`,
     ];
+    const topCandidateSummaries = [...decision.candidates]
+        .filter((candidate) => !candidate.rejection_reason)
+        .sort(
+            (left, right) =>
+                right.expected_roi_per_hour -
+                left.expected_roi_per_hour
+        )
+        .slice(0, 10)
+        .map((candidate) => ({
+            skill_key: candidate.skill_key,
+            part_type: candidate.part_type,
+            current_ability: candidate.current_ability,
+            expected_skill_gain: candidate.expected_skill_gain,
+            expected_roi_per_hour: candidate.expected_roi_per_hour,
+            selected_unit_ids: candidate.selected_units.map(
+                (unit) => unit.lesson_manager_id
+            ),
+        }));
 
     await createSchedulerDecisionLog({
         user_id: userObjectId,
         learning_path_id: learningPathObjectId,
-        learning_path_strategy_option_id: strategyOption?._id ?? null,
+        learning_path_strategy_option_id: activeStrategyOption?._id ?? null,
         source_week_id: sourceWeekStudyId,
         generated_week_id: weekStudy._id,
         trigger_type: input.trigger_type,
@@ -522,7 +814,8 @@ export const createSkillFocusedCycle = async (
             current_score: input.current_score,
             target_score: learningPath.target_score,
             weekly_available_minutes:
-                decision.estimated_learning_minutes,
+                (learningPath.time_per_day ?? 0) *
+                (learningPath.days_per_week ?? 0),
             test_type:
                 input.trigger_type === "initial_generation"
                     ? "entry"
@@ -535,8 +828,24 @@ export const createSkillFocusedCycle = async (
                 policy: planningContext.policy,
                 evaluated_skill_count: decision.evaluated_skill_count,
                 eligible_skill_count: decision.eligible_skill_count,
-                candidates: decision.candidates,
+                top_candidates: topCandidateSummaries,
                 assessment_type: assessmentState.assessment.type,
+                selected_projection: {
+                    skill_ability_before:
+                        decision.projected_skill_ability_before,
+
+                    skill_ability_after:
+                        decision.projected_skill_ability_after,
+
+                    part_ability_before:
+                        decision.projected_part_ability_before,
+
+                    part_ability_after:
+                        decision.projected_part_ability_after,
+
+                    ability_based_score_gain_proxy:
+                        decision.projected_score_gain,
+                },
             },
         },
         selected_lesson_manager_ids: decision.selected_units.map(
@@ -569,9 +878,10 @@ export const createSkillFocusedCycle = async (
         status: "cycle_created",
         decision,
         plan,
-        strategy_option: strategyOption,
+        strategy_option: createdStrategyOption,
         week_study: dayStudyResult.week_study,
         day_studies: dayStudyResult.day_studies,
         assessment_result: assessmentResult,
+        roadmap_simulation: roadmapSimulation,
     };
 };

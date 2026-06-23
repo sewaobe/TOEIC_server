@@ -61,11 +61,16 @@ export type SkillRoiUnitResultV3 = {
   expected_skill_gain: number;
   roi_per_hour: number;
   reason: string;
+
+
+  projected_skill_ability_before?: number;
+  projected_skill_ability_after?: number;
 };
 
 export type SkillRoiCandidateRejectionReasonV3 =
   | "skill_not_in_taxonomy"
   | "missing_part_ability"
+  | "skill_saturated"
   | "no_matching_lesson_manager"
   | "no_reachable_lesson_manager"
   | "insufficient_learning_package";
@@ -85,26 +90,43 @@ export type SkillRoiCandidateV3 = {
   expected_roi_per_hour: number;
   available_unit_count: number;
   rejection_reason?: SkillRoiCandidateRejectionReasonV3;
+
+  projected_skill_ability_before: number;
+  projected_skill_ability_after: number;
+
+  projected_part_ability_before: number;
+  projected_part_ability_after: number;
+
+  /**
+   * Số điểm TOEIC tổng dự kiến tăng thêm do package này.
+   * Đây là projected delta, không phải điểm thi chính thức.
+   */
+  projected_score_gain: number;
 };
 
 export type SkillRoiDecisionV3 =
   | {
-      status: "selected";
-      evaluated_skill_count: number;
-      eligible_skill_count: number;
-      primary_focus_skill_key: string;
-      focus_part_type: number;
-      covered_skill_keys: string[];
-      selected_units: SkillRoiUnitResultV3[];
-      estimated_learning_minutes: number;
-      expected_skill_gain: number;
-      expected_roi_per_hour: number;
-      candidates: SkillRoiCandidateV3[];
-    }
+    status: "selected";
+    evaluated_skill_count: number;
+    eligible_skill_count: number;
+    primary_focus_skill_key: string;
+    focus_part_type: number;
+    covered_skill_keys: string[];
+    selected_units: SkillRoiUnitResultV3[];
+    estimated_learning_minutes: number;
+    expected_skill_gain: number;
+    expected_roi_per_hour: number;
+    candidates: SkillRoiCandidateV3[];
+    projected_skill_ability_before: number;
+    projected_skill_ability_after: number;
+    projected_part_ability_before: number;
+    projected_part_ability_after: number;
+    projected_score_gain: number;
+  }
   | {
-      status: "no_eligible_skill";
-      evaluated_skill_count: number;
-      eligible_skill_count: 0;
-      candidates: SkillRoiCandidateV3[];
-      reason: string;
-    };
+    status: "no_eligible_skill";
+    evaluated_skill_count: number;
+    eligible_skill_count: 0;
+    candidates: SkillRoiCandidateV3[];
+    reason: string;
+  };

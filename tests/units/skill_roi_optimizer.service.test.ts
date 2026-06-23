@@ -67,6 +67,15 @@ describe("skill_roi_optimizer", () => {
       "unit-2",
     ]);
     expect(result.covered_skill_keys).toEqual(["part5_adjective"]);
+    expect(result.projected_part_ability_before).toBe(0.4);
+    expect(result.projected_part_ability_after).toBe(0.420865);
+    expect(result.projected_score_gain).toBe(3.067155);
+
+    expect(result.candidates[0]).toMatchObject({
+      projected_part_ability_before: 0.4,
+      projected_part_ability_after: 0.420865,
+      projected_score_gain: 3.067155,
+    });
   });
 
   it("giữ package một unit và gain để debug nhưng không cho cạnh tranh", () => {
@@ -86,6 +95,9 @@ describe("skill_roi_optimizer", () => {
     ).toEqual(["unit-1"]);
     expect(result.candidates[0].expected_skill_gain).toBeGreaterThan(0);
     expect(result.candidates[0].expected_roi_per_hour).toBe(0);
+    expect(result.candidates[0].projected_part_ability_before).toBe(0.4);
+    expect(result.candidates[0].projected_part_ability_after).toBe(0.4);
+    expect(result.candidates[0].projected_score_gain).toBe(0);
   });
 
   it("không loại skill ability cao nếu package vẫn hợp lệ", () => {

@@ -112,6 +112,51 @@ export interface ILearningPathStrategyPartRoadmap {
   units: ILearningPathStrategyRoadmapUnit[];
 }
 
+export type LearningPathRoadmapStopReason =
+  | "target_reached"
+  | "time_exhausted"
+  | "no_eligible_skill"
+  | "no_positive_gain"
+  | "max_cycle_count_reached";
+
+export interface ILearningPathStrategySimulatedCycle {
+  cycle_no: number;
+  primary_focus_skill_key: string;
+  focus_part_type: PartType;
+  covered_skill_keys: string[];
+  selected_units: ILearningPathStrategyRoadmapUnit[];
+  projected_skill_ability_before: number;
+  projected_skill_ability_after: number;
+  projected_part_ability_before: number;
+  projected_part_ability_after: number;
+  planned_score_before: number;
+  planned_score_after: number;
+  planned_score_gain: number;
+  ability_based_score_gain_proxy: number;
+  expected_skill_gain: number;
+  expected_roi_per_hour: number;
+  estimated_learning_minutes: number;
+  assessment_type: "mini_test" | "full_test";
+  assessment_estimated_minutes: number;
+  total_cycle_minutes: number;
+  planned_full_test_score?: number;
+}
+
+export interface ILearningPathStrategyRoadmapSimulation {
+  anchor_score: number;
+  target_score: number;
+  required_score_gain_per_hour: number | null;
+  planned_final_score: number;
+  reaches_target: boolean;
+  total_learning_minutes: number;
+  total_assessment_minutes: number;
+  total_used_minutes: number;
+  remaining_minutes: number;
+  cycle_count: number;
+  stop_reason: LearningPathRoadmapStopReason;
+  cycles: ILearningPathStrategySimulatedCycle[];
+}
+
 export interface ILearningPathStrategyOption extends Document {
   _id: Types.ObjectId;
 
@@ -168,6 +213,8 @@ export interface ILearningPathStrategyOption extends Document {
    * Đây là dự báo dài hạn, không phải lịch học cố định.
    */
   part_roadmaps: ILearningPathStrategyPartRoadmap[];
+
+  roadmap_simulation?: ILearningPathStrategyRoadmapSimulation;
 
   /**
    * Các lý do tổng quan dùng để giải thích strategy.
@@ -316,6 +363,60 @@ const LearningPathStrategyPartRoadmapSchema =
     }
   );
 
+const LearningPathStrategySimulatedCycleSchema =
+  new Schema<ILearningPathStrategySimulatedCycle>(
+    {
+      cycle_no: { type: Number, required: true, min: 1 },
+      primary_focus_skill_key: { type: String, required: true },
+      focus_part_type: {
+        type: Number,
+        enum: Object.values(PartType).filter((value) => typeof value === "number"),
+        required: true,
+      },
+      covered_skill_keys: { type: [String], default: [] },
+      selected_units: { type: [LearningPathStrategyRoadmapUnitSchema], default: [] },
+      projected_skill_ability_before: { type: Number, required: true, min: 0, max: 1 },
+      projected_skill_ability_after: { type: Number, required: true, min: 0, max: 1 },
+      projected_part_ability_before: { type: Number, required: true, min: 0, max: 1 },
+      projected_part_ability_after: { type: Number, required: true, min: 0, max: 1 },
+      planned_score_before: { type: Number, required: true, min: 0, max: 990 },
+      planned_score_after: { type: Number, required: true, min: 0, max: 990 },
+      planned_score_gain: { type: Number, required: true, min: 0 },
+      ability_based_score_gain_proxy: { type: Number, required: true, min: 0 },
+      expected_skill_gain: { type: Number, required: true, min: 0 },
+      expected_roi_per_hour: { type: Number, required: true, min: 0 },
+      estimated_learning_minutes: { type: Number, required: true, min: 0 },
+      assessment_type: { type: String, enum: ["mini_test", "full_test"], required: true },
+      assessment_estimated_minutes: { type: Number, required: true, min: 0 },
+      total_cycle_minutes: { type: Number, required: true, min: 0 },
+      planned_full_test_score: { type: Number, min: 0, max: 990 },
+    },
+    { _id: false }
+  );
+
+const LearningPathStrategyRoadmapSimulationSchema =
+  new Schema<ILearningPathStrategyRoadmapSimulation>(
+    {
+      anchor_score: { type: Number, required: true, min: 0, max: 990 },
+      target_score: { type: Number, required: true, min: 0, max: 990 },
+      required_score_gain_per_hour: { type: Number, default: null, min: 0 },
+      planned_final_score: { type: Number, required: true, min: 0, max: 990 },
+      reaches_target: { type: Boolean, required: true },
+      total_learning_minutes: { type: Number, required: true, min: 0 },
+      total_assessment_minutes: { type: Number, required: true, min: 0 },
+      total_used_minutes: { type: Number, required: true, min: 0 },
+      remaining_minutes: { type: Number, required: true, min: 0 },
+      cycle_count: { type: Number, required: true, min: 0 },
+      stop_reason: {
+        type: String,
+        enum: ["target_reached", "time_exhausted", "no_eligible_skill", "no_positive_gain", "max_cycle_count_reached"],
+        required: true,
+      },
+      cycles: { type: [LearningPathStrategySimulatedCycleSchema], default: [] },
+    },
+    { _id: false }
+  );
+
 const LearningPathStrategyOptionSchema =
   new Schema<ILearningPathStrategyOption>(
     {
@@ -439,6 +540,11 @@ const LearningPathStrategyOptionSchema =
       part_roadmaps: {
         type: [LearningPathStrategyPartRoadmapSchema],
         default: [],
+      },
+
+      roadmap_simulation: {
+        type: LearningPathStrategyRoadmapSimulationSchema,
+        default: undefined,
       },
 
       summary_reasons: {
