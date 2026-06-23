@@ -25,6 +25,7 @@ import type {
 import { getToeicSkillLabelVi } from "../../utils/toeic_skill.util";
 import {
     buildSkillRoiPlanningContext,
+    DEFAULT_SKILL_ROI_POLICY_V3,
     selectBestSkillRoiOpportunity,
 } from "./skill_roi_optimizer.service";
 import {
@@ -48,12 +49,20 @@ const MINI_TEST_ESTIMATED_MINUTES = 60;
 const FULL_TEST_ESTIMATED_MINUTES = 120;
 const FULL_TEST_AFTER_MINI_TEST_COUNT = 3;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_CONSECUTIVE_REMEDIATION_CYCLES = 2;
+
+const REMEDIATION_SKILL_ROI_POLICY_V3 = {
+    ...DEFAULT_SKILL_ROI_POLICY_V3,
+    min_lesson_manager_count: 1,
+    max_lesson_manager_count: 2,
+    max_learning_minutes: 120,
+};
 
 /**
  * StrategyOption chỉ có hiệu lực đến Full test kế tiếp.
  *
- * Ba cycle đầu kết thúc bằng mini test.
- * Cycle thứ tư kết thúc bằng full test và sẽ tạo lại roadmap
+ * Ba mini test của main learning sẽ dẫn đến full test tiếp theo.
+ * Mini test của remediation chỉ dùng để đo lại focus skill, không tính cadence.
  * từ kết quả ability thực tế.
  */
 
@@ -66,6 +75,18 @@ type SelectedSkillRoiDecisionV3 = Extract<
     SkillRoiDecisionV3,
     { status: "selected" }
 >;
+
+type SkillFocusedCycleIntent = {
+    cycle_mode: IWeekStudy["cycle_mode"];
+    forced_skill_key?: string;
+    forced_part_type?: number;
+    excluded_skill_key?: string;
+    excluded_part_type?: number;
+    remediation_attempt?: 1 | 2;
+    consecutive_remediation_count: number;
+    remediation_limit_reached: boolean;
+    source_cycle_mode?: IWeekStudy["cycle_mode"];
+};
 
 export type CreateSkillFocusedCycleInput = {
     user_id: string;
@@ -166,6 +187,8 @@ const calculateRoadmapAvailableMinutes = (input: {
 const resolveAssessmentPlan = (input: {
     trigger_type: SkillFocusedCycleTriggerV3;
     mini_tests_completed_since_last_full_test: number;
+    cycle_mode: IWeekStudy["cycle_mode"];
+    completed_cycle_mode?: IWeekStudy["cycle_mode"];
 }): {
     assessment: LearningPathAssessmentPlanV3;
     next_mini_test_count: number;
@@ -181,10 +204,26 @@ const resolveAssessmentPlan = (input: {
         };
     }
 
+    // Only assessments from main learning advance the 3-mini-test cadence.
+    // Remediation mini tests are diagnostic and must not bring a full test closer.
+    const completedMainLearningMiniTest =
+        input.trigger_type === "mini_test_completion" &&
+        input.completed_cycle_mode === "main_learning";
     const nextMiniTestCount =
-        input.trigger_type === "mini_test_completion"
+        completedMainLearningMiniTest
             ? input.mini_tests_completed_since_last_full_test + 1
             : input.mini_tests_completed_since_last_full_test;
+
+    // A remediation cycle must always end in a focused mini test.
+    if (input.cycle_mode === "remediation") {
+        return {
+            assessment: {
+                type: "mini_test",
+                estimated_minutes: MINI_TEST_ESTIMATED_MINUTES,
+            },
+            next_mini_test_count: nextMiniTestCount,
+        };
+    }
 
     // Sau khi user đã hoàn thành đủ ba mini test, cycle kế tiếp kết thúc bằng full test.
     if (nextMiniTestCount >= FULL_TEST_AFTER_MINI_TEST_COUNT) {
@@ -203,6 +242,74 @@ const resolveAssessmentPlan = (input: {
             estimated_minutes: MINI_TEST_ESTIMATED_MINUTES,
         },
         next_mini_test_count: nextMiniTestCount,
+    };
+};
+
+const resolveSkillFocusedCycleIntent = async (input: {
+    trigger_type: SkillFocusedCycleTriggerV3;
+    scenario: LearningPathScenarioV2;
+    source_week_study_id?: Types.ObjectId;
+    learning_path_week_ids: Types.ObjectId[];
+}): Promise<SkillFocusedCycleIntent> => {
+    const defaultIntent: SkillFocusedCycleIntent = {
+        cycle_mode: "main_learning",
+        consecutive_remediation_count: 0,
+        remediation_limit_reached: false,
+    };
+
+    if (
+        input.trigger_type !== "mini_test_completion" ||
+        input.scenario !== "PLATEAU" ||
+        !input.source_week_study_id
+    ) {
+        return defaultIntent;
+    }
+
+    const sourceWeek = await WeekStudy.findById(input.source_week_study_id)
+        .select("no cycle_mode primary_focus_skill_key focus_part_type")
+        .lean();
+    if (!sourceWeek) {
+        throw new Error("Không tìm thấy source WeekStudy để xử lý remediation.");
+    }
+
+    const recentWeeks = await WeekStudy.find({
+        _id: { $in: input.learning_path_week_ids },
+        no: { $lte: sourceWeek.no },
+    })
+        .select("no cycle_mode primary_focus_skill_key focus_part_type")
+        .sort({ no: -1 })
+        .limit(MAX_CONSECUTIVE_REMEDIATION_CYCLES + 1)
+        .lean();
+
+    let consecutiveRemediationCount = 0;
+    for (const week of recentWeeks) {
+        const isSameRemediationChain =
+            week.cycle_mode === "remediation" &&
+            week.primary_focus_skill_key === sourceWeek.primary_focus_skill_key &&
+            week.focus_part_type === sourceWeek.focus_part_type;
+        if (!isSameRemediationChain) break;
+        consecutiveRemediationCount += 1;
+    }
+
+    if (consecutiveRemediationCount >= MAX_CONSECUTIVE_REMEDIATION_CYCLES) {
+        return {
+            cycle_mode: "main_learning",
+            excluded_skill_key: sourceWeek.primary_focus_skill_key,
+            excluded_part_type: sourceWeek.focus_part_type,
+            consecutive_remediation_count: consecutiveRemediationCount,
+            remediation_limit_reached: true,
+            source_cycle_mode: sourceWeek.cycle_mode,
+        };
+    }
+
+    return {
+        cycle_mode: "remediation",
+        forced_skill_key: sourceWeek.primary_focus_skill_key,
+        forced_part_type: sourceWeek.focus_part_type,
+        remediation_attempt: (consecutiveRemediationCount + 1) as 1 | 2,
+        consecutive_remediation_count: consecutiveRemediationCount,
+        remediation_limit_reached: false,
+        source_cycle_mode: sourceWeek.cycle_mode,
     };
 };
 
@@ -493,10 +600,43 @@ export const createSkillFocusedCycle = async (
         throw new Error("Không tìm thấy LearningPath đang hoạt động.");
     }
 
+    const cycleIntent = await resolveSkillFocusedCycleIntent({
+        trigger_type: input.trigger_type,
+        scenario: input.scenario,
+        source_week_study_id: sourceWeekStudyId,
+        learning_path_week_ids: learningPath.week_study_ids ?? [],
+    });
+    const sourceWeekForCadence = !cycleIntent.source_cycle_mode && sourceWeekStudyId
+        ? await WeekStudy.findById(sourceWeekStudyId).select("cycle_mode").lean()
+        : null;
+
     const planningContext = await buildSkillRoiPlanningContext({
         user_id: input.user_id,
         learning_path_id: input.learning_path_id,
+        policy:
+            cycleIntent.cycle_mode === "remediation"
+                ? REMEDIATION_SKILL_ROI_POLICY_V3
+                : undefined,
     });
+    const decisionContext = {
+        ...planningContext,
+        skill_abilities:
+            cycleIntent.cycle_mode === "remediation"
+                ? planningContext.skill_abilities.filter(
+                    (skill) =>
+                        skill.skill_key === cycleIntent.forced_skill_key &&
+                        skill.part_type === cycleIntent.forced_part_type
+                )
+                : cycleIntent.remediation_limit_reached
+                    ? planningContext.skill_abilities.filter(
+                        (skill) =>
+                            !(
+                                skill.skill_key === cycleIntent.excluded_skill_key &&
+                                skill.part_type === cycleIntent.excluded_part_type
+                            )
+                    )
+                    : planningContext.skill_abilities,
+    };
     const shouldSimulateRoadmap =
         input.trigger_type === "initial_generation" ||
         input.trigger_type === "full_test_review";
@@ -605,7 +745,7 @@ export const createSkillFocusedCycle = async (
         }
         decision = roadmapSimulation.first_decision;
     } else {
-        decision = selectBestSkillRoiOpportunity(planningContext);
+        decision = selectBestSkillRoiOpportunity(decisionContext);
     }
 
     if (decision.status !== "selected") {
@@ -643,6 +783,31 @@ export const createSkillFocusedCycle = async (
                 })),
         });
 
+        await createSchedulerDecisionLog({
+            user_id: userObjectId,
+            learning_path_id: learningPathObjectId,
+            source_week_id: sourceWeekStudyId,
+            trigger_type: input.trigger_type,
+            scheduler_version: "learning-path-v3-skill-roi",
+            strategy: "maximize_skill_roi",
+            scenario: input.scenario,
+            status: "failed",
+            reasons: ["Không còn package Skill ROI hợp lệ sau khi áp dụng cycle intent."],
+            warnings: cycleIntent.remediation_limit_reached
+                ? [`REMEDIATION_LIMIT_REACHED:${cycleIntent.excluded_skill_key}`]
+                : [],
+            input_snapshot: {
+                part_abilities: planningContext.part_abilities,
+                skill_abilities: decisionContext.skill_abilities,
+                extra: {
+                    cycle_mode: cycleIntent.cycle_mode,
+                    remediation_limit_reached: cycleIntent.remediation_limit_reached,
+                    excluded_skill_key: cycleIntent.excluded_skill_key ?? null,
+                },
+            },
+            error_message: decision.reason,
+            created_by: userObjectId,
+        });
         throw new NoEligibleSkillPackageError(decision);
     }
 
@@ -655,6 +820,9 @@ export const createSkillFocusedCycle = async (
         trigger_type: input.trigger_type,
         mini_tests_completed_since_last_full_test:
             learningPath.mini_tests_completed_since_last_full_test ?? 0,
+        cycle_mode: cycleIntent.cycle_mode,
+        completed_cycle_mode:
+            cycleIntent.source_cycle_mode ?? sourceWeekForCadence?.cycle_mode,
     });
     const firstSimulatedCycle = roadmapSimulation?.cycles[0];
     if (
@@ -722,9 +890,15 @@ export const createSkillFocusedCycle = async (
         }).sort({ selected_at: -1, created_at: -1 });
     }
 
+    const cycleDescription =
+        cycleIntent.cycle_mode === "remediation"
+            ? `Cycle ${cycleNo}: remediation ${decision.primary_focus_skill_key} lần ${cycleIntent.remediation_attempt}/2`
+            : cycleIntent.remediation_limit_reached
+                ? `Cycle ${cycleNo}: chuyển từ ${cycleIntent.excluded_skill_key} sang ${decision.primary_focus_skill_key}`
+                : `Cycle ${cycleNo}: tập trung ${decision.primary_focus_skill_key}`;
     const weekStudy = await WeekStudy.create({
         no: cycleNo,
-        description: `Cycle ${cycleNo}: tập trung ${decision.primary_focus_skill_key}`,
+        description: cycleDescription,
         status: WeekStudyStatus.IN_PROGRESS,
         accuracy_overall: 0,
         days: [],
@@ -740,7 +914,7 @@ export const createSkillFocusedCycle = async (
             decision.primary_focus_skill_key,
         covered_skill_keys: decision.covered_skill_keys,
         focus_part_type: decision.focus_part_type,
-        cycle_mode: "main_learning",
+        cycle_mode: cycleIntent.cycle_mode,
         expected_skill_gain: decision.expected_skill_gain,
         expected_roi_per_hour: decision.expected_roi_per_hour,
         learning_path_strategy_option_id: activeStrategyOption?._id ?? null,
@@ -771,13 +945,29 @@ export const createSkillFocusedCycle = async (
     await learningPath.save();
 
     // SchedulerDecisionLog được tạo sau mọi test, không phụ thuộc vào việc có StrategyOption hay không.
-    const decisionReasons = [
-        `Skill ${decision.primary_focus_skill_key} có package ROI cao nhất.`,
-        `Expected gain: ${decision.expected_skill_gain}.`,
-        `Expected ROI/giờ: ${decision.expected_roi_per_hour}.`,
-        `Projected Part ability: ${decision.projected_part_ability_before} → ${decision.projected_part_ability_after}.`,
-        `Ability-based TOEIC score gain proxy: ${decision.projected_score_gain}.`,
-    ];
+    const decisionReasons =
+        cycleIntent.cycle_mode === "remediation"
+            ? [
+                `Skill ${decision.primary_focus_skill_key} không đạt ngưỡng tiến bộ.`,
+                `Tạo remediation cycle lần ${cycleIntent.remediation_attempt}/2.`,
+                "Giữ nguyên primary skill và chọn package ROI cao nhất trong skill này.",
+                `Expected gain: ${decision.expected_skill_gain}.`,
+                `Expected ROI/giờ: ${decision.expected_roi_per_hour}.`,
+            ]
+            : cycleIntent.remediation_limit_reached
+                ? [
+                    `Skill ${cycleIntent.excluded_skill_key} vẫn PLATEAU sau 2 remediation cycle liên tiếp.`,
+                    "Đã loại skill này khỏi ROI selection hiện tại.",
+                    `Chuyển sang skill ${decision.primary_focus_skill_key}.`,
+                    `Expected ROI/giờ mới: ${decision.expected_roi_per_hour}.`,
+                ]
+                : [
+                    `Skill ${decision.primary_focus_skill_key} có package ROI cao nhất.`,
+                    `Expected gain: ${decision.expected_skill_gain}.`,
+                    `Expected ROI/giờ: ${decision.expected_roi_per_hour}.`,
+                    `Projected Part ability: ${decision.projected_part_ability_before} → ${decision.projected_part_ability_after}.`,
+                    `Ability-based TOEIC score gain proxy: ${decision.projected_score_gain}.`,
+                ];
     const topCandidateSummaries = [...decision.candidates]
         .filter((candidate) => !candidate.rejection_reason)
         .sort(
@@ -809,7 +999,9 @@ export const createSkillFocusedCycle = async (
         scenario: input.scenario,
         status: "applied",
         reasons: decisionReasons,
-        warnings: [],
+        warnings: cycleIntent.remediation_limit_reached
+            ? [`REMEDIATION_LIMIT_REACHED:${cycleIntent.excluded_skill_key}`]
+            : [],
         input_snapshot: {
             current_score: input.current_score,
             target_score: learningPath.target_score,
@@ -823,9 +1015,17 @@ export const createSkillFocusedCycle = async (
                         ? "full"
                         : "mini",
             part_abilities: planningContext.part_abilities,
-            skill_abilities: planningContext.skill_abilities,
+            skill_abilities: decisionContext.skill_abilities,
             extra: {
                 policy: planningContext.policy,
+                cycle_mode: cycleIntent.cycle_mode,
+                remediation_attempt: cycleIntent.remediation_attempt ?? null,
+                consecutive_remediation_count:
+                    cycleIntent.consecutive_remediation_count,
+                remediation_limit_reached:
+                    cycleIntent.remediation_limit_reached,
+                forced_skill_key: cycleIntent.forced_skill_key ?? null,
+                excluded_skill_key: cycleIntent.excluded_skill_key ?? null,
                 evaluated_skill_count: decision.evaluated_skill_count,
                 eligible_skill_count: decision.eligible_skill_count,
                 top_candidates: topCandidateSummaries,
