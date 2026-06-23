@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   getCurrentLearningPathCycleV2Controller,
   getLearningPathV2GenerationContextController,
+  getLearningPathV2NodeDetailController,
   getLearningPathV2OverviewController,
   getLearningPathV2SkillMapController,
   getLearningPathV2StrategyOptionPreviewController,
@@ -42,6 +43,11 @@ router.get(
   getCurrentLearningPathCycleV2Controller
 );
 router.get("/:learningPathId/overview", verifyAccessToken, getLearningPathV2OverviewController);
+router.get(
+  "/:learningPathId/nodes/:lessonManagerId/detail",
+  verifyAccessToken,
+  getLearningPathV2NodeDetailController
+);
 router.get(
   "/:learningPathId/skill-map",
   verifyAccessToken,

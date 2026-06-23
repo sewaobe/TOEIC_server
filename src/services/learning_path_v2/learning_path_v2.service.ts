@@ -58,6 +58,7 @@ import { emitToUser } from "../../socket/emitToUser.socket";
 import { DayStudy, WeekStudy } from "../../models";
 import type { IDayStudy } from "../../models/day_study.model";
 import type { IWeekStudy } from "../../models/week_study.model";
+import { SchedulerDecisionLog } from "../../models/scheduler_decision_log.model";
 import { WeekStudyStatus } from "../../models/enums/WeekStudyStatus";
 import { SessionType } from "../../models/enums/SessionType";
 import { getToeicSkillLabelVi } from "../../utils/toeic_skill.util";
@@ -1543,6 +1544,182 @@ export const getLearningPathV2Overview = async (
       includeProjection: !requiresStrategySelection,
       requiresStrategySelection,
     }),
+  };
+};
+
+type LearningPathNodeDetailStatus = "completed" | "in_cycle" | "current" | "locked";
+
+const getNodeDetailStatusLabel = (status: LearningPathNodeDetailStatus) => {
+  if (status === "completed") return "Đã hoàn thành";
+  if (status === "current") return "Đang học";
+  if (status === "in_cycle") return "Trong cycle này";
+  return "Dự kiến";
+};
+
+const getNodeDetailActivityLabel = (kind: string) => {
+  const labels: Record<string, string> = {
+    lesson: "Bài học lý thuyết",
+    vocabulary: "Flashcard từ vựng",
+    flash_card: "Flashcard từ vựng",
+    dictation: "Luyện nghe chép chính tả",
+    shadowing: "Luyện shadowing",
+    quiz: "Quiz luyện tập",
+    mini_test: "Mini Test đánh giá",
+    full_test: "Full Test đánh giá",
+  };
+  return labels[kind] ?? "Hoạt động học tập";
+};
+
+const getNodeDetailActivityStatus = (status: WeekStudyStatus) => {
+  if (status === WeekStudyStatus.COMPLETED) return "completed" as const;
+  if (status === WeekStudyStatus.IN_PROGRESS) return "in_progress" as const;
+  if (status === WeekStudyStatus.LOCK) return "planned" as const;
+  return "upcoming" as const;
+};
+
+export const getLearningPathV2NodeDetail = async (input: {
+  user_id: string;
+  learning_path_id: string;
+  lesson_manager_id: string;
+}) => {
+  const learningPath = await loadActiveLearningPath({
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+  });
+  if (!Types.ObjectId.isValid(input.lesson_manager_id)) {
+    throw new Error("lessonManagerId không hợp lệ.");
+  }
+
+  const lessonManager = await LessonManager.findById(input.lesson_manager_id).lean<ILessonManager | null>();
+  if (!lessonManager) throw new Error("Không tìm thấy LessonManager.");
+
+  const weekStudies = await WeekStudy.find({
+    _id: { $in: learningPath.week_study_ids ?? [] },
+  }).lean<IWeekStudy[]>();
+  const weekStatusById = new Map(weekStudies.map((week) => [String(week._id), week.status]));
+  const dayStudies = await DayStudy.find({
+    week_id: { $in: weekStudies.map((week) => week._id) },
+  }).lean<IDayStudy[]>();
+  const lessonManagerId = String(lessonManager._id);
+  const matchingSessions = dayStudies.flatMap((day) =>
+    (day.sessions ?? [])
+      .filter((session) => getRoadmapLessonManagerIdFromSession(session) === lessonManagerId)
+      .map((session) => ({ day, session }))
+  );
+
+  const currentWeek = [...weekStudies]
+    .filter((week) => week.status === WeekStudyStatus.IN_PROGRESS)
+    .sort((a, b) => b.no - a.no)[0];
+  const hasCompletedSession = matchingSessions.some(({ day, session }) =>
+    weekStatusById.get(String(day.week_id)) === WeekStudyStatus.COMPLETED ||
+    day.status === WeekStudyStatus.COMPLETED ||
+    session.status === WeekStudyStatus.COMPLETED
+  );
+  const currentSession = matchingSessions.find(({ session }) => session.status === WeekStudyStatus.IN_PROGRESS);
+  const isInCurrentCycle = Boolean(
+    currentWeek && matchingSessions.some(({ day }) => String(day.week_id) === String(currentWeek._id))
+  );
+  const status: LearningPathNodeDetailStatus = hasCompletedSession
+    ? "completed"
+    : currentSession
+      ? "current"
+      : isInCurrentCycle
+        ? "in_cycle"
+        : "locked";
+
+  const decisionLog = await SchedulerDecisionLog.findOne({
+      learning_path_id: learningPath._id,
+      user_id: input.user_id,
+      $or: [
+        { selected_lesson_manager_ids: lessonManager._id },
+        ...(matchingSessions.length > 0
+          ? [{ generated_week_id: { $in: matchingSessions.map(({ day }) => day.week_id) } }]
+          : []),
+      ],
+    })
+    .sort({ created_at: -1 })
+    .lean();
+  const snapshot = decisionLog?.input_snapshot;
+  const partSnapshot = snapshot?.part_abilities?.find((part) => part.part_type === lessonManager.part_type);
+  const skillSnapshot = snapshot?.skill_abilities?.find((skill) =>
+    (lessonManager.target_tags ?? []).some((tag) => tag.includes(skill.skill_key))
+  );
+  const unitActivities = matchingSessions.flatMap(({ session }) => session.items ?? []);
+  const activitySource = unitActivities.length > 0
+    ? unitActivities
+    : (lessonManager.recommended_activity_order ?? []).map((activity) => ({
+      kind: activity.activity_type,
+      status: WeekStudyStatus.LOCK,
+      estimated_minutes: activity.estimated_minutes,
+      order: activity.order,
+    }));
+  const activities = activitySource
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    .map((activity, index) => ({
+      order: index + 1,
+      title: getNodeDetailActivityLabel(activity.kind),
+      type_label: getNodeDetailActivityLabel(activity.kind),
+      status: getNodeDetailActivityStatus(activity.status),
+      estimated_minutes: activity.estimated_minutes ?? 0,
+    }));
+  const reasons = [
+    ...(status === "locked" ? [{
+      type: "roadmap_projection",
+      title: "Bài này nằm trong roadmap dự kiến",
+      text: "Nội dung có thể được điều chỉnh sau các lần đánh giá tiếp theo.",
+      priority: 10,
+      evidence: [{ label: "Trạng thái", value: "Dự kiến" }],
+    }] : []),
+    ...(partSnapshot ? [{
+      type: "snapshot_weak_part",
+      title: `Part ${lessonManager.part_type} được ưu tiên khi tạo cycle`,
+      text: "Quyết định dựa trên snapshot năng lực tại thời điểm scheduler tạo cycle.",
+      priority: 20,
+      evidence: [{ label: "Năng lực", value: `${Math.round((partSnapshot.ability ?? 0) * 100)}%`, tone: partSnapshot.status === "weak" ? "warning" : "neutral" }],
+    }] : []),
+    ...(skillSnapshot ? [{
+      type: "snapshot_weak_skill",
+      title: `Skill ${skillSnapshot.skill_key} được đánh giá trong cycle`,
+      text: "Skill này xuất hiện trong snapshot scheduler của cycle đã chọn bài học.",
+      priority: 30,
+      evidence: [{ label: "Năng lực", value: `${Math.round((skillSnapshot.ability ?? 0) * 100)}%`, tone: skillSnapshot.status === "weak" ? "warning" : "neutral" }],
+    }] : []),
+    ...(lessonManager.score_band ? [{
+      type: "target_alignment",
+      title: "Phù hợp vùng điểm mục tiêu",
+      text: `Bài học thuộc band ${lessonManager.score_band.from}–${lessonManager.score_band.to}.`,
+      priority: 40,
+      evidence: [{ label: "Score band", value: `${lessonManager.score_band.from}–${lessonManager.score_band.to}` }],
+    }] : []),
+  ];
+
+  return {
+    lesson_manager_id: lessonManagerId,
+    title: lessonManager.title,
+    part_type: lessonManager.part_type,
+    skill_group: lessonManager.part_type <= 4 ? "Listening" : "Reading",
+    status,
+    unit_type: lessonManager.unit_type,
+    unit_type_label: lessonManager.unit_type,
+    node_role: lessonManager.node_role,
+    target_tags: lessonManager.target_tags ?? [],
+    short_tags: lessonManager.target_tags ?? [],
+    planned_minutes: lessonManager.planned_completion_time ?? 0,
+    score_band: lessonManager.score_band,
+    roadmap_context_label: status === "locked" ? "Roadmap dự kiến" : "Cycle học tập",
+    status_label: getNodeDetailStatusLabel(status),
+    explanation: {
+      source: "backend",
+      reasons: reasons.sort((a, b) => a.priority - b.priority),
+      adaptive_note: decisionLog?.reasons?.[0] ?? "Hệ thống sẽ cập nhật lộ trình sau mỗi lần đánh giá.",
+    },
+    activities,
+    primary_action: status === "current"
+      ? { label: "Tiếp tục học", enabled: true }
+      : status === "completed"
+        ? { label: "Xem lại bài", enabled: true }
+        : { label: "Đã hiểu", enabled: true },
+    debug_contract_note: "",
   };
 };
 
