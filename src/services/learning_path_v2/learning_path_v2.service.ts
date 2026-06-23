@@ -248,6 +248,8 @@ export const upsertLearningPathV2Setup = async (input: {
     description: "Lo trinh ca nhan hoa bang LearningPath v2",
     level: CERFLevel.B1,
     isActive: true,
+    status: "active",
+    reason: null,
     ...setupPayload,
     current_week: 1,
     week_study_ids: [],

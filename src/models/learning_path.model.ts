@@ -26,6 +26,17 @@ export interface ILearningPath extends Document {
   week_study_ids?: Types.ObjectId[];
   additional_week_studies?: Types.ObjectId[];
   feedbacks?: ILessonFeedback[];
+  /**
+   * Trạng thái nghiệp vụ của lộ trình. Không xóa document khi hết hạn để
+   * giữ lịch sử học và lý do kết thúc lộ trình.
+   */
+  status: "active" | "completed" | "expired";
+  /** Mã/lý do chuyển trạng thái, ví dụ: inactivity_over_14_days. */
+  reason?: string | null;
+  /**
+   * Legacy compatibility flag. Với lộ trình mới, giá trị này luôn đồng bộ
+   * với status === "active".
+   */
   isActive: boolean;
   created_at: Date;
   updated_at: Date;
@@ -104,6 +115,19 @@ const LearningPathSchema = new Schema<ILearningPath>({
   feedbacks: {
     type: [LessonFeedbackSchema],
     default: [],
+  },
+  status: {
+    type: String,
+    enum: ["active", "completed", "expired"],
+    default: "active",
+    required: true,
+    index: true,
+  },
+  reason: {
+    type: String,
+    default: null,
+    trim: true,
+    maxlength: 500,
   },
   isActive: { type: Boolean, default: false },
   created_at: { type: Date, default: Date.now },

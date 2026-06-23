@@ -581,6 +581,11 @@ export const createNextLearningPathCycle = async (
       strategy_option_id: selectedOption._id,
     });
 
+    learningPath.status = "completed";
+    learningPath.reason = "roadmap_completed";
+    learningPath.isActive = false;
+    await learningPath.save();
+
     return {
       status: "route_completed",
       plan,
@@ -610,6 +615,11 @@ export const createNextLearningPathCycle = async (
       status: "route_completed",
       strategy_option_id: selectedOption._id,
     });
+
+    learningPath.status = "completed";
+    learningPath.reason = "roadmap_completed";
+    learningPath.isActive = false;
+    await learningPath.save();
 
     return {
       status: "route_completed",

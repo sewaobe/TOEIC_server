@@ -649,6 +649,11 @@ export const createSkillFocusedCycle = async (
         }
 
         if (input.current_score >= (learningPath.target_score ?? 0)) {
+            learningPath.status = "completed";
+            learningPath.reason = "target_score_reached";
+            learningPath.isActive = false;
+            learningPath.updated_at = now;
+            await learningPath.save();
             throw new Error("Người học đã đạt target score, không cần tạo cycle mới.");
         }
 

@@ -825,6 +825,8 @@ export async function buildLearningPathFromGemini(
     description,
     level,
     isActive: true,
+    status: "active",
+    reason: null,
     week_study_ids: [],
     // Embed user-specific planning fields directly into LearningPath
     user_id: userObjectId,
@@ -1224,6 +1226,8 @@ export async function buildWeeklyLearningPath(
     time_per_day: timePerDayMinutes,
     days_per_week: daysPerWeek,
     isActive: true,
+    status: "active",
+    reason: null,
     created_at: new Date(),
     created_by: userObjectId,
     week_study_ids: [], // sẽ update sau
