@@ -1,5 +1,6 @@
 import { HuggingfaceServerEmbeddingFunction } from "@chroma-core/huggingface-server";
 import { ChromaClient } from "chromadb";
+import { withChromaTimeout } from "./chroma_timeout";
 
 /**
  * Truy vấn context liên quan đến câu hỏi
@@ -11,15 +12,21 @@ export async function retrieveContext(query: string, limit = 5) {
         url: "http://localhost:8080/embed",
     });
 
-    const collection = await client.getOrCreateCollection({
-        name: "toeic_questions",
-        embeddingFunction: embedder,
-    });
+    const collection = await withChromaTimeout(
+        client.getOrCreateCollection({
+            name: "toeic_questions",
+            embeddingFunction: embedder,
+        }),
+        "toeic_questions.collection"
+    );
 
-    const result = await collection.query({
-        queryTexts: [query],
-        nResults: limit,
-    });
+    const result = await withChromaTimeout(
+        collection.query({
+            queryTexts: [query],
+            nResults: limit,
+        }),
+        "toeic_questions.query"
+    );
 
     const docs = result.documents?.[0] || [];
     const metadatas = result.metadatas?.[0] || [];
@@ -39,15 +46,21 @@ export async function getContextById(questionId: string) {
     const embedder = new HuggingfaceServerEmbeddingFunction({
         url: "http://localhost:8080/embed",
     });
-    const collection = await client.getOrCreateCollection({
-        name: "toeic_questions",
-        embeddingFunction: embedder,
-    });
+    const collection = await withChromaTimeout(
+        client.getOrCreateCollection({
+            name: "toeic_questions",
+            embeddingFunction: embedder,
+        }),
+        "toeic_questions.collection"
+    );
 
-    const result = await collection.get({
-        where: { questionId },
-        include: ["documents", "metadatas"],
-    });
+    const result = await withChromaTimeout(
+        collection.get({
+            where: { questionId },
+            include: ["documents", "metadatas"],
+        }),
+        "toeic_questions.get"
+    );
 
     const docs = result.documents?.flat() || [];
 

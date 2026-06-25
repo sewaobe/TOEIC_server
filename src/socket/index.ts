@@ -33,7 +33,9 @@ export function initSocket(server: any) {
       const token = cookies["accessToken"];
       if (!token) {
         console.warn("Missing accessToken cookie — blocking connection");
-        return next(new Error("Authentication required"));
+        const error = new Error("AUTH_REQUIRED");
+        (error as any).data = { errorType: "AUTH_REQUIRED" };
+        return next(error);
       }
 
       const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET!) as { _id: string; fullname: string };
@@ -43,7 +45,9 @@ export function initSocket(server: any) {
       return next();
     } catch (err) {
       console.warn("Invalid or expired token — blocking connection");
-      return next(new Error("Invalid token"));
+      const error = new Error("AUTH_REQUIRED");
+      (error as any).data = { errorType: "AUTH_REQUIRED" };
+      return next(error);
     }
   });
 

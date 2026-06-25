@@ -296,11 +296,10 @@ export const getDemoTestTagAccuracyService = async (
 
 const mapAnswer = (ans: any, idx: number) => {
   const qid = ans.question_id?._id ?? ans.question_id;
-  const match = ans.question_id.name?.match(/Question\s*(\d+)/i);
 
   return {
     question_id: qid.toString(),
-    question_no: match ? Number(match[1]) : idx + 1,
+    question_no: idx + 1,
     selectedOption: ans.selectedOption,
     isCorrect: ans.isCorrect,
     correctAnswer: ans.question_id.correctAnswer,

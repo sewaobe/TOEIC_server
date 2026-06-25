@@ -9,6 +9,8 @@
     "export:activities": "ts-node src/scripts/export-activities.ts",
     "build": "tsc",
     "swagger:gen": "ts-node src/swagger-autogen.ts",
+    "chroma:seed-chat-intents": "ts-node src/scripts/seed_chat_intents_to_chroma.ts",
+    "chroma:check-chat-intents": "ts-node src/scripts/check_chat_intent_confusion.ts",
     "start:swagger": "npm run swagger:gen && nodemon --exec ts-node src/server.ts"
   },
   "keywords": [],

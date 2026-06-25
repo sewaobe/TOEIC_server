@@ -1,4 +1,5 @@
 import { getUserProgressCollection } from "../core/collections/progress";
+import { withChromaTimeout } from "./chroma_timeout";
 
 /**
  * Retrieve user progress vector/documents by user id.
@@ -7,17 +8,23 @@ import { getUserProgressCollection } from "../core/collections/progress";
  * @param k - Number of results to return
  */
 export async function retrieveProgress(userId: string, queryText?: string, k = 1) {
-  const collection = await getUserProgressCollection();
-
   try {
+    const collection = await withChromaTimeout(
+      getUserProgressCollection(),
+      "user_progress_vectors.collection"
+    );
+
     // If queryText provided, use semantic search with metadata filter
     if (queryText) {
-      const res = await collection.query({
-        queryTexts: [queryText],
-        nResults: k,
-        where: { user_id: userId },
-        include: ["documents", "metadatas"],
-      });
+      const res = await withChromaTimeout<any>(
+        collection.query({
+          queryTexts: [queryText],
+          nResults: k,
+          where: { user_id: userId },
+          include: ["documents", "metadatas"],
+        }),
+        "user_progress_vectors.query"
+      );
 
       const docs = res.documents?.[0] || [];
       const metadatas = res.metadatas?.[0] || [];
@@ -26,10 +33,13 @@ export async function retrieveProgress(userId: string, queryText?: string, k = 1
     }
 
     // Fallback: just fetch by metadata if no query text
-    const res = await collection.get({
-      where: { user_id: userId },
-      include: ["documents", "metadatas"],
-    });
+    const res = await withChromaTimeout<any>(
+      collection.get({
+        where: { user_id: userId },
+        include: ["documents", "metadatas"],
+      }),
+      "user_progress_vectors.get"
+    );
 
     const docs = res.documents?.flat() || [];
     const metadatas = res.metadatas?.flat() || [];
