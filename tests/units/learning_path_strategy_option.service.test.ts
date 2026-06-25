@@ -30,6 +30,7 @@ import {
   expirePendingStrategyOptions,
   getActiveLearningPathStrategyOption,
   getLearningPathStrategyOverview,
+  getLearningPathStrategyOptionPreview,
   getPendingStrategyOptions,
   selectLearningPathStrategyOption,
   selectLearningPathStrategyOptionForV2,
@@ -515,12 +516,16 @@ describe("learning path strategy option service", () => {
       trigger_type: "initial_generation",
       title: "Current recommended",
     });
+    const expired = createOption("balanced", {
+      status: "expired",
+      title: "Expired balanced",
+    });
     mockLearningPathStrategyOption.findOne.mockReturnValue(
       createFindSortChain(selected)
     );
     mockLearningPathStrategyOption.find
       .mockReturnValueOnce(createFindSortChain([]))
-      .mockReturnValueOnce(createFindSortChain([selected]));
+      .mockReturnValueOnce(createFindSortChain([expired]));
 
     // Thực thi
     const result = await getLearningPathStrategyOverview({
@@ -540,7 +545,13 @@ describe("learning path strategy option service", () => {
       })
     );
     expect(result.pending_options).toEqual([]);
-    expect(result.history).toHaveLength(1);
+    expect(result.history).toEqual([
+      expect.objectContaining({
+        option_id: String(expired._id),
+        status: "expired",
+        title: "Expired balanced",
+      }),
+    ]);
     expect(mockPreviewNextLearningPathCycleFromStrategyOption).not.toHaveBeenCalled();
   });
 
@@ -564,7 +575,7 @@ describe("learning path strategy option service", () => {
     );
     mockLearningPathStrategyOption.find
       .mockReturnValueOnce(createFindSortChain(pendingOptions))
-      .mockReturnValueOnce(createFindSortChain(pendingOptions));
+      .mockReturnValueOnce(createFindSortChain([]));
 
     // Thực thi
     const result = await getLearningPathStrategyOverview({
@@ -585,14 +596,41 @@ describe("learning path strategy option service", () => {
       "Balanced option",
       "Opportunity option",
     ]);
-    expect(mockPreviewNextLearningPathCycleFromStrategyOption).toHaveBeenCalledTimes(3);
-    expect(mockPreviewNextLearningPathCycleFromStrategyOption).toHaveBeenNthCalledWith(
-      1,
-      {
-        user_id: userId,
-        learning_path_id: learningPathId,
-        strategy_option_id: String(recommended._id),
-      }
+    expect(result.pending_options.every((option) => option.preview_cycle === null)).toBe(true);
+    expect(result.history).toEqual([]);
+    expect(mockPreviewNextLearningPathCycleFromStrategyOption).not.toHaveBeenCalled();
+  });
+
+  it("getLearningPathStrategyOptionPreview -> pending option -> builds preview on demand", async () => {
+    // Chuẩn bị
+    const pendingOption = createOption("recommended", {
+      _id: new Types.ObjectId(optionId),
+    });
+    mockLearningPathStrategyOption.findOne.mockResolvedValue(pendingOption);
+
+    // Thực thi
+    const result = await getLearningPathStrategyOptionPreview({
+      user_id: userId,
+      learning_path_id: learningPathId,
+      strategy_option_id: optionId,
+    });
+
+    // Kiểm tra
+    expect(mockLearningPathStrategyOption.findOne).toHaveBeenCalledWith({
+      _id: new Types.ObjectId(optionId),
+      user_id: new Types.ObjectId(userId),
+      learning_path_id: new Types.ObjectId(learningPathId),
+      status: { $in: ["pending_selection", "selected"] },
+    });
+    expect(mockPreviewNextLearningPathCycleFromStrategyOption).toHaveBeenCalledWith({
+      user_id: userId,
+      learning_path_id: learningPathId,
+      strategy_option_id: optionId,
+    });
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: "preview_available",
+      })
     );
   });
 

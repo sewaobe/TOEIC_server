@@ -5,10 +5,11 @@ import type {
   LessonManagerUnitType,
 } from "./lesson_manager.model";
 
-export type LearningPathStrategyType =
-  | "recommended"
-  | "balanced"
-  | "opportunity";
+/**
+ * Hệ thống chỉ còn một strategy:
+ * tối đa hóa ROI dự kiến của skill.
+ */
+export type LearningPathStrategyType = "maximize_skill_roi";
 
 export type LearningPathStrategyOptionStatus =
   | "pending_selection"
@@ -24,6 +25,8 @@ export type LearningPathStrategyOptionTrigger =
 
 export type LearningPathScenarioSnapshot =
   | "ONBOARDING"
+  | "NORMAL_PROGRESS"
+  | "PLATEAU"
   | "FULLTEST_MONTHLY"
   | "PRE_DEADLINE"
   | "BEHIND_SCHEDULE";
@@ -32,55 +35,126 @@ export interface ILearningPathStrategyRoadmapUnit {
   lesson_manager_id: Types.ObjectId;
 
   /**
-   * Snapshot thông tin chính của LessonManager tại thời điểm scheduler tạo route.
-   * Lưu snapshot để sau này LessonManager đổi tên/tag thì option cũ vẫn hiển thị ổn.
+   * Snapshot thông tin chính của LessonManager tại thời điểm tạo route.
+   * Option cũ vẫn có thể hiển thị đúng nếu LessonManager thay đổi sau này.
    */
   title: string;
   part_type: PartType;
+
   score_band?: {
     from: number;
     to: number;
   };
+
   unit_type: LessonManagerUnitType;
+
   /**
-   * node_role chỉ còn normal/support trong snapshot route.
-   * Entry/target là khái niệm runtime, không phải trạng thái cố định của LessonManager.
+   * Entry và target được xác định tại runtime.
+   * node_role chỉ biểu diễn node thông thường hoặc node hỗ trợ.
    */
   node_role: LessonManagerNodeRole;
+
+  /**
+   * Các skill được LessonManager nhắm tới.
+   * Các skill trong mảng này có vai trò ngang nhau.
+   */
   target_tags: string[];
 
   /**
-   * Thứ tự unit trong route được gợi ý.
-   * Đây là thứ tự tổng quát của lộ trình, không phải order activity bên trong unit.
+   * Thứ tự của LessonManager trong roadmap thuộc Part.
+   * Đây không phải thứ tự activity bên trong LessonManager.
    */
   order: number;
 
   /**
-   * Thời lượng dự kiến của unit, đơn vị phút.
-   * Lấy từ LessonManager.planned_completion_time tại thời điểm tạo option.
+   * Thời lượng dự kiến của LessonManager, đơn vị phút.
    */
   planned_minutes: number;
 
   /**
-   * Gain ước lượng của unit trong context strategy/scenario hiện tại.
-   * Field này phục vụ giải thích và so sánh option, không phải điểm thật của user.
+   * Gain ước lượng của unit.
+   * Đây là giá trị nội bộ, không phải điểm TOEIC.
    */
   estimated_gain?: number;
 
   /**
-   * Lý do ngắn để FE giải thích vì sao unit này nằm trong route.
-   * Ví dụ: "Part 5 đang yếu", "Phù hợp target 600", "Core skill có gain cao".
+   * Lý do ngắn gọn giải thích vì sao unit xuất hiện trong roadmap.
    */
   reason?: string;
+
+  unit_source?: "strategy" | "alternative";
+  source_reason?: string;
 }
 
 export interface ILearningPathStrategyPartRoadmap {
   part_type: PartType;
+
+  /**
+   * Vị trí LessonManager tiếp theo chưa được sử dụng trong roadmap.
+   */
   cursor_index: number;
+
+  /**
+   * Tổng thời lượng dự kiến của roadmap thuộc Part này.
+   */
   target_minutes: number;
+
+  /**
+   * Tổng gain ước lượng của roadmap thuộc Part này.
+   */
   estimated_gain: number;
+
+  /**
+   * Roadmap hiện tại có dự kiến đi tới vùng target hay không.
+   */
   reaches_target: boolean;
+
   units: ILearningPathStrategyRoadmapUnit[];
+}
+
+export type LearningPathRoadmapStopReason =
+  | "target_reached"
+  | "time_exhausted"
+  | "no_eligible_skill"
+  | "no_positive_gain"
+  | "max_cycle_count_reached";
+
+export interface ILearningPathStrategySimulatedCycle {
+  cycle_no: number;
+  primary_focus_skill_key: string;
+  focus_part_type: PartType;
+  covered_skill_keys: string[];
+  selected_units: ILearningPathStrategyRoadmapUnit[];
+  projected_skill_ability_before: number;
+  projected_skill_ability_after: number;
+  projected_part_ability_before: number;
+  projected_part_ability_after: number;
+  planned_score_before: number;
+  planned_score_after: number;
+  planned_score_gain: number;
+  ability_based_score_gain_proxy: number;
+  expected_skill_gain: number;
+  expected_roi_per_hour: number;
+  estimated_learning_minutes: number;
+  assessment_type: "mini_test" | "full_test";
+  assessment_estimated_minutes: number;
+  total_cycle_minutes: number;
+  planned_full_test_score?: number;
+}
+
+export interface ILearningPathStrategyRoadmapSimulation {
+  anchor_score: number;
+  target_score: number;
+  required_score_gain_per_hour: number | null;
+  planned_final_score: number;
+  reaches_target: boolean;
+  total_learning_minutes: number;
+  total_assessment_minutes: number;
+  total_used_minutes: number;
+  remaining_minutes: number;
+  cycle_count: number;
+  stop_reason: LearningPathRoadmapStopReason;
+  cycles: ILearningPathStrategySimulatedCycle[];
 }
 
 export interface ILearningPathStrategyOption extends Document {
@@ -90,61 +164,60 @@ export interface ILearningPathStrategyOption extends Document {
   learning_path_id: Types.ObjectId;
 
   /**
-   * Trigger tạo option.
-   * initial_generation chỉ tạo recommended và auto selected.
-   * full_test_review tạo 3 option pending để user chọn.
+   * Sự kiện tạo strategy option.
    */
   trigger_type: LearningPathStrategyOptionTrigger;
 
   /**
-   * Bài test tạo ra option này.
-   * Entry/full test đều được lưu vào UserTest trước khi scheduler tạo option.
+   * UserTest tạo ra strategy option này.
    */
   source_user_test_id?: Types.ObjectId | null;
 
   /**
-   * Full test option có thể gắn với WeekCycle hiện tại nếu có.
-   * Không bắt buộc vì entry/onboarding chưa có WeekStudy cũ.
+   * Cycle nguồn liên quan đến lần tạo lại strategy, nếu có.
    */
   source_week_study_id?: Types.ObjectId | null;
 
   strategy: LearningPathStrategyType;
   scenario: LearningPathScenarioSnapshot;
-
   status: LearningPathStrategyOptionStatus;
 
   /**
-   * Tổng quan để FE hiển thị card option.
+   * Thông tin tổng quan để frontend hiển thị strategy hiện tại.
    */
   title: string;
   description?: string;
 
   /**
-   * Các Part/skill trọng tâm của route.
-   * WeekStudy sau này sẽ lấy một phần từ đây để tạo focus_part_types/focus_skill_keys cho từng cycle.
+   * Các Part và skill đáng chú ý trong roadmap dài hạn.
+   *
+   * Đây không phải focus thực tế của một cycle.
+   * Focus thực tế được lưu trong WeekStudy.
    */
   focus_part_types: PartType[];
   focus_skill_keys: string[];
 
   /**
-   * Ước lượng tổng route option.
-   * reaches_target = false không phải lỗi; nghĩa là budget hiện tại chưa đủ tới target node,
-   * hệ thống chọn prefix có gain tốt nhất trong thời gian user có.
+   * Ước lượng tổng thể của roadmap dài hạn.
    */
   estimated_total_minutes: number;
   estimated_gain: number;
+
+  /**
+   * Roadmap dự kiến có thể đi tới target trong thời gian hiện có hay không.
+   */
   reaches_target: boolean;
 
-    /**
-   * part_roadmaps là 7 roadmap riêng cho 7 TOEIC Part tại thời điểm tạo strategy.
-   * Đây là định hướng dài hạn theo từng Part, không phải lịch học tuyến tính cố định.
-   * Beam Search sẽ chọn cycle tiếp theo từ các roadmap này.
+  /**
+   * Bảy roadmap riêng cho bảy TOEIC Part.
+   * Đây là dự báo dài hạn, không phải lịch học cố định.
    */
   part_roadmaps: ILearningPathStrategyPartRoadmap[];
 
+  roadmap_simulation?: ILearningPathStrategyRoadmapSimulation;
+
   /**
-   * Lý do tổng quan cho option.
-   * Ví dụ: "Ưu tiên Part 5/6/7 vì đang yếu", "Target 600 nên tập trung core skills".
+   * Các lý do tổng quan dùng để giải thích strategy.
    */
   summary_reasons: string[];
 
@@ -155,76 +228,95 @@ export interface ILearningPathStrategyOption extends Document {
 
 const LearningPathStrategyRoadmapUnitSchema =
   new Schema<ILearningPathStrategyRoadmapUnit>(
-  {
-    lesson_manager_id: {
-      type: Schema.Types.ObjectId,
-      ref: "LessonManager",
-      required: true,
-    },
+    {
+      lesson_manager_id: {
+        type: Schema.Types.ObjectId,
+        ref: "LessonManager",
+        required: true,
+      },
 
-    title: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+      title: {
+        type: String,
+        required: true,
+        trim: true,
+      },
 
-    part_type: {
-      type: Number,
-      enum: Object.values(PartType).filter((value) => typeof value === "number"),
-      required: true,
-    },
+      part_type: {
+        type: Number,
+        enum: Object.values(PartType).filter(
+          (value) => typeof value === "number"
+        ),
+        required: true,
+      },
 
-    score_band: {
-      from: { type: Number },
-      to: { type: Number },
-    },
+      score_band: {
+        from: {
+          type: Number,
+        },
+        to: {
+          type: Number,
+        },
+      },
 
-    unit_type: {
-      type: String,
-      enum: [
-        "foundation",
-        "skill_drill",
-        "mixed_practice",
-        "exam_practice",
-        "remedial",
-      ],
-      required: true,
-    },
+      unit_type: {
+        type: String,
+        enum: [
+          "foundation",
+          "skill_drill",
+          "mixed_practice",
+          "exam_practice",
+          "remedial",
+        ],
+        required: true,
+      },
 
-    node_role: {
-      type: String,
-      enum: ["normal", "support"],
-      required: true,
-    },
+      node_role: {
+        type: String,
+        enum: ["normal", "support"],
+        required: true,
+      },
 
-    target_tags: {
-      type: [String],
-      default: [],
-    },
+      target_tags: {
+        type: [String],
+        default: [],
+      },
 
-    order: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
+      order: {
+        type: Number,
+        required: true,
+        min: 0,
+      },
 
-    planned_minutes: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
+      planned_minutes: {
+        type: Number,
+        required: true,
+        min: 0,
+      },
 
-    estimated_gain: {
-      type: Number,
-      min: 0,
-    },
+      estimated_gain: {
+        type: Number,
+        min: 0,
+      },
 
-    reason: {
-      type: String,
-      default: "",
+      reason: {
+        type: String,
+        default: "",
+      },
+
+      unit_source: {
+        type: String,
+        enum: ["strategy", "alternative"],
+        default: "strategy",
+      },
+
+      source_reason: {
+        type: String,
+        default: "",
+      },
     },
-  },
-    { _id: false }
+    {
+      _id: false,
+    }
   );
 
 const LearningPathStrategyPartRoadmapSchema =
@@ -232,7 +324,9 @@ const LearningPathStrategyPartRoadmapSchema =
     {
       part_type: {
         type: Number,
-        enum: Object.values(PartType).filter((value) => typeof value === "number"),
+        enum: Object.values(PartType).filter(
+          (value) => typeof value === "number"
+        ),
         required: true,
       },
 
@@ -251,6 +345,7 @@ const LearningPathStrategyPartRoadmapSchema =
       estimated_gain: {
         type: Number,
         default: 0,
+        min: 0,
       },
 
       reaches_target: {
@@ -262,6 +357,62 @@ const LearningPathStrategyPartRoadmapSchema =
         type: [LearningPathStrategyRoadmapUnitSchema],
         default: [],
       },
+    },
+    {
+      _id: false,
+    }
+  );
+
+const LearningPathStrategySimulatedCycleSchema =
+  new Schema<ILearningPathStrategySimulatedCycle>(
+    {
+      cycle_no: { type: Number, required: true, min: 1 },
+      primary_focus_skill_key: { type: String, required: true },
+      focus_part_type: {
+        type: Number,
+        enum: Object.values(PartType).filter((value) => typeof value === "number"),
+        required: true,
+      },
+      covered_skill_keys: { type: [String], default: [] },
+      selected_units: { type: [LearningPathStrategyRoadmapUnitSchema], default: [] },
+      projected_skill_ability_before: { type: Number, required: true, min: 0, max: 1 },
+      projected_skill_ability_after: { type: Number, required: true, min: 0, max: 1 },
+      projected_part_ability_before: { type: Number, required: true, min: 0, max: 1 },
+      projected_part_ability_after: { type: Number, required: true, min: 0, max: 1 },
+      planned_score_before: { type: Number, required: true, min: 0, max: 990 },
+      planned_score_after: { type: Number, required: true, min: 0, max: 990 },
+      planned_score_gain: { type: Number, required: true, min: 0 },
+      ability_based_score_gain_proxy: { type: Number, required: true, min: 0 },
+      expected_skill_gain: { type: Number, required: true, min: 0 },
+      expected_roi_per_hour: { type: Number, required: true, min: 0 },
+      estimated_learning_minutes: { type: Number, required: true, min: 0 },
+      assessment_type: { type: String, enum: ["mini_test", "full_test"], required: true },
+      assessment_estimated_minutes: { type: Number, required: true, min: 0 },
+      total_cycle_minutes: { type: Number, required: true, min: 0 },
+      planned_full_test_score: { type: Number, min: 0, max: 990 },
+    },
+    { _id: false }
+  );
+
+const LearningPathStrategyRoadmapSimulationSchema =
+  new Schema<ILearningPathStrategyRoadmapSimulation>(
+    {
+      anchor_score: { type: Number, required: true, min: 0, max: 990 },
+      target_score: { type: Number, required: true, min: 0, max: 990 },
+      required_score_gain_per_hour: { type: Number, default: null, min: 0 },
+      planned_final_score: { type: Number, required: true, min: 0, max: 990 },
+      reaches_target: { type: Boolean, required: true },
+      total_learning_minutes: { type: Number, required: true, min: 0 },
+      total_assessment_minutes: { type: Number, required: true, min: 0 },
+      total_used_minutes: { type: Number, required: true, min: 0 },
+      remaining_minutes: { type: Number, required: true, min: 0 },
+      cycle_count: { type: Number, required: true, min: 0 },
+      stop_reason: {
+        type: String,
+        enum: ["target_reached", "time_exhausted", "no_eligible_skill", "no_positive_gain", "max_cycle_count_reached"],
+        required: true,
+      },
+      cycles: { type: [LearningPathStrategySimulatedCycleSchema], default: [] },
     },
     { _id: false }
   );
@@ -285,7 +436,12 @@ const LearningPathStrategyOptionSchema =
 
       trigger_type: {
         type: String,
-        enum: ["initial_generation", "full_test_review", "manual_adjustment", "mini_test_completion"],
+        enum: [
+          "initial_generation",
+          "full_test_review",
+          "mini_test_completion",
+          "manual_adjustment",
+        ],
         required: true,
         index: true,
       },
@@ -306,8 +462,9 @@ const LearningPathStrategyOptionSchema =
 
       strategy: {
         type: String,
-        enum: ["recommended", "balanced", "opportunity"],
+        enum: ["maximize_skill_roi"],
         required: true,
+        default: "maximize_skill_roi",
         index: true,
       },
 
@@ -315,6 +472,8 @@ const LearningPathStrategyOptionSchema =
         type: String,
         enum: [
           "ONBOARDING",
+          "NORMAL_PROGRESS",
+          "PLATEAU",
           "FULLTEST_MONTHLY",
           "PRE_DEADLINE",
           "BEHIND_SCHEDULE",
@@ -348,7 +507,8 @@ const LearningPathStrategyOptionSchema =
         validate: {
           validator: (values: number[]) =>
             values.every((part) => part >= 1 && part <= 7),
-          message: "focus_part_types chỉ được chứa TOEIC Part từ 1 đến 7.",
+          message:
+            "focus_part_types chỉ được chứa TOEIC Part từ 1 đến 7.",
         },
       },
 
@@ -367,8 +527,8 @@ const LearningPathStrategyOptionSchema =
       estimated_gain: {
         type: Number,
         required: true,
-        min: 0,
         default: 0,
+        min: 0,
       },
 
       reaches_target: {
@@ -382,6 +542,11 @@ const LearningPathStrategyOptionSchema =
         default: [],
       },
 
+      roadmap_simulation: {
+        type: LearningPathStrategyRoadmapSimulationSchema,
+        default: undefined,
+      },
+
       summary_reasons: {
         type: [String],
         default: [],
@@ -392,15 +557,13 @@ const LearningPathStrategyOptionSchema =
       },
     },
     {
-      timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
+      timestamps: {
+        createdAt: "created_at",
+        updatedAt: "updated_at",
+      },
     }
   );
 
-/**
- * Query chính:
- * - Lấy các option pending sau full test để user chọn.
- * - Lấy selected option gần nhất để mini test tiếp tục active path.
- */
 LearningPathStrategyOptionSchema.index({
   learning_path_id: 1,
   status: 1,
@@ -415,8 +578,7 @@ LearningPathStrategyOptionSchema.index({
 });
 
 /**
- * Một LearningPath chỉ nên có một selected option active tại một thời điểm.
- * Các option cũ nên được chuyển expired/dismissed trước khi chọn option mới.
+ * Mỗi LearningPath chỉ có một strategy option đang được áp dụng.
  */
 LearningPathStrategyOptionSchema.index(
   {
@@ -436,5 +598,3 @@ export const LearningPathStrategyOption =
     "LearningPathStrategyOption",
     LearningPathStrategyOptionSchema
   );
-
-

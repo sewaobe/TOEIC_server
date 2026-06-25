@@ -719,6 +719,7 @@ export const submitMiniTestService = async (
     totalQuestions: responses.length,
     responses,
     score,
+    parts,
     detailedAnswers,
   };
 };

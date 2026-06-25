@@ -64,6 +64,10 @@ jest.mock("../../src/services/learning_path_v2/scheduler_decision_log.service", 
   createSchedulerDecisionLog: mockCreateSchedulerDecisionLog,
 }));
 
+jest.mock("../../src/socket/emitToUser.socket", () => ({
+  emitToUser: jest.fn(),
+}));
+
 import {
   calculateTotalAvailableMinutesForRoute,
   extractPartAbilitiesForLayer4,
@@ -500,6 +504,67 @@ describe("learning_path_v2.service", () => {
 
   it("runLearningPathV2AbilityPipeline -> mini_test_completion increments counter and creates next cycle", async () => {
     const { learningPath } = setupBaseMocks("mini_test_completion");
+    mockEvaluateLearningPathScenario.mockResolvedValue({
+      trigger_type: "mini_test_completion",
+      scenario: "PLATEAU",
+      pre_deadline: false,
+    });
+    mockCreateNextLearningPathCycle.mockResolvedValueOnce({
+      status: "cycle_created",
+      plan: {
+        plan_type: "learning_cycle",
+        selected_roadmap_units: [
+          {
+            lesson_manager_id: new Types.ObjectId().toString(),
+            title: "Alternative Part 2",
+            part_type: 2,
+            unit_type: "foundation",
+            node_role: "normal",
+            target_tags: ["part_2_skill"],
+            order: 0,
+            planned_minutes: 120,
+            estimated_gain: 0.4,
+            reason: "Bài thay thế.",
+            unit_source: "alternative",
+          },
+        ],
+        estimated_learning_minutes: 120,
+        focus_skill_keys: ["part_2_skill"],
+        focus_part_types: [2],
+        selected_roadmap_positions: [
+          {
+            part_type: 2,
+            from_cursor_index: 0,
+            to_cursor_index: 0,
+            selected_count: 1,
+          },
+        ],
+        assessment: {
+          type: "mini_test",
+          estimated_minutes: 100,
+          focus_skill_keys: ["part_2_skill"],
+          focus_part_types: [2],
+        },
+      },
+      week_study: {
+        _id: new Types.ObjectId(),
+      },
+      strategy_option: {
+        _id: new Types.ObjectId(),
+        status: "selected",
+        strategy: "recommended",
+      },
+      day_studies: [
+        {
+          sessions: [
+            {
+              planned_minutes: 120,
+              items: [{ kind: "lesson", estimated_minutes: 120 }],
+            },
+          ],
+        },
+      ],
+    });
 
     await runLearningPathV2AbilityPipeline(
       createInput("mini_test_completion", { week_study_id: weekStudyId })
@@ -508,8 +573,29 @@ describe("learning_path_v2.service", () => {
     expect(learningPath.mini_tests_completed_since_last_full_test).toBe(2);
     expect(learningPath.save).toHaveBeenCalled();
     expect(mockCreateNextLearningPathCycle).toHaveBeenCalledTimes(1);
+    expect(mockCreateNextLearningPathCycle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_skill: expect.any(Object),
+        mini_tests_completed_since_last_full_test_override: 2,
+        scenario_override: "PLATEAU",
+      })
+    );
     expect(mockLearningPathStrategyOption.create).not.toHaveBeenCalled();
-    expect(mockCreateSchedulerDecisionLog).not.toHaveBeenCalled();
+    expect(mockCreateSchedulerDecisionLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trigger_type: "mini_test_completion",
+        scenario: "PLATEAU",
+        status: "applied",
+        input_snapshot: expect.objectContaining({
+          extra: expect.objectContaining({
+            focus_part_types: [2],
+            focus_skill_keys: ["part_2_skill"],
+            alternative_unit_count: 1,
+            alternative_lesson_manager_ids: [expect.any(String)],
+          }),
+        }),
+      })
+    );
   });
 
   it("initial_generation -> missing learning path throws Vietnamese error", async () => {

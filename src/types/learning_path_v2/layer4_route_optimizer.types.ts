@@ -1,10 +1,8 @@
 ﻿import type { ToeicSkillGroupV2 } from "./layer1_test_result.types";
 import type { LearningPathScenarioV2 } from "./layer3_strategy_decision.types";
 
-export type LearningPathStrategyV2 =
-  | "recommended"
-  | "balanced"
-  | "opportunity";
+/** Checkpoint V3 chỉ còn một strategy; ROI engine sẽ thay planner cũ ở checkpoint sau. */
+export type LearningPathStrategyV2 = "maximize_skill_roi";
 
 export type RoutePartBucketV2 = "weak" | "medium" | "strong";
 
@@ -70,6 +68,8 @@ export interface PlannedRouteUnitV2 {
   planned_minutes: number;
   estimated_gain: number;
   reason: string;
+  unit_source?: "strategy" | "alternative";
+  source_reason?: string;
 }
 
 export interface LearningPathStrategyRoadmapUnitV2 {
@@ -84,6 +84,8 @@ export interface LearningPathStrategyRoadmapUnitV2 {
   planned_minutes: number;
   estimated_gain: number;
   reason: string;
+  unit_source?: "strategy" | "alternative";
+  source_reason?: string;
 }
 
 export interface LearningPathStrategyPartRoadmapV2 {
@@ -181,6 +183,7 @@ export interface BuildNextCycleByBeamSearchInputV2 {
   strategy: LearningPathStrategyV2;
   scenario: LearningPathScenarioV2;
   focus_part_types: number[];
+  focus_skill_keys?: string[];
   mini_tests_completed_since_last_full_test: number;
   config?: Partial<BeamSearchCycleConfigV2>;
 }

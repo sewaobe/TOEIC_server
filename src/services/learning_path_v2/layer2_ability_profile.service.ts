@@ -1,7 +1,5 @@
-import type {
-  AbilityStatus,
-  AbsoluteAbilityLevel,
-} from "../../models";
+import type { AbilityStatus } from "../../models";
+import type { AbsoluteAbilityLevel } from "../../types/learning_path_v2";
 import { calculateThetaRaschV2 } from "../irt.service";
 import type {
   AbilityProfileV2,

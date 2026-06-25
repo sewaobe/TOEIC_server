@@ -2,8 +2,45 @@ import { Types } from "mongoose";
 import { Question } from "../models/question.model";
 import { Group } from "../models/group.model";
 import { Test } from "../models/test.model";
+import { UserSkill } from "../models/user_skill.model";
+import type { IUserSkillPart } from "../models/user_skill.model";
 import { TestType } from "../models/enums/TestType";
 import { TestStatus } from "../models/enums/TestStatus";
+import { normalizeToeicSkillTags } from "./toeic_skill.util";
+
+type MiniTestSkillBucket = "focus" | "weak_non_focus" | "strong_retention";
+
+type GenerateLearningPathMiniTestInput = {
+  user_id: string;
+  learning_path_id: string;
+  cycle_no: number;
+  primary_focus_skill_key: string;
+  covered_skill_keys: string[];
+  focus_part_type: number;
+};
+
+type MiniTestQuestionMeta = {
+  _id: Types.ObjectId;
+  irt_difficulty?: number;
+  tags?: string[];
+};
+
+type MiniTestGroupCandidate = {
+  group: any;
+  groupId: Types.ObjectId;
+  part: number;
+  questionCount: number;
+  avgDifficulty: number;
+  skillKeys: string[];
+  bucketCounts: Record<MiniTestSkillBucket, number>;
+};
+
+const PART_QUOTAS_BY_ABILITY_ASC = [40, 35, 25];
+const BUCKET_RATIOS: Record<MiniTestSkillBucket, number> = {
+  focus: 0.7,
+  weak_non_focus: 0.2,
+  strong_retention: 0.1,
+};
 
 /**
  * Phân bố SỐ CÂU THEO PART (tổng = 100)
@@ -19,6 +56,9 @@ const BASE_QUESTION_DISTRIBUTION: Record<number, number> = {
   6: 8, // 8 câu ~ 2 group * 4 (tùy data)
   7: 16, // 16 câu (tuỳ cấu trúc group Part 7 trong DB)
 }; // 6+20+15+15+20+9+15 = 100
+
+const buildPartQuestionQuotas = (focusPartCount: number): number[] =>
+  PART_QUOTAS_BY_ABILITY_ASC.slice(0, focusPartCount).map(() => 20);
 
 /************************************************************
  * Helper: tính trung bình difficulty & số câu của 1 group
@@ -65,6 +105,140 @@ async function computeGroupStats(group: any): Promise<{
  *  4. Dùng DP subset-sum theo questionCount để tìm tổ hợp
  *     có tổng câu = targetQuestions (ưu tiên group gần θ)
  ************************************************************/
+const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
+
+const abilityToTargetDifficulty = (ability?: number): number => {
+  if (typeof ability !== "number" || !Number.isFinite(ability)) {
+    return 0;
+  }
+
+  return clamp01(ability) * 6 - 3;
+};
+
+const toObjectId = (id: string | Types.ObjectId): Types.ObjectId =>
+  id instanceof Types.ObjectId ? id : new Types.ObjectId(id);
+
+const uniqueNumbers = (values: number[]): number[] =>
+  values.filter(
+    (value, index, list) =>
+      Number.isInteger(value) &&
+      value >= 1 &&
+      value <= 7 &&
+      list.indexOf(value) === index
+  );
+
+const uniqueStrings = (values: string[]): string[] =>
+  values.filter(
+    (value, index, list) => value.length > 0 && list.indexOf(value) === index
+  );
+
+const getPartSkillSets = (
+  part: IUserSkillPart,
+  focusSkillKeys: Set<string>
+): Record<MiniTestSkillBucket, Set<string>> => {
+  const weakNonFocus = new Set<string>();
+  const strongRetention = new Set<string>();
+
+  for (const skill of part.skills ?? []) {
+    if (!skill.skill_key || focusSkillKeys.has(skill.skill_key)) continue;
+    if (skill.status === "weak") weakNonFocus.add(skill.skill_key);
+    if (skill.status === "strong") strongRetention.add(skill.skill_key);
+  }
+
+  return {
+    focus: new Set(
+      (part.skills ?? [])
+        .map((skill) => skill.skill_key)
+        .filter((skillKey) => focusSkillKeys.has(skillKey))
+    ),
+    weak_non_focus: weakNonFocus,
+    strong_retention: strongRetention,
+  };
+};
+
+const calculateBucketTargets = (
+  partQuestionTarget: number
+): Record<MiniTestSkillBucket, number> => {
+  const focus = Math.round(partQuestionTarget * BUCKET_RATIOS.focus);
+  const weakNonFocus = Math.round(
+    partQuestionTarget * BUCKET_RATIOS.weak_non_focus
+  );
+
+  return {
+    focus,
+    weak_non_focus: weakNonFocus,
+    strong_retention: Math.max(0, partQuestionTarget - focus - weakNonFocus),
+  };
+};
+
+const scoreCandidateForBucket = (
+  candidate: MiniTestGroupCandidate,
+  bucket: MiniTestSkillBucket,
+  targetDifficulty: number
+): number => {
+  const bucketRatio =
+    candidate.questionCount > 0
+      ? candidate.bucketCounts[bucket] / candidate.questionCount
+      : 0;
+  const difficultyPenalty = Math.abs(candidate.avgDifficulty - targetDifficulty);
+  const tagCoverageBonus = candidate.skillKeys.length > 0 ? 0.1 : 0;
+
+  return bucketRatio * 100 + tagCoverageBonus - difficultyPenalty * 8;
+};
+
+const scoreCandidateForFallback = (
+  candidate: MiniTestGroupCandidate,
+  targetDifficulty: number
+): number => {
+  const totalBucketMatches =
+    candidate.bucketCounts.focus +
+    candidate.bucketCounts.weak_non_focus +
+    candidate.bucketCounts.strong_retention;
+  const matchRatio =
+    candidate.questionCount > 0 ? totalBucketMatches / candidate.questionCount : 0;
+  const difficultyPenalty = Math.abs(candidate.avgDifficulty - targetDifficulty);
+
+  return matchRatio * 50 - difficultyPenalty * 8;
+};
+
+const chooseCandidate = (input: {
+  candidates: MiniTestGroupCandidate[];
+  selectedIds: Set<string>;
+  currentTotal: number;
+  targetTotal: number;
+  bucket?: MiniTestSkillBucket;
+  targetDifficulty: number;
+}): MiniTestGroupCandidate | null => {
+  const available = input.candidates.filter(
+    (candidate) => !input.selectedIds.has(String(candidate.groupId))
+  );
+
+  if (available.length === 0) return null;
+
+  const remaining = Math.max(0, input.targetTotal - input.currentTotal);
+  const fitting = available.filter(
+    (candidate) => candidate.questionCount <= remaining
+  );
+  const pool = fitting.length > 0 ? fitting : available;
+
+  return [...pool].sort((left, right) => {
+    const leftScore = input.bucket
+      ? scoreCandidateForBucket(left, input.bucket, input.targetDifficulty)
+      : scoreCandidateForFallback(left, input.targetDifficulty);
+    const rightScore = input.bucket
+      ? scoreCandidateForBucket(right, input.bucket, input.targetDifficulty)
+      : scoreCandidateForFallback(right, input.targetDifficulty);
+
+    if (leftScore !== rightScore) return rightScore - leftScore;
+
+    const leftDistance = Math.abs(left.questionCount - remaining);
+    const rightDistance = Math.abs(right.questionCount - remaining);
+    if (leftDistance !== rightDistance) return leftDistance - rightDistance;
+
+    return String(left.groupId).localeCompare(String(right.groupId));
+  })[0];
+};
+
 async function selectGroupsForPartExactQuestions(
   part: number,
   thetaPart: number,
@@ -191,6 +365,268 @@ async function selectGroupsForPartExactQuestions(
  *  - Clone group mới cho mini test
  *  - Tạo Test type MINI_TEST
  ************************************************************/
+const buildMiniTestGroupCandidates = async (input: {
+  part: number;
+  skillSets: Record<MiniTestSkillBucket, Set<string>>;
+}): Promise<MiniTestGroupCandidate[]> => {
+  const rawGroups = await Group.find({ part: input.part })
+    .select(
+      "_id part questions audioUrl imagesUrl transcriptEnglish transcriptTranslation"
+    )
+    .populate({
+      path: "questions",
+      select: "_id tags irt_difficulty",
+    })
+    .lean();
+
+  return rawGroups.reduce<MiniTestGroupCandidate[]>((candidates, group: any) => {
+    const questions = (group.questions ?? []) as MiniTestQuestionMeta[];
+    if (!questions.length) return candidates;
+
+    let difficultySum = 0;
+    const skillKeys: string[] = [];
+    const bucketCounts: Record<MiniTestSkillBucket, number> = {
+      focus: 0,
+      weak_non_focus: 0,
+      strong_retention: 0,
+    };
+
+    for (const question of questions) {
+      difficultySum += question.irt_difficulty ?? 0;
+      const normalizedSkills = normalizeToeicSkillTags(
+        Array.isArray(question.tags) ? question.tags : [],
+        input.part
+      );
+      const questionSkillKeys = uniqueStrings(
+        normalizedSkills.map((skill) => skill.key)
+      );
+      skillKeys.push(...questionSkillKeys);
+
+      for (const bucket of Object.keys(bucketCounts) as MiniTestSkillBucket[]) {
+        if (
+          questionSkillKeys.some((skillKey) =>
+            input.skillSets[bucket].has(skillKey)
+          )
+        ) {
+          bucketCounts[bucket] += 1;
+        }
+      }
+    }
+
+    candidates.push({
+      group,
+      groupId: group._id as Types.ObjectId,
+      part: input.part,
+      questionCount: questions.length,
+      avgDifficulty: difficultySum / questions.length,
+      skillKeys: uniqueStrings(skillKeys),
+      bucketCounts,
+    });
+
+    return candidates;
+  }, []);
+};
+
+const selectMiniTestGroupsForPart = (input: {
+  candidates: MiniTestGroupCandidate[];
+  partQuestionTarget: number;
+  targetDifficulty: number;
+}): MiniTestGroupCandidate[] => {
+  const bucketTargets = calculateBucketTargets(input.partQuestionTarget);
+  const selected: MiniTestGroupCandidate[] = [];
+  const selectedIds = new Set<string>();
+  const bucketActuals: Record<MiniTestSkillBucket, number> = {
+    focus: 0,
+    weak_non_focus: 0,
+    strong_retention: 0,
+  };
+
+  const selectedQuestionTotal = () =>
+    selected.reduce((sum, candidate) => sum + candidate.questionCount, 0);
+
+  for (const bucket of [
+    "focus",
+    "weak_non_focus",
+    "strong_retention",
+  ] as MiniTestSkillBucket[]) {
+    while (
+      bucketActuals[bucket] < bucketTargets[bucket] &&
+      selectedQuestionTotal() < input.partQuestionTarget
+    ) {
+      const candidate = chooseCandidate({
+        candidates: input.candidates.filter(
+          (item) => item.bucketCounts[bucket] > 0
+        ),
+        selectedIds,
+        currentTotal: selectedQuestionTotal(),
+        targetTotal: input.partQuestionTarget,
+        bucket,
+        targetDifficulty: input.targetDifficulty,
+      });
+
+      if (!candidate) break;
+
+      selected.push(candidate);
+      selectedIds.add(String(candidate.groupId));
+      for (const currentBucket of Object.keys(
+        bucketActuals
+      ) as MiniTestSkillBucket[]) {
+        bucketActuals[currentBucket] += candidate.bucketCounts[currentBucket];
+      }
+    }
+  }
+
+  while (selectedQuestionTotal() < input.partQuestionTarget) {
+    const candidate = chooseCandidate({
+      candidates: input.candidates,
+      selectedIds,
+      currentTotal: selectedQuestionTotal(),
+      targetTotal: input.partQuestionTarget,
+      targetDifficulty: input.targetDifficulty,
+    });
+
+    if (!candidate) break;
+
+    selected.push(candidate);
+    selectedIds.add(String(candidate.groupId));
+  }
+
+  return selected;
+};
+
+const cloneGroupsForGeneratedTest = async (
+  sourceGroups: any[],
+  now: Date
+): Promise<Types.ObjectId[]> => {
+  const clonedGroupDocs = sourceGroups.map((g: any) => ({
+    test_id: null,
+    quiz_id: null,
+    minitest_id: null,
+    practice_id: null,
+    part: g.part,
+    audioUrl: g.audioUrl,
+    imagesUrl: g.imagesUrl,
+    transcriptEnglish: g.transcriptEnglish,
+    transcriptTranslation: g.transcriptTranslation,
+    questions: (g.questions ?? []).map((question: any) => question._id ?? question),
+    created_at: now,
+    updated_at: now,
+  }));
+
+  const clonedGroups = await Group.insertMany(clonedGroupDocs);
+  return clonedGroups.map((group) => group._id as Types.ObjectId);
+};
+
+const createGeneratedMiniTest = async (input: {
+  user_id: string;
+  cloned_group_ids: Types.ObjectId[];
+  title: string;
+  topic: string;
+  now: Date;
+}) => {
+  const miniTest = await Test.create({
+    title: input.title,
+    audioListen: [],
+    groups: input.cloned_group_ids,
+    type: TestType.MINI_TEST,
+    status: TestStatus.APPROVED,
+    topic: input.topic,
+    countComment: 0,
+    countSubmit: 0,
+    created_at: input.now,
+    created_by: new Types.ObjectId(input.user_id),
+    updated_at: input.now,
+  });
+
+  await Group.updateMany(
+    { _id: { $in: input.cloned_group_ids } },
+    {
+      $set: {
+        test_id: miniTest._id,
+      },
+    }
+  );
+
+  return miniTest;
+};
+
+export async function generateLearningPathMiniTest(
+  input: GenerateLearningPathMiniTestInput
+) {
+  const focusPartTypes = [input.focus_part_type];
+  const focusSkillKeys = new Set(
+    uniqueStrings([input.primary_focus_skill_key, ...input.covered_skill_keys])
+  );
+
+  if (focusPartTypes.length === 0) {
+    throw new Error("Mini test cần focus_part_type hợp lệ.");
+  }
+
+  const userSkill = await UserSkill.findOne({
+    user_id: toObjectId(input.user_id),
+    context_type: "learning_path",
+    learning_path_id: toObjectId(input.learning_path_id),
+  }).lean();
+
+  if (!userSkill) {
+    throw new Error("Không tìm thấy UserSkill để generate mini test.");
+  }
+
+  const partByType = new Map<number, IUserSkillPart>(
+    (userSkill.parts ?? []).map((part) => [part.part_type, part])
+  );
+  const sortedFocusParts = [...focusPartTypes].sort((left, right) => {
+    const leftAbility = partByType.get(left)?.ability ?? 1;
+    const rightAbility = partByType.get(right)?.ability ?? 1;
+    return leftAbility - rightAbility;
+  });
+  const partQuestionQuotas = buildPartQuestionQuotas(sortedFocusParts.length);
+
+  const selectedCandidates: MiniTestGroupCandidate[] = [];
+
+  for (const [index, partType] of sortedFocusParts.entries()) {
+    const userSkillPart = partByType.get(partType);
+    if (!userSkillPart) {
+      throw new Error(`Không tìm thấy UserSkill Part ${partType}.`);
+    }
+
+    const candidates = await buildMiniTestGroupCandidates({
+      part: partType,
+      skillSets: getPartSkillSets(userSkillPart, focusSkillKeys),
+    });
+    const partSelectedCandidates = selectMiniTestGroupsForPart({
+      candidates,
+      partQuestionTarget: partQuestionQuotas[index] ?? 0,
+      targetDifficulty: abilityToTargetDifficulty(userSkillPart.ability),
+    });
+
+    selectedCandidates.push(...partSelectedCandidates);
+  }
+
+  const selectedSourceGroupsById = new Map<string, any>();
+  for (const candidate of selectedCandidates) {
+    selectedSourceGroupsById.set(String(candidate.groupId), candidate.group);
+  }
+
+  if (selectedSourceGroupsById.size === 0) {
+    throw new Error("Không tìm thấy group phù hợp để generate mini test.");
+  }
+
+  const now = new Date();
+  const clonedGroupIds = await cloneGroupsForGeneratedTest(
+    [...selectedSourceGroupsById.values()],
+    now
+  );
+
+  return createGeneratedMiniTest({
+    user_id: input.user_id,
+    cloned_group_ids: clonedGroupIds,
+    title: `Learning Path Mini Test - Cycle ${input.cycle_no}`,
+    topic: "LearningPath v2 mini test 70/20/10",
+    now,
+  });
+}
+
 export async function generateNextWeekMiniTest(
   userId: string,
   thetaByPart: Record<number, number>

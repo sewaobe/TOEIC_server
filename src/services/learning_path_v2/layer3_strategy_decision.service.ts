@@ -50,7 +50,7 @@ const getWeekStudyForScenario = async (weekStudyId: string) => {
   }
 
   const weekStudy = await WeekStudy.findById(weekStudyId)
-    .select("expected_completion_at focus_skill_keys focus_part_types")
+    .select("expected_completion_at primary_focus_skill_key focus_part_type")
     .lean();
 
   if (!weekStudy) {
@@ -121,7 +121,7 @@ export const isPreDeadline = (
 };
 
 /**
- * Mini test không nhìn toàn bộ UserSkill, chỉ nhìn focus_skill_keys của WeekCycle.
+ * Mini test không nhìn toàn bộ UserSkill, chỉ nhìn primary skill của cycle.
  * Thiếu skill trong old UserSkill không lỗi vì có thể là skill mới chưa có baseline.
  * Thiếu skill trong new UserSkill là lỗi dữ liệu vì cycle focus skill đó nhưng sau submit không có signal mới.
  */
@@ -213,8 +213,8 @@ export const evaluateLearningPathScenario = async (
   let weekStudy:
     | {
         expected_completion_at?: Date;
-        focus_skill_keys?: string[];
-        focus_part_types?: number[];
+        primary_focus_skill_key?: string;
+        focus_part_type?: number;
       }
     | null
     | undefined;
@@ -236,8 +236,8 @@ export const evaluateLearningPathScenario = async (
         scenario: "BEHIND_SCHEDULE",
         pre_deadline: false,
         ...paceResult,
-        focus_skill_keys: weekStudy.focus_skill_keys ?? [],
-        focus_part_types: weekStudy.focus_part_types ?? [],
+        primary_focus_skill_key: weekStudy.primary_focus_skill_key,
+        focus_part_type: weekStudy.focus_part_type,
       };
     }
   }
@@ -275,21 +275,21 @@ export const evaluateLearningPathScenario = async (
       scenario: "BEHIND_SCHEDULE",
       pre_deadline: false,
       ...paceResult,
-      focus_skill_keys: weekStudy.focus_skill_keys ?? [],
-      focus_part_types: weekStudy.focus_part_types ?? [],
+      primary_focus_skill_key: weekStudy.primary_focus_skill_key,
+      focus_part_type: weekStudy.focus_part_type,
     };
   }
 
-  const focusSkillKeys = weekStudy.focus_skill_keys ?? [];
-  if (focusSkillKeys.length === 0) {
-    throw new Error("WeekStudy.focus_skill_keys là bắt buộc để đánh giá mini test.");
+  const primaryFocusSkillKey = weekStudy.primary_focus_skill_key;
+  if (!primaryFocusSkillKey) {
+    throw new Error("WeekStudy.primary_focus_skill_key là bắt buộc để đánh giá mini test.");
   }
 
   // focus_delta dùng average ability cũ/mới của các focus skill có đủ baseline.
   const focusDelta = calculateFocusSkillDelta(
     input.old_user_skill,
     input.new_user_skill,
-    focusSkillKeys
+    [primaryFocusSkillKey]
   );
   const hasComparableBaseline = focusDelta.comparable_focus_skill_count > 0;
   const isProgressing =
@@ -302,7 +302,7 @@ export const evaluateLearningPathScenario = async (
     pre_deadline: false,
     ...paceResult,
     ...focusDelta,
-    focus_skill_keys: focusSkillKeys,
-    focus_part_types: weekStudy.focus_part_types ?? [],
+    primary_focus_skill_key: primaryFocusSkillKey,
+    focus_part_type: weekStudy.focus_part_type,
   };
 };

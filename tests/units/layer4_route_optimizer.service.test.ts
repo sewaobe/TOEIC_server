@@ -744,6 +744,56 @@ describe("layer4_route_optimizer.service", () => {
     logSpy.mockRestore();
   });
 
+  it("optimizePartPath -> debug log only keeps top 20 candidate paths", () => {
+    const logSpy = jest.spyOn(debugLogger, "logLearningPathV2DebugSafe");
+    logSpy.mockClear();
+
+    const nodes: LessonManagerRouteNodeV2[] = [
+      createNode("s", {
+        weight: 0.2,
+        next_unit_ids: Array.from({ length: 30 }, (_, index) => `n${index}`),
+      }),
+      ...Array.from({ length: 30 }, (_, index) =>
+        createNode(`n${index}`, {
+          weight: 0.3 + index * 0.01,
+          prerequisite_unit_ids: ["s"],
+          next_unit_ids: [],
+        })
+      ),
+    ];
+
+    optimizePartPath({
+      part_type: 5,
+      part_budget_minutes: 100,
+      scenario: "NORMAL_PROGRESS",
+      strategy: "balanced",
+      target_score: 600,
+      part_ability: 0.4,
+      nodes_of_part: nodes,
+      start_unit_ids: ["s"],
+    });
+
+    const candidateLogCall = logSpy.mock.calls.find(
+      ([event]) => event === "layer4.part_path.all_candidate_paths"
+    );
+
+    expect(candidateLogCall).toBeTruthy();
+
+    const payload = candidateLogCall?.[1] as {
+      terminal_path_count: number;
+      logged_path_count: number;
+      debug_path_limit: number;
+      paths: unknown[];
+    };
+
+    expect(payload.terminal_path_count).toBeGreaterThan(20);
+    expect(payload.debug_path_limit).toBe(20);
+    expect(payload.logged_path_count).toBeLessThanOrEqual(20);
+    expect(payload.paths.length).toBeLessThanOrEqual(20);
+
+    logSpy.mockRestore();
+  });
+
 
 
 
@@ -907,11 +957,11 @@ describe("layer4_route_optimizer.service", () => {
     expect(result.focus_skill_keys).not.toContain("part5_to_infinitive");
   });
 
-  it("optimizePartPath -> top five runtime candidates exceed budget -> still considers later valid candidate", () => {
+  it("optimizePartPath -> runtime start candidates are limited to top five", () => {
     // Chuẩn bị
     // 5 node đầu có weight rất gần ability nên sẽ đứng top 5 runtime candidates.
     // Nhưng mỗi node đều có prerequisite chain quá dài khiến prefix vượt budget.
-    // Nếu buildRuntimeStartPaths còn slice(0, 5), hàm sẽ bỏ lỡ node valid thứ 6.
+    // Candidate thứ 6 fit budget nhưng bị bỏ qua vì không nằm trong top 5 runtime starts.
     const nodes = [
       createNode("p1", {
         weight: 0.1,
@@ -982,8 +1032,8 @@ describe("layer4_route_optimizer.service", () => {
     });
 
     // Kiểm tra
-    expect(result.nodes.map((node) => node.lesson_manager_id)).toEqual(["valid"]);
-    expect(result.total_minutes).toBeLessThanOrEqual(30);
+    expect(result.nodes).toEqual([]);
+    expect(result.total_minutes).toBe(0);
   });
 
   it("buildNextCycleByBeamSearch -> selects focused units from part roadmaps", () => {

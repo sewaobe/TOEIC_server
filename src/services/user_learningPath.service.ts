@@ -180,6 +180,8 @@ export async function createLearningPathWithWeeks(
     description,
     level,
     isActive: true,
+    status: "active",
+    reason: null,
     week_studies_id: [],
     created_by: userObjectId,
     created_at: new Date(),
@@ -451,6 +453,9 @@ export function generateWeeklyDayStudies(
 }
 
 /* ========== LẤY LEARNING PROGRESS ========== */
+const LEARNING_PATH_INACTIVITY_LIMIT_DAYS = 14;
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+
 export const getLearningProgressService = async (userId: string) => {
   const userObjectId = new Types.ObjectId(userId);
 
@@ -477,6 +482,35 @@ export const getLearningProgressService = async (userId: string) => {
     user_id: userObjectId,
     learningPath_id: learningPath._id,
   }).lean();
+
+  const lastAttempt = userProgress?.updated_at ?? null;
+  const now = new Date();
+  const inactiveDays = lastAttempt
+    ? Math.floor(
+        (Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) -
+          Date.UTC(
+            new Date(lastAttempt).getFullYear(),
+            new Date(lastAttempt).getMonth(),
+            new Date(lastAttempt).getDate()
+          )) /
+          DAY_IN_MS
+      )
+    : null;
+  if (lastAttempt) {
+    if (inactiveDays !== null && inactiveDays > LEARNING_PATH_INACTIVITY_LIMIT_DAYS) {
+      await LearningPath.updateOne(
+        { _id: learningPath._id, status: { $ne: "expired" } },
+        {
+          $set: {
+            status: "expired",
+            reason: "inactivity_over_14_days",
+            isActive: false,
+            updated_at: now,
+          },
+        }
+      );
+    }
+  }
 
   // 3. Tính toán progress cho từng tuần
   const weeks = await Promise.all(
@@ -506,6 +540,19 @@ export const getLearningProgressService = async (userId: string) => {
   );
 
   return {
+    status:
+      inactiveDays !== null &&
+      inactiveDays > LEARNING_PATH_INACTIVITY_LIMIT_DAYS
+        ? "expired"
+        : learningPath.status,
+    reason:
+      inactiveDays !== null &&
+      inactiveDays > LEARNING_PATH_INACTIVITY_LIMIT_DAYS
+        ? "inactivity_over_14_days"
+        : learningPath.reason ?? null,
+    // `updated_at` is written whenever the user completes learning activity,
+    // therefore it is the authoritative timestamp for the latest attempt.
+    last_attempt: lastAttempt,
     overview: {
       completed_lessons: userProgress?.completed_lessons || 0,
       total_lessons: userProgress?.total_lessons || 0,

@@ -13,9 +13,24 @@ const mockWeekStudy: any = {
   create: jest.fn(),
 };
 
+const mockDayStudy: any = {
+  find: jest.fn(),
+};
+
+const mockLessonManager: any = {
+  find: jest.fn(),
+};
+
+const mockUserSkill: any = {
+  findOne: jest.fn(),
+};
+
 jest.mock("../../src/models", () => ({
+  DayStudy: mockDayStudy,
   LearningPath: mockLearningPath,
   LearningPathStrategyOption: mockLearningPathStrategyOption,
+  LessonManager: mockLessonManager,
+  UserSkill: mockUserSkill,
   WeekStudy: mockWeekStudy,
 }));
 
@@ -25,10 +40,10 @@ jest.mock("../../src/services/day_study.service", () => ({
   createDayStudiesForWeekStudyCycle: mockCreateDayStudiesForWeekStudyCycle,
 }));
 
-const mockGenerateAssessmentTestFromWeekCycle = jest.fn<(...args: any[]) => any>();
+const mockGenerateAssessmentTestFromPlan = jest.fn<(...args: any[]) => any>();
 
 jest.mock("../../src/services/learning_path_v2/learning_path_assessment.service", () => ({
-  generateAssessmentTestFromWeekCycle: mockGenerateAssessmentTestFromWeekCycle,
+  generateAssessmentTestFromPlan: mockGenerateAssessmentTestFromPlan,
 }));
 
 import {
@@ -74,6 +89,23 @@ const createLearningPath = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const createUserSkill = (parts: Array<{ part_type: number; ability: number }>) => ({
+  parts: parts.map((part) => ({
+    ...part,
+    status: "weak",
+    absolute_level: "low",
+    trend: "stable",
+    skills: [
+      {
+        skill_key: `part_${part.part_type}_weak_skill`,
+        ability: part.ability,
+        status: "weak",
+        absolute_level: "low",
+      },
+    ],
+  })),
+});
+
 const createSelectedOption = (overrides: Record<string, unknown> = {}) => ({
   _id: optionId,
   user_id: new Types.ObjectId(userId),
@@ -108,6 +140,15 @@ describe("week_study.service", () => {
     mockLearningPathStrategyOption.findOne.mockReturnValue(
       createFindOneSortChain(createSelectedOption())
     );
+    mockUserSkill.findOne.mockResolvedValue(null);
+    mockDayStudy.find.mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        lean: (jest.fn() as any).mockResolvedValue([]),
+      }),
+    });
+    mockLessonManager.find.mockReturnValue({
+      lean: (jest.fn() as any).mockResolvedValue([]),
+    });
     mockWeekStudy.create.mockImplementation((payload: any) =>
       Promise.resolve({
         _id: new Types.ObjectId(),
@@ -123,9 +164,8 @@ describe("week_study.service", () => {
         ],
       })
     );
-    mockGenerateAssessmentTestFromWeekCycle.mockResolvedValue({
+    mockGenerateAssessmentTestFromPlan.mockResolvedValue({
       test_id: new Types.ObjectId(),
-      day_study: { _id: new Types.ObjectId(), dayOfWeek: 2 },
     });
   });
 
@@ -152,7 +192,7 @@ describe("week_study.service", () => {
     expect(mockWeekStudy.create).toHaveBeenCalledWith(
       expect.objectContaining({
         assessment_type: "mini_test",
-        assessment_estimated_minutes: 100,
+        assessment_estimated_minutes: 60,
         learning_path_strategy_option_id: selectedOption._id,
         focus_part_types: [5],
         status: "in_progress",
@@ -171,17 +211,21 @@ describe("week_study.service", () => {
       user_id: userId,
       learning_path_id: learningPathId,
       week_study_id: String(result.week_study._id),
+      assessment_test_id: result.assessment_result.test_id,
       cycle_units: expect.any(Array),
     });
-    expect(mockGenerateAssessmentTestFromWeekCycle).toHaveBeenCalledWith({
+    expect(mockGenerateAssessmentTestFromPlan).toHaveBeenCalledWith({
       user_id: userId,
       learning_path_id: learningPathId,
-      week_study_id: String(result.week_study._id),
+      cycle_no: 1,
+      assessment: expect.objectContaining({ type: "mini_test" }),
+      focus_part_types: expect.any(Array),
+      focus_skill_keys: expect.any(Array),
     });
     expect(
-      mockCreateDayStudiesForWeekStudyCycle.mock.invocationCallOrder[0]
+      mockGenerateAssessmentTestFromPlan.mock.invocationCallOrder[0]
     ).toBeLessThan(
-      mockGenerateAssessmentTestFromWeekCycle.mock.invocationCallOrder[0]
+      mockWeekStudy.create.mock.invocationCallOrder[0]
     );
     expect(result.day_studies.length).toBeGreaterThan(0);
     expect(result.assessment_result.test_id).toBeInstanceOf(Types.ObjectId);
@@ -213,19 +257,155 @@ describe("week_study.service", () => {
     expect(mockWeekStudy.create).toHaveBeenCalledWith(
       expect.objectContaining({
         assessment_type: "full_test",
-        assessment_estimated_minutes: 200,
+        assessment_estimated_minutes: 120,
       })
     );
     expect(selectedOption.part_roadmaps.find((roadmap: any) => roadmap.part_type === 5)!.cursor_index).toBeGreaterThan(0);
     expect(mockCreateDayStudiesForWeekStudyCycle).toHaveBeenCalledTimes(1);
-    expect(mockGenerateAssessmentTestFromWeekCycle).toHaveBeenCalledTimes(1);
+    expect(mockGenerateAssessmentTestFromPlan).toHaveBeenCalledTimes(1);
     expect(
-      mockCreateDayStudiesForWeekStudyCycle.mock.invocationCallOrder[0]
+      mockGenerateAssessmentTestFromPlan.mock.invocationCallOrder[0]
     ).toBeLessThan(
-      mockGenerateAssessmentTestFromWeekCycle.mock.invocationCallOrder[0]
+      mockWeekStudy.create.mock.invocationCallOrder[0]
     );
     expect(result.day_studies.length).toBeGreaterThan(0);
     expect(result.assessment_result.test_id).toBeInstanceOf(Types.ObjectId);
+  });
+
+  it("createNextLearningPathCycle -> uses latest UserSkill rolling focus instead of selected option focus", async () => {
+    const selectedOption = createSelectedOption({
+      focus_part_types: [5],
+      part_roadmaps: [1, 2, 3, 4, 5, 6, 7].map((partType) => ({
+        part_type: partType,
+        cursor_index: 0,
+        target_minutes: [2, 5].includes(partType) ? 250 : 0,
+        estimated_gain: [2, 5].includes(partType) ? 0.4 : 0,
+        reaches_target: false,
+        units: [2, 5].includes(partType)
+          ? [
+              createRouteUnit({
+                lesson_manager_id: new Types.ObjectId(),
+                part_type: partType,
+                planned_minutes: 250,
+                target_tags: [`part_${partType}_weak_skill`],
+              }),
+            ]
+          : [],
+      })),
+    });
+    mockLearningPathStrategyOption.findOne.mockReturnValue(
+      createFindOneSortChain(selectedOption)
+    );
+    mockUserSkill.findOne.mockResolvedValue(
+      createUserSkill([
+        { part_type: 1, ability: 0.1 },
+        { part_type: 2, ability: 0.2 },
+        { part_type: 3, ability: 0.3 },
+        { part_type: 4, ability: 0.4 },
+        { part_type: 5, ability: 0.5 },
+        { part_type: 6, ability: 0.6 },
+        { part_type: 7, ability: 0.7 },
+      ])
+    );
+
+    const result = await createNextLearningPathCycle({
+      user_id: userId,
+      learning_path_id: learningPathId,
+    });
+
+    expect(result.status).toBe("cycle_created");
+    expect(mockWeekStudy.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        focus_part_types: [2, 5],
+      })
+    );
+    expect(mockGenerateAssessmentTestFromPlan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        focus_part_types: [2, 5],
+      })
+    );
+  });
+
+  it("createNextLearningPathCycle -> alternative node prioritizes current ability before target score", async () => {
+    const abilityCloseNodeId = new Types.ObjectId();
+    const targetCloseNodeId = new Types.ObjectId();
+    const selectedOption = createSelectedOption({
+      part_roadmaps: [1, 2, 3, 4, 5, 6, 7].map((partType) => ({
+        part_type: partType,
+        cursor_index: 0,
+        target_minutes: partType === 5 ? 250 : 0,
+        estimated_gain: partType === 5 ? 0.4 : 0,
+        reaches_target: false,
+        units:
+          partType === 5
+            ? [
+                createRouteUnit({
+                  lesson_manager_id: new Types.ObjectId(),
+                  part_type: 5,
+                  planned_minutes: 250,
+                  target_tags: ["part_5_weak_skill"],
+                }),
+              ]
+            : [],
+      })),
+    });
+    mockLearningPathStrategyOption.findOne.mockReturnValue(
+      createFindOneSortChain(selectedOption)
+    );
+    mockUserSkill.findOne.mockResolvedValue(
+      createUserSkill([
+        { part_type: 2, ability: 0.2 },
+        { part_type: 5, ability: 0.5 },
+      ])
+    );
+    mockLessonManager.find.mockReturnValue({
+      lean: (jest.fn() as any).mockResolvedValue([
+        {
+          _id: targetCloseNodeId,
+          title: "Target close but too hard",
+          part_type: 2,
+          score_band: { from: 650, to: 750 },
+          unit_type: "foundation",
+          node_role: "normal",
+          target_tags: ["part_2_weak_skill"],
+          weight: 0.8,
+          planned_completion_time: 250,
+          next_unit_ids: [],
+          prerequisite_unit_ids: [],
+          auxiliary_unit_ids: [],
+          status: "approved",
+        },
+        {
+          _id: abilityCloseNodeId,
+          title: "Ability close alternative",
+          part_type: 2,
+          score_band: { from: 300, to: 450 },
+          unit_type: "foundation",
+          node_role: "normal",
+          target_tags: ["part_2_weak_skill"],
+          weight: 0.22,
+          planned_completion_time: 250,
+          next_unit_ids: [],
+          prerequisite_unit_ids: [],
+          auxiliary_unit_ids: [],
+          status: "approved",
+        },
+      ]),
+    });
+
+    const result = await createNextLearningPathCycle({
+      user_id: userId,
+      learning_path_id: learningPathId,
+    });
+
+    expect(result.status).toBe("cycle_created");
+    const part2Roadmap = selectedOption.part_roadmaps.find(
+      (roadmap: any) => roadmap.part_type === 2
+    ) as any;
+    expect(String(part2Roadmap.units[0].lesson_manager_id)).toBe(
+      String(abilityCloseNodeId)
+    );
+    expect(part2Roadmap.units[0].unit_source).toBe("alternative");
   });
 
   it("createNextLearningPathCycle -> route exhausted -> returns route_completed and does not create WeekStudy", async () => {
@@ -263,7 +443,7 @@ describe("week_study.service", () => {
     expect(result.status).toBe("route_completed");
     expect(mockWeekStudy.create).not.toHaveBeenCalled();
     expect(mockCreateDayStudiesForWeekStudyCycle).not.toHaveBeenCalled();
-    expect(mockGenerateAssessmentTestFromWeekCycle).not.toHaveBeenCalled();
+    expect(mockGenerateAssessmentTestFromPlan).not.toHaveBeenCalled();
     expect(result.day_studies).toEqual([]);
     expect(selectedOption.save).not.toHaveBeenCalled();
     expect(learningPath.save).not.toHaveBeenCalled();
@@ -421,7 +601,7 @@ describe("week_study.service", () => {
 
   it("createNextLearningPathCycle -> assessment generation throws -> propagates error", async () => {
     // Chuẩn bị
-    mockGenerateAssessmentTestFromWeekCycle.mockRejectedValue(
+    mockGenerateAssessmentTestFromPlan.mockRejectedValue(
       new Error("Assessment failed")
     );
 
@@ -470,7 +650,7 @@ describe("week_study.service", () => {
     );
     expect(mockWeekStudy.create).not.toHaveBeenCalled();
     expect(mockCreateDayStudiesForWeekStudyCycle).not.toHaveBeenCalled();
-    expect(mockGenerateAssessmentTestFromWeekCycle).not.toHaveBeenCalled();
+    expect(mockGenerateAssessmentTestFromPlan).not.toHaveBeenCalled();
     expect(strategyOption.save).not.toHaveBeenCalled();
     expect(learningPath.save).not.toHaveBeenCalled();
     expect(

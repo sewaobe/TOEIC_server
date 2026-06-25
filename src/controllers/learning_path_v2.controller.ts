@@ -2,10 +2,15 @@ import type { NextFunction, Request, Response } from "express";
 import { ApiResponse } from "../utils/ApiResponse";
 import {
   ensureLearningPathV2MentorAssigned,
+  assertLearningPathV3SchedulerReady,
   getCurrentLearningPathCycleV2,
   getLearningPathV2GenerationContext,
+  getLearningPathV2NodeDetail,
   getLearningPathV2Overview,
   getLearningPathV2SkillMap,
+  LearningPathV3SchedulerNotReadyError,
+  LearningPathV2MockLearningError,
+  mockCompleteLearningPathV2CurrentWeek,
   runLearningPathV2AbilityPipeline,
   upsertLearningPathV2Setup,
 } from "../services/learning_path_v2/learning_path_v2.service";
@@ -15,7 +20,10 @@ import {
 } from "../services/user_test.service";
 import { UserTestSubmitType } from "../models/enums/UserTestSubmitType";
 import { LearningPath } from "../models";
-import { getLearningPathStrategyOverview, selectLearningPathStrategyOptionForV2 } from "../services/learning_path_strategy_option.service";
+import {
+  submitLearningPathV2Assessment,
+  type LearningPathV2AssessmentType,
+} from "../services/learning_path_v2/learning_path_v2_assessment.service";
 
 const toDateOrUndefined = (value: unknown): Date | undefined => {
   if (!value) {
@@ -54,6 +62,11 @@ const handleLearningPathV2ControllerError = (
   res: Response,
   next: NextFunction
 ): void => {
+  if (error instanceof LearningPathV3SchedulerNotReadyError) {
+    res.status(error.statusCode).json(ApiResponse.fail(error.message));
+    return;
+  }
+
   if (
     error instanceof Error &&
     error.message.startsWith("Không tìm thấy LearningPath")
@@ -78,6 +91,12 @@ export const initialGenerateLearningPathV2Controller = async (
       res.status(401).json(ApiResponse.fail("Không tìm thấy user_id."));
       return;
     }
+
+    /**
+     * Chặn trước khi gán mentor hoặc cập nhật ability để checkpoint contract không tạo dữ liệu nửa chừng.
+     * Endpoint sẽ được mở lại khi Skill ROI engine có thể tạo WeekStudy V3 hoàn chỉnh.
+     */
+    assertLearningPathV3SchedulerReady();
 
     const learningPath = await LearningPath.findOne({
       _id: learningPathId,
@@ -299,6 +318,67 @@ export const getLearningPathV2OverviewController = async (
   }
 };
 
+export const getLearningPathV2NodeDetailController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { learningPathId, lessonManagerId } = req.params;
+    const userId = req.user?._id;
+    if (!userId) {
+      res.status(401).json(ApiResponse.fail("Không tìm thấy user_id."));
+      return;
+    }
+
+    const result = await getLearningPathV2NodeDetail({
+      user_id: String(userId),
+      learning_path_id: learningPathId,
+      lesson_manager_id: lessonManagerId,
+    });
+    res.status(200).json(ApiResponse.success(result));
+  } catch (error) {
+    handleLearningPathV2ControllerError(error, res, next);
+  }
+};
+
+export const mockLearningPathV2CurrentWeekController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { learningPathId } = req.params;
+    const userId = req.user?._id;
+
+    if (!userId) {
+      res.status(401).json(ApiResponse.fail("Không tìm thấy user_id."));
+      return;
+    }
+
+    const result = await mockCompleteLearningPathV2CurrentWeek({
+      user_id: String(userId),
+      learning_path_id: learningPathId,
+    });
+
+    res
+      .status(200)
+      .json(
+        ApiResponse.success(
+          result,
+          "Đã hoàn thành nhanh các bài học trong tuần. Bài kiểm tra cuối đã sẵn sàng."
+        )
+      );
+  } catch (error) {
+    if (error instanceof LearningPathV2MockLearningError) {
+      res.status(error.statusCode).json(ApiResponse.fail(error.message));
+      return;
+    }
+
+    handleLearningPathV2ControllerError(error, res, next);
+  }
+};
+
 
 export const getLearningPathV2SkillMapController = async (
   req: Request,
@@ -348,7 +428,7 @@ export const getLearningPathV2SkillMapController = async (
   }
 };
 
-export const getLearningPathV2StrategyController = async (
+export const submitLearningPathV2AssessmentController = async (
   req: Request,
   res: Response,
   next: NextFunction
@@ -362,38 +442,44 @@ export const getLearningPathV2StrategyController = async (
       return;
     }
 
-    const result = await getLearningPathStrategyOverview({
-      user_id: String(userId),
-      learning_path_id: learningPathId,
-    });
+    const {
+      test_id,
+      testId,
+      answers,
+      duration,
+      assessment_type,
+      week_study_id,
+      day_study_id,
+    } = req.body ?? {};
+    const normalizedAssessmentType = assessment_type as LearningPathV2AssessmentType;
 
-    res.status(200).json(ApiResponse.success(result));
-  } catch (error) {
-    handleLearningPathV2ControllerError(error, res, next);
-  }
-};
-
-export const selectLearningPathV2StrategyOptionController = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  try {
-    const { learningPathId, optionId } = req.params;
-    const userId = req.user?._id;
-
-    if (!userId) {
-      res.status(401).json(ApiResponse.fail("Không tìm thấy user_id."));
+    if (
+      !learningPathId ||
+      !(test_id || testId) ||
+      !Array.isArray(answers) ||
+      !Number.isFinite(Number(duration)) ||
+      !["mini_test", "full_test"].includes(normalizedAssessmentType)
+    ) {
+      res.status(400).json(ApiResponse.fail("Payload assessment không hợp lệ."));
       return;
     }
 
-    const result = await selectLearningPathStrategyOptionForV2({
+    const result = await submitLearningPathV2Assessment({
       user_id: String(userId),
       learning_path_id: learningPathId,
-      strategy_option_id: optionId,
+      test_id: String(test_id ?? testId),
+      answers,
+      duration: Number(duration),
+      assessment_type: normalizedAssessmentType,
+      week_study_id:
+        typeof week_study_id === "string" ? week_study_id : undefined,
+      day_study_id:
+        typeof day_study_id === "string" ? day_study_id : undefined,
     });
 
-    res.status(200).json(ApiResponse.success(result));
+    res
+      .status(200)
+      .json(ApiResponse.success(result, "Nộp assessment LearningPath v2 thành công."));
   } catch (error) {
     handleLearningPathV2ControllerError(error, res, next);
   }
