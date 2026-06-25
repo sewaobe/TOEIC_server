@@ -5,8 +5,6 @@ import {
   getLearningPathV2NodeDetailController,
   getLearningPathV2OverviewController,
   getLearningPathV2SkillMapController,
-  getLearningPathV2StrategyOptionPreviewController,
-  getLearningPathV2StrategyController,
   initialGenerateLearningPathV2Controller,
   mockLearningPathV2CurrentWeekController,
   submitLearningPathV2AssessmentController,
@@ -52,18 +50,6 @@ router.get(
   "/:learningPathId/skill-map",
   verifyAccessToken,
   getLearningPathV2SkillMapController
-);
-
-router.get(
-  "/:learningPathId/strategy",
-  verifyAccessToken,
-  getLearningPathV2StrategyController
-);
-
-router.get(
-  "/:learningPathId/strategy-options/:optionId/preview",
-  verifyAccessToken,
-  getLearningPathV2StrategyOptionPreviewController
 );
 
 export default router;

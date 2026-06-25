@@ -29,8 +29,42 @@ import type {
   LearningPathStrategyPartRoadmapV2,
   RouteCompletedPlanV2,
 } from "../types/learning_path_v2";
-import { StrategyCyclePreview, StrategyCyclePreviewGroup, StrategyCyclePreviewUnit } from "../types/learning_strategies.type";
 import { Types as MongooseTypes } from "mongoose";
+
+type StrategyCyclePreviewUnit = {
+  lesson_manager_id: string;
+  title: string;
+  part_type: number;
+  unit_type?: string;
+  target_tags: string[];
+  planned_minutes: number;
+  estimated_gain?: number;
+  reason?: string;
+  unit_source?: "strategy" | "alternative";
+  source_reason?: string;
+};
+
+type StrategyCyclePreviewGroup = {
+  part_type: number;
+  part_label: string;
+  total_minutes: number;
+  unit_count: number;
+  units: StrategyCyclePreviewUnit[];
+};
+
+type StrategyCyclePreview = {
+  status: "preview_available" | "route_completed" | "empty";
+  title: string;
+  description: string;
+  assessment_type?: "mini_test" | "full_test" | null;
+  assessment_estimated_minutes?: number;
+  estimated_learning_minutes: number;
+  primary_focus_skill_key?: string | null;
+  covered_skill_keys: string[];
+  focus_part_type?: number | null;
+  groups: StrategyCyclePreviewGroup[];
+  route_completed_reason?: string;
+};
 
 type CreateNextLearningPathCycleInput = {
   user_id: string;
