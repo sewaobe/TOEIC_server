@@ -13,7 +13,6 @@ import type {
 } from "../../models/learning_path_strategy_option.model";
 import type { ILessonManager } from "../../models/lesson_manager.model";
 import type { IWeekStudy } from "../../models/week_study.model";
-import { WeekStudyStatus } from "../../models/enums/WeekStudyStatus";
 import type {
     LearningCyclePlanV2,
     LearningPathScenarioV2,
@@ -44,6 +43,7 @@ import { createSchedulerDecisionLog } from "./scheduler_decision_log.service";
 import {
     createDayStudiesForSkillFocusedCycle,
 } from "../day_study.service";
+import { createSkillRoiWeekStudy } from "../week_study.service";
 
 const MINI_TEST_ESTIMATED_MINUTES = 60;
 const FULL_TEST_ESTIMATED_MINUTES = 120;
@@ -135,25 +135,6 @@ const toObjectId = (
         throw new Error(`${fieldName} không phải ObjectId hợp lệ.`);
     }
     return new Types.ObjectId(value);
-};
-
-const calculateExpectedCompletionAt = (input: {
-    now: Date;
-    estimated_learning_minutes: number;
-    assessment_estimated_minutes: number;
-    time_per_day?: number;
-}): Date => {
-    const totalMinutes =
-        input.estimated_learning_minutes +
-        input.assessment_estimated_minutes;
-    const estimatedDays =
-        input.time_per_day && input.time_per_day > 0
-            ? Math.max(1, Math.ceil(totalMinutes / input.time_per_day))
-            : Math.max(1, Math.ceil(totalMinutes / 60));
-
-    return new Date(
-        input.now.getTime() + estimatedDays * 24 * 60 * 60 * 1000
-    );
 };
 
 const getNextCycleNo = (learningPath: ILearningPath): number =>
@@ -895,39 +876,24 @@ export const createSkillFocusedCycle = async (
         }).sort({ selected_at: -1, created_at: -1 });
     }
 
-    const cycleDescription =
-        cycleIntent.cycle_mode === "remediation"
-            ? `Cycle ${cycleNo}: remediation ${decision.primary_focus_skill_key} lần ${cycleIntent.remediation_attempt}/2`
-            : cycleIntent.remediation_limit_reached
-                ? `Cycle ${cycleNo}: chuyển từ ${cycleIntent.excluded_skill_key} sang ${decision.primary_focus_skill_key}`
-                : `Cycle ${cycleNo}: tập trung ${decision.primary_focus_skill_key}`;
-    const weekStudy = await WeekStudy.create({
-        no: cycleNo,
-        description: cycleDescription,
-        status: WeekStudyStatus.IN_PROGRESS,
-        accuracy_overall: 0,
-        days: [],
-        expected_completion_at: calculateExpectedCompletionAt({
-            now,
-            estimated_learning_minutes:
-                decision.estimated_learning_minutes,
-            assessment_estimated_minutes:
-                assessmentState.assessment.estimated_minutes,
-            time_per_day: learningPath.time_per_day,
-        }),
-        primary_focus_skill_key:
-            decision.primary_focus_skill_key,
+    const weekStudy = await createSkillRoiWeekStudy({
+        cycle_no: cycleNo,
+        now,
+        time_per_day: learningPath.time_per_day,
+        estimated_learning_minutes: decision.estimated_learning_minutes,
+        assessment_estimated_minutes: assessmentState.assessment.estimated_minutes,
+        primary_focus_skill_key: decision.primary_focus_skill_key,
         covered_skill_keys: decision.covered_skill_keys,
         focus_part_type: decision.focus_part_type,
         cycle_mode: cycleIntent.cycle_mode,
+        remediation_attempt: cycleIntent.remediation_attempt,
+        remediation_limit_reached: cycleIntent.remediation_limit_reached,
+        excluded_skill_key: cycleIntent.excluded_skill_key,
         expected_skill_gain: decision.expected_skill_gain,
         expected_roi_per_hour: decision.expected_roi_per_hour,
         learning_path_strategy_option_id: activeStrategyOption?._id ?? null,
         assessment_type: assessmentState.assessment.type,
-        assessment_estimated_minutes:
-            assessmentState.assessment.estimated_minutes,
     });
-
     const dayStudyResult = await createDayStudiesForSkillFocusedCycle({
         user_id: input.user_id,
         learning_path_id: input.learning_path_id,
