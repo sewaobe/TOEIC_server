@@ -13,6 +13,7 @@ export type SkillRoiPolicyV3 = {
   max_lesson_manager_count: number;
   max_ability_distance: number;
   minimum_unit_roi_per_hour: number;
+  allowed_unit_types?: SkillRoiLessonManagerUnitTypeV3[];
 };
 
 export type SkillRoiUserSkillInputV3 = {
@@ -30,6 +31,10 @@ export type SkillRoiLessonManagerInputV3 = {
   id: string;
   title: string;
   part_type: number;
+  score_band?: {
+    from?: number;
+    to?: number;
+  };
   unit_type: SkillRoiLessonManagerUnitTypeV3;
   node_role: "normal" | "support";
   target_tags: string[];

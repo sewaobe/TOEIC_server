@@ -68,6 +68,12 @@ export const DEFAULT_SKILL_ROI_POLICY_V3: SkillRoiPolicyV3 = {
   max_learning_minutes: 240,
   minimum_unit_roi_per_hour: 0,
   max_ability_distance: 0.25,
+  /*
+   * Main learning và roadmap dự kiến chỉ đi qua các bài học chính.
+   * remedial/exam_practice được để cho remediation hoặc giai đoạn luyện đề riêng,
+   * tránh việc roadmap dài hạn trộn bài chữa hổng/luyện đề vào luồng học nền tảng.
+   */
+  allowed_unit_types: ["foundation", "skill_drill", "mixed_practice"],
 };
 
 const roundToSix = (value: number): number =>
@@ -1019,6 +1025,13 @@ const isMatchingNodeForSkill = (input: {
   }
 
   if (
+    input.policy.allowed_unit_types &&
+    !input.policy.allowed_unit_types.includes(input.node.unit_type)
+  ) {
+    return false;
+  }
+
+  if (
     input.node.planned_completion_time <= 0
   ) {
     return false;
@@ -1902,6 +1915,7 @@ export const buildSkillRoiPlanningContext =
           id: String(node._id),
           title: node.title,
           part_type: node.part_type,
+          score_band: node.score_band,
           unit_type: node.unit_type,
           node_role: node.node_role,
           target_tags:

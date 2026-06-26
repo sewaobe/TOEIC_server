@@ -874,9 +874,67 @@ type LearningPathV2OverviewResult = CurrentLearningPathCycleV2Result & {
       assessment_type: "mini_test" | "full_test" | null;
     } | null;
     current_learning: RoadmapCanvasCurrentLearning | null;
+    checkpoints: RoadmapCanvasCheckpoint[];
     units: RoadmapCanvasUnitStatusItem[];
     part_roadmaps: RoadmapCanvasPartRoadmap[];
   }
+};
+
+type PartAbilityMap = Record<number, number>;
+
+type ProjectedToeicScore = {
+  listening_ability: number;
+  reading_ability: number;
+  projected_listening_score: number;
+  projected_reading_score: number;
+  projected_total_score: number;
+};
+
+const TOEIC_PART_SCORE_WEIGHTS = {
+  1: 0.06,
+  2: 0.25,
+  3: 0.39,
+  4: 0.3,
+  5: 0.3,
+  6: 0.16,
+  7: 0.54,
+} as const;
+
+const clamp01 = (value: number): number =>
+  Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
+
+const roundToNearest5 = (value: number): number =>
+  Math.round(value / 5) * 5;
+
+const abilityToSectionScore = (ability: number): number => {
+  const score = 5 + clamp01(ability) * 490;
+  return Math.min(495, Math.max(5, roundToNearest5(score)));
+};
+
+export const calculateProjectedToeicScore = (
+  abilities: PartAbilityMap
+): ProjectedToeicScore => {
+  const listeningAbility =
+    clamp01(abilities[1]) * TOEIC_PART_SCORE_WEIGHTS[1] +
+    clamp01(abilities[2]) * TOEIC_PART_SCORE_WEIGHTS[2] +
+    clamp01(abilities[3]) * TOEIC_PART_SCORE_WEIGHTS[3] +
+    clamp01(abilities[4]) * TOEIC_PART_SCORE_WEIGHTS[4];
+
+  const readingAbility =
+    clamp01(abilities[5]) * TOEIC_PART_SCORE_WEIGHTS[5] +
+    clamp01(abilities[6]) * TOEIC_PART_SCORE_WEIGHTS[6] +
+    clamp01(abilities[7]) * TOEIC_PART_SCORE_WEIGHTS[7];
+
+  const projectedListeningScore = abilityToSectionScore(listeningAbility);
+  const projectedReadingScore = abilityToSectionScore(readingAbility);
+
+  return {
+    listening_ability: listeningAbility,
+    reading_ability: readingAbility,
+    projected_listening_score: projectedListeningScore,
+    projected_reading_score: projectedReadingScore,
+    projected_total_score: projectedListeningScore + projectedReadingScore,
+  };
 };
 
 const loadActiveLearningPath = async (
@@ -1266,6 +1324,13 @@ export const getLearningPathV2Overview = async (
     weekStudies,
     selectedOption,
   });
+  const roadmapCheckpoints = await buildRoadmapCanvasCheckpoints({
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    selectedOption,
+    weekStudies,
+    allDayStudies,
+  });
 
   return {
     learning_path: learningPath,
@@ -1282,11 +1347,12 @@ export const getLearningPathV2Overview = async (
       selectedOption,
       currentWeekStudy,
       weekStudies,
-      allDayStudies,
-      roadmapStrategyOptions,
-      includeProjection: !requiresStrategySelection,
-      requiresStrategySelection,
-    }),
+        allDayStudies,
+        roadmapStrategyOptions,
+        includeProjection: !requiresStrategySelection,
+        requiresStrategySelection,
+        checkpoints: roadmapCheckpoints,
+      }),
   };
 };
 
@@ -1469,6 +1535,24 @@ export const getLearningPathV2NodeDetail = async (input: {
 
 type RoadmapCanvasUnitStatus = "completed" | "in_cycle" | "current" | "locked";
 
+type RoadmapCanvasCheckpointType = "entry_test" | "mini_test" | "full_test";
+
+type RoadmapCanvasCheckpointStatus = "completed" | "current" | "planned";
+
+type RoadmapCanvasCheckpoint = {
+  id: string;
+  type: RoadmapCanvasCheckpointType;
+  label: string;
+  cycle_no: number;
+  status: RoadmapCanvasCheckpointStatus;
+  test_id?: string | null;
+  week_study_id?: string | null;
+  day_study_id?: string | null;
+  planned_score?: number | null;
+  actual_score?: number | null;
+  submitted_at?: Date | null;
+};
+
 type RoadmapCanvasUnitStatusItem = {
   lesson_manager_id: string;
   status: RoadmapCanvasUnitStatus;
@@ -1640,6 +1724,205 @@ const loadRoadmapCanvasStrategyOptions = async (input: {
   });
 };
 
+const getCheckpointStatusFromAssessmentItem = (
+  status: WeekStudyStatus
+): RoadmapCanvasCheckpointStatus => {
+  if (status === WeekStudyStatus.COMPLETED) return "completed";
+  if (status === WeekStudyStatus.IN_PROGRESS) return "current";
+  return "planned";
+};
+
+const getCheckpointLabel = (type: RoadmapCanvasCheckpointType): string => {
+  if (type === "entry_test") return "Entry Test";
+  if (type === "mini_test") return "Mini Test";
+  return "Full Test";
+};
+
+const findAssessmentItemInWeek = (
+  dayStudies: IDayStudy[]
+): {
+  dayStudy: IDayStudy;
+  item: IDayStudy["sessions"][number]["items"][number];
+  type: Exclude<RoadmapCanvasCheckpointType, "entry_test">;
+} | null => {
+  for (const dayStudy of dayStudies) {
+    for (const session of dayStudy.sessions ?? []) {
+      for (const item of session.items ?? []) {
+        if (item.kind === SessionType.MINI_TEST) {
+          return { dayStudy, item, type: "mini_test" };
+        }
+
+        if (item.kind === SessionType.FULL_TEST) {
+          return { dayStudy, item, type: "full_test" };
+        }
+      }
+    }
+  }
+
+  return null;
+};
+
+const getRoadmapSimulationBaseCycleNo = (input: {
+  selectedOption?: ILearningPathStrategyOption | null;
+  weekStudies: IWeekStudy[];
+}): number => {
+  if (!input.selectedOption?._id) return 1;
+
+  const optionId = String(input.selectedOption._id);
+  const firstLinkedWeek = input.weekStudies
+    .filter(
+      (week) =>
+        week.learning_path_strategy_option_id &&
+        String(week.learning_path_strategy_option_id) === optionId
+    )
+    .sort((a, b) => a.no - b.no)[0];
+
+  return firstLinkedWeek?.no ?? 1;
+};
+
+const loadActualAssessmentTestsByTestId = async (input: {
+  user_id: string;
+  testIds: string[];
+}): Promise<Map<string, IUserTest>> => {
+  const validTestIds = Array.from(
+    new Set(input.testIds.filter((id) => Types.ObjectId.isValid(id)))
+  );
+  if (validTestIds.length === 0) return new Map();
+
+  const userTests = await UserTest.find({
+    user_id: input.user_id,
+    test_id: { $in: validTestIds.map((id) => new Types.ObjectId(id)) },
+    submit_type: { $in: [UserTestSubmitType.MINI_TEST, UserTestSubmitType.FULL_TEST] },
+  })
+    .sort({ submit_at: -1, created_at: -1 })
+    .lean<IUserTest[]>();
+
+  const byTestId = new Map<string, IUserTest>();
+  for (const userTest of userTests) {
+    const testId = String(userTest.test_id);
+    if (!byTestId.has(testId)) {
+      byTestId.set(testId, userTest);
+    }
+  }
+
+  return byTestId;
+};
+
+const buildRoadmapCanvasCheckpoints = async (input: {
+  user_id: string;
+  learning_path_id: string;
+  selectedOption?: ILearningPathStrategyOption | null;
+  weekStudies: IWeekStudy[];
+  allDayStudies: IDayStudy[];
+}): Promise<RoadmapCanvasCheckpoint[]> => {
+  const checkpointsById = new Map<string, RoadmapCanvasCheckpoint>();
+  const dayStudiesByWeekId = new Map<string, IDayStudy[]>();
+  const assessmentTestIds: string[] = [];
+
+  for (const dayStudy of input.allDayStudies ?? []) {
+    const weekId = String(dayStudy.week_id);
+    const group = dayStudiesByWeekId.get(weekId) ?? [];
+    group.push(dayStudy);
+    dayStudiesByWeekId.set(weekId, group);
+  }
+
+  const latestEntryTest = await getLatestUserTestBySubmitType({
+    user_id: input.user_id,
+    submit_type: UserTestSubmitType.INITIAL_ASSESSMENT,
+  });
+
+  if (latestEntryTest) {
+    checkpointsById.set("entry-test", {
+      id: "entry-test",
+      type: "entry_test",
+      label: getCheckpointLabel("entry_test"),
+      cycle_no: 0,
+      status: "completed",
+      test_id: String(latestEntryTest.test_id),
+      actual_score: latestEntryTest.score,
+      submitted_at: latestEntryTest.submit_at,
+    });
+  }
+
+  const baseCycleNo = getRoadmapSimulationBaseCycleNo({
+    selectedOption: input.selectedOption,
+    weekStudies: input.weekStudies,
+  });
+
+  for (const cycle of input.selectedOption?.roadmap_simulation?.cycles ?? []) {
+    const cycleNo = baseCycleNo + cycle.cycle_no - 1;
+    const type = cycle.assessment_type;
+    const id = `cycle-${cycleNo}-${type}`;
+
+    checkpointsById.set(id, {
+      id,
+      type,
+      label: getCheckpointLabel(type),
+      cycle_no: cycleNo,
+      status: "planned",
+      planned_score:
+        typeof cycle.planned_score_after === "number"
+          ? cycle.planned_score_after
+          : null,
+    });
+  }
+
+  for (const weekStudy of input.weekStudies) {
+    const weekDayStudies = dayStudiesByWeekId.get(String(weekStudy._id)) ?? [];
+    const assessment = findAssessmentItemInWeek(weekDayStudies);
+    if (!assessment) continue;
+
+    const testId = assessment.item.activity_id
+      ? String(assessment.item.activity_id)
+      : null;
+    if (testId) {
+      assessmentTestIds.push(testId);
+    }
+
+    const id = `cycle-${weekStudy.no}-${assessment.type}`;
+    const existing = checkpointsById.get(id);
+
+    checkpointsById.set(id, {
+      ...existing,
+      id,
+      type: assessment.type,
+      label: getCheckpointLabel(assessment.type),
+      cycle_no: weekStudy.no,
+      status: getCheckpointStatusFromAssessmentItem(assessment.item.status),
+      test_id: testId,
+      week_study_id: String(weekStudy._id),
+      day_study_id: String(assessment.dayStudy._id),
+      planned_score: existing?.planned_score ?? null,
+    });
+  }
+
+  const actualAssessmentByTestId = await loadActualAssessmentTestsByTestId({
+    user_id: input.user_id,
+    testIds: assessmentTestIds,
+  });
+
+  for (const checkpoint of checkpointsById.values()) {
+    if (!checkpoint.test_id) continue;
+
+    const actual = actualAssessmentByTestId.get(checkpoint.test_id);
+    if (!actual) continue;
+
+    checkpoint.status = "completed";
+    checkpoint.actual_score = actual.score;
+    checkpoint.submitted_at = actual.submit_at;
+  }
+
+  return [...checkpointsById.values()].sort((a, b) => {
+    if (a.cycle_no !== b.cycle_no) return a.cycle_no - b.cycle_no;
+    const typeOrder: Record<RoadmapCanvasCheckpointType, number> = {
+      entry_test: 0,
+      mini_test: 1,
+      full_test: 2,
+    };
+    return typeOrder[a.type] - typeOrder[b.type];
+  });
+};
+
 const buildRoadmapCanvasSnapshot = (input: {
   selectedOption?: ILearningPathStrategyOption | null;
   currentWeekStudy?: IWeekStudy | null;
@@ -1648,6 +1931,7 @@ const buildRoadmapCanvasSnapshot = (input: {
   roadmapStrategyOptions: ILearningPathStrategyOption[];
   includeProjection: boolean;
   requiresStrategySelection: boolean;
+  checkpoints: RoadmapCanvasCheckpoint[];
 }) => {
   const currentCycleLessonManagerIds = new Set<string>();
   const completedLessonManagerIds = new Set<string>();
@@ -1816,6 +2100,7 @@ const buildRoadmapCanvasSnapshot = (input: {
       }
       : null,
     current_learning: currentLearning,
+    checkpoints: input.checkpoints,
     units,
     part_roadmaps: partRoadmaps,
   };
