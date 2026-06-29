@@ -68,6 +68,12 @@ export const DEFAULT_SKILL_ROI_POLICY_V3: SkillRoiPolicyV3 = {
   max_learning_minutes: 240,
   minimum_unit_roi_per_hour: 0,
   max_ability_distance: 0.25,
+  /*
+   * Main learning và roadmap dự kiến chỉ đi qua các bài học chính.
+   * remedial/exam_practice được để cho remediation hoặc giai đoạn luyện đề riêng,
+   * tránh việc roadmap dài hạn trộn bài chữa hổng/luyện đề vào luồng học nền tảng.
+   */
+  allowed_unit_types: ["foundation", "skill_drill", "mixed_practice"],
 };
 
 const roundToSix = (value: number): number =>
@@ -97,6 +103,53 @@ const TOEIC_SECTION_SCORE_RANGE = 490;
 
 const clampAbility = (value: number): number =>
   Math.min(1, Math.max(0, value));
+
+type PartAbilityMap = Record<number, number>;
+
+export type ProjectedToeicScore = {
+  listening_ability: number;
+  reading_ability: number;
+  projected_listening_score: number;
+  projected_reading_score: number;
+  projected_total_score: number;
+};
+
+const clampProjectedAbility = (value: number | undefined): number =>
+  Math.min(1, Math.max(0, Number.isFinite(value) ? Number(value) : 0));
+
+const roundToNearest5 = (value: number): number =>
+  Math.round(value / 5) * 5;
+
+const abilityToSectionScore = (ability: number): number => {
+  const score = 5 + clampProjectedAbility(ability) * TOEIC_SECTION_SCORE_RANGE;
+  return Math.min(495, Math.max(5, roundToNearest5(score)));
+};
+
+export const calculateProjectedToeicScore = (
+  abilities: PartAbilityMap
+): ProjectedToeicScore => {
+  const listeningAbility =
+    clampProjectedAbility(abilities[1]) * TOEIC_PART_SCORE_WEIGHT[1] +
+    clampProjectedAbility(abilities[2]) * TOEIC_PART_SCORE_WEIGHT[2] +
+    clampProjectedAbility(abilities[3]) * TOEIC_PART_SCORE_WEIGHT[3] +
+    clampProjectedAbility(abilities[4]) * TOEIC_PART_SCORE_WEIGHT[4];
+
+  const readingAbility =
+    clampProjectedAbility(abilities[5]) * TOEIC_PART_SCORE_WEIGHT[5] +
+    clampProjectedAbility(abilities[6]) * TOEIC_PART_SCORE_WEIGHT[6] +
+    clampProjectedAbility(abilities[7]) * TOEIC_PART_SCORE_WEIGHT[7];
+
+  const projectedListeningScore = abilityToSectionScore(listeningAbility);
+  const projectedReadingScore = abilityToSectionScore(readingAbility);
+
+  return {
+    listening_ability: listeningAbility,
+    reading_ability: readingAbility,
+    projected_listening_score: projectedListeningScore,
+    projected_reading_score: projectedReadingScore,
+    projected_total_score: projectedListeningScore + projectedReadingScore,
+  };
+};
 
 const getSkillCountOfPart = (partType: number): number =>
   TOEIC_SKILL_DEFINITIONS.filter(
@@ -1019,6 +1072,13 @@ const isMatchingNodeForSkill = (input: {
   }
 
   if (
+    input.policy.allowed_unit_types &&
+    !input.policy.allowed_unit_types.includes(input.node.unit_type)
+  ) {
+    return false;
+  }
+
+  if (
     input.node.planned_completion_time <= 0
   ) {
     return false;
@@ -1849,6 +1909,8 @@ export const buildSkillRoiPlanningContext =
           (part) => ({
             part_type: part.part_type,
             ability: part.ability,
+            status: part.status,
+            trend: part.trend,
           })
         ),
 
@@ -1887,6 +1949,8 @@ export const buildSkillRoiPlanningContext =
                       skillGroup,
                     ability:
                       skill.ability,
+                    status:
+                      skill.status,
                     trend: skill.trend,
                     history_count:
                       skill.history_count ??
@@ -1902,6 +1966,7 @@ export const buildSkillRoiPlanningContext =
           id: String(node._id),
           title: node.title,
           part_type: node.part_type,
+          score_band: node.score_band,
           unit_type: node.unit_type,
           node_role: node.node_role,
           target_tags:

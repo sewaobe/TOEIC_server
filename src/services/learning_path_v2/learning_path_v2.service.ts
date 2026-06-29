@@ -41,6 +41,7 @@ import {
   createSkillFocusedCycle,
   type CreateSkillFocusedCycleResult,
 } from "./skill_focused_cycle.service";
+import { calculateProjectedToeicScore } from "./skill_roi_optimizer.service";
 import { emitToUser } from "../../socket/emitToUser.socket";
 
 import { DayStudy, WeekStudy } from "../../models";
@@ -874,6 +875,7 @@ type LearningPathV2OverviewResult = CurrentLearningPathCycleV2Result & {
       assessment_type: "mini_test" | "full_test" | null;
     } | null;
     current_learning: RoadmapCanvasCurrentLearning | null;
+    checkpoints: RoadmapCanvasCheckpoint[];
     units: RoadmapCanvasUnitStatusItem[];
     part_roadmaps: RoadmapCanvasPartRoadmap[];
   }
@@ -1266,6 +1268,13 @@ export const getLearningPathV2Overview = async (
     weekStudies,
     selectedOption,
   });
+  const roadmapCheckpoints = await buildRoadmapCanvasCheckpoints({
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    selectedOption,
+    weekStudies,
+    allDayStudies,
+  });
 
   return {
     learning_path: learningPath,
@@ -1282,10 +1291,301 @@ export const getLearningPathV2Overview = async (
       selectedOption,
       currentWeekStudy,
       weekStudies,
-      allDayStudies,
-      roadmapStrategyOptions,
-      includeProjection: !requiresStrategySelection,
-      requiresStrategySelection,
+        allDayStudies,
+        roadmapStrategyOptions,
+        includeProjection: !requiresStrategySelection,
+        requiresStrategySelection,
+        checkpoints: roadmapCheckpoints,
+      }),
+  };
+};
+
+const scenarioLabelVi: Record<string, string> = {
+  ONBOARDING: "Khởi tạo lộ trình",
+  NORMAL_PROGRESS: "Đang tiến bộ",
+  PLATEAU: "Chững lại",
+  BEHIND_SCHEDULE: "Chậm tiến độ",
+  PRE_DEADLINE: "Gần deadline",
+  FULLTEST_MONTHLY: "Đánh giá định kỳ",
+};
+
+const cycleModeLabelVi: Record<string, string> = {
+  main_learning: "Học trọng tâm",
+  remediation: "Củng cố điểm yếu",
+  review: "Ôn tập",
+  mixed_practice: "Luyện tập tổng hợp",
+  exam_practice: "Luyện đề",
+};
+
+const triggerLabelVi: Record<string, string> = {
+  initial_generation: "Tạo lộ trình ban đầu",
+  mini_test_completion: "Sau Mini Test",
+  full_test_review: "Sau Full Test",
+  manual: "Điều chỉnh thủ công",
+};
+
+const testTypeLabelVi: Record<string, string> = {
+  entry: "Entry Test",
+  mini: "Mini Test",
+  full: "Full Test",
+  manual: "Điều chỉnh thủ công",
+};
+
+const formatAbilityPercent = (ability?: number) =>
+  typeof ability === "number" && Number.isFinite(ability)
+    ? Math.round(ability * 100)
+    : null;
+
+const formatStudyMinutes = (minutes?: number) => {
+  const value = Number(minutes ?? 0);
+  if (!Number.isFinite(value) || value <= 0) return "Chưa có dữ liệu";
+  if (value < 60) return `${Math.round(value)} phút`;
+
+  const hours = value / 60;
+  return `${Math.round(hours * 10) / 10} giờ`;
+};
+
+const normalizeDecisionReason = (reason: string): string => {
+  if (!reason) return reason;
+
+  const skillMatch = reason.match(/^Skill\s+(.+?)\s+có package ROI cao nhất\.$/);
+  if (skillMatch) {
+    return `Kỹ năng ${getToeicSkillLabelVi(skillMatch[1])} có gói bài học đạt hiệu quả dự kiến cao nhất.`;
+  }
+
+  const plateauMatch = reason.match(/^Skill\s+(.+?)\s+không đạt ngưỡng tiến bộ\.$/);
+  if (plateauMatch) {
+    return `Kỹ năng ${getToeicSkillLabelVi(plateauMatch[1])} chưa đạt mức tiến bộ kỳ vọng.`;
+  }
+
+  if (reason.startsWith("Expected gain:")) {
+    return `Mức tăng năng lực dự kiến: ${reason.replace("Expected gain:", "").trim()}`;
+  }
+
+  if (reason.startsWith("Expected ROI/giờ:")) {
+    return `Hiệu quả học dự kiến mỗi giờ: ${reason.replace("Expected ROI/giờ:", "").trim()}`;
+  }
+
+  if (reason.startsWith("Projected Part ability:")) {
+    return `Năng lực Part dự kiến sau cycle: ${reason.replace("Projected Part ability:", "").trim()}`;
+  }
+
+  if (reason.startsWith("Ability-based TOEIC score gain proxy:")) {
+    return `Mức tăng điểm TOEIC mô phỏng từ ability: ${reason.replace("Ability-based TOEIC score gain proxy:", "").trim()}`;
+  }
+
+  return reason;
+};
+
+export const getLearningPathV2CurrentCycleExplanation = async (
+  input: LearningPathV2ReadInput
+) => {
+  const learningPath = await loadActiveLearningPath(input);
+  const currentWeekStudy = await findCurrentWeekStudy(learningPath);
+
+  if (!currentWeekStudy) {
+    return {
+      has_current_cycle: false,
+      message: "Lộ trình chưa có cycle học hiện tại.",
+    };
+  }
+
+  /*
+   * SchedulerDecisionLog là nguồn giải thích đúng nhất cho cycle hiện tại.
+   * WeekStudy cho biết kết quả cycle đã tạo, còn log cho biết snapshot năng lực
+   * và lý do tại thời điểm scheduler ra quyết định.
+   */
+  const decisionLog = await SchedulerDecisionLog.findOne({
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    generated_week_id: currentWeekStudy._id,
+    status: "applied",
+  })
+    .sort({ created_at: -1 })
+    .lean();
+
+  const fallbackLatestLog = decisionLog
+    ? null
+    : await SchedulerDecisionLog.findOne({
+        user_id: input.user_id,
+        learning_path_id: input.learning_path_id,
+        status: "applied",
+      })
+        .sort({ created_at: -1 })
+        .lean();
+
+  const effectiveLog = decisionLog ?? fallbackLatestLog;
+  const snapshot = effectiveLog?.input_snapshot;
+  const focusPartSnapshot = snapshot?.part_abilities?.find(
+    (part) => part.part_type === currentWeekStudy.focus_part_type
+  );
+  const focusSkillSnapshot = snapshot?.skill_abilities?.find(
+    (skill) => skill.skill_key === currentWeekStudy.primary_focus_skill_key
+  );
+  const extra = snapshot?.extra as Record<string, any> | undefined;
+  const selectedProjection = extra?.selected_projection as
+    | Record<string, number>
+    | undefined;
+  const topCandidates = Array.isArray(extra?.top_candidates)
+    ? extra.top_candidates.slice(0, 5).map((candidate: any) => ({
+        skill_key: candidate.skill_key,
+        skill_label: getToeicSkillLabelVi(candidate.skill_key),
+        part_type: candidate.part_type,
+        current_ability_percent: formatAbilityPercent(candidate.current_ability),
+        expected_skill_gain: candidate.expected_skill_gain,
+        expected_roi_per_hour: candidate.expected_roi_per_hour,
+        is_selected:
+          candidate.skill_key === currentWeekStudy.primary_focus_skill_key,
+      }))
+    : [];
+
+  const decisionTraceLogs = await SchedulerDecisionLog.find({
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    status: "applied",
+  })
+    .sort({ created_at: -1 })
+    .limit(8)
+    .lean();
+
+  const generatedWeekIds = decisionTraceLogs
+    .map((log) => log.generated_week_id)
+    .filter(Boolean);
+  const traceWeeks =
+    generatedWeekIds.length > 0
+      ? await WeekStudy.find({ _id: { $in: generatedWeekIds } })
+          .select(
+            "no primary_focus_skill_key focus_part_type cycle_mode expected_skill_gain expected_roi_per_hour assessment_type"
+          )
+          .lean()
+      : [];
+  const traceWeekById = new Map(
+    traceWeeks.map((week) => [String(week._id), week])
+  );
+
+  return {
+    has_current_cycle: true,
+    generated_from_current_cycle_log: Boolean(decisionLog),
+    cycle: {
+      week_id: String(currentWeekStudy._id),
+      cycle_no: currentWeekStudy.no,
+      status: currentWeekStudy.status,
+      expected_completion_at: currentWeekStudy.expected_completion_at,
+      focus_part_type: currentWeekStudy.focus_part_type,
+      primary_focus_skill_key: currentWeekStudy.primary_focus_skill_key,
+      primary_focus_skill_label: getToeicSkillLabelVi(
+        currentWeekStudy.primary_focus_skill_key
+      ),
+      covered_skill_keys: currentWeekStudy.covered_skill_keys ?? [],
+      covered_skill_labels: (currentWeekStudy.covered_skill_keys ?? []).map(
+        getToeicSkillLabelVi
+      ),
+      cycle_mode: currentWeekStudy.cycle_mode,
+      cycle_mode_label:
+        cycleModeLabelVi[currentWeekStudy.cycle_mode] ??
+        currentWeekStudy.cycle_mode,
+      expected_skill_gain: currentWeekStudy.expected_skill_gain,
+      expected_roi_per_hour: currentWeekStudy.expected_roi_per_hour,
+      assessment_type: currentWeekStudy.assessment_type,
+      assessment_estimated_minutes:
+        currentWeekStudy.assessment_estimated_minutes,
+    },
+    decision: effectiveLog
+      ? {
+          log_id: String(effectiveLog._id),
+          created_at: effectiveLog.created_at,
+          trigger_type: effectiveLog.trigger_type,
+          trigger_label:
+            triggerLabelVi[effectiveLog.trigger_type] ??
+            effectiveLog.trigger_type,
+          strategy: effectiveLog.strategy,
+          strategy_label: "Tối đa hóa hiệu quả học theo kỹ năng",
+          scenario: effectiveLog.scenario,
+          scenario_label:
+            scenarioLabelVi[effectiveLog.scenario ?? ""] ??
+            effectiveLog.scenario,
+          reasons: (effectiveLog.reasons ?? []).map(normalizeDecisionReason),
+          raw_reasons: effectiveLog.reasons ?? [],
+          warnings: effectiveLog.warnings ?? [],
+        }
+      : null,
+    evidence: {
+      current_score: snapshot?.current_score ?? null,
+      target_score: snapshot?.target_score ?? learningPath.target_score ?? null,
+      weekly_available_minutes: snapshot?.weekly_available_minutes ?? null,
+      weekly_available_label: formatStudyMinutes(
+        snapshot?.weekly_available_minutes
+      ),
+      test_type: snapshot?.test_type ?? null,
+      test_type_label: snapshot?.test_type
+        ? testTypeLabelVi[snapshot.test_type] ?? snapshot.test_type
+        : null,
+      focus_part: focusPartSnapshot
+        ? {
+            part_type: focusPartSnapshot.part_type,
+            ability_percent: formatAbilityPercent(focusPartSnapshot.ability),
+            status: focusPartSnapshot.status,
+            trend: focusPartSnapshot.trend,
+          }
+        : null,
+      focus_skill: focusSkillSnapshot
+        ? {
+            skill_key: focusSkillSnapshot.skill_key,
+            skill_label: getToeicSkillLabelVi(focusSkillSnapshot.skill_key),
+            part_type: focusSkillSnapshot.part_type,
+            ability_percent: formatAbilityPercent(focusSkillSnapshot.ability),
+            status: focusSkillSnapshot.status,
+            trend: focusSkillSnapshot.trend,
+          }
+        : null,
+      selected_projection: selectedProjection
+        ? {
+            skill_ability_before_percent: formatAbilityPercent(
+              selectedProjection.skill_ability_before
+            ),
+            skill_ability_after_percent: formatAbilityPercent(
+              selectedProjection.skill_ability_after
+            ),
+            part_ability_before_percent: formatAbilityPercent(
+              selectedProjection.part_ability_before
+            ),
+            part_ability_after_percent: formatAbilityPercent(
+              selectedProjection.part_ability_after
+            ),
+          }
+        : null,
+      top_candidates: topCandidates,
+    },
+    decision_trace: decisionTraceLogs.map((log) => {
+      const week = log.generated_week_id
+        ? traceWeekById.get(String(log.generated_week_id))
+        : undefined;
+
+      return {
+        log_id: String(log._id),
+        created_at: log.created_at,
+        trigger_type: log.trigger_type,
+        trigger_label: triggerLabelVi[log.trigger_type] ?? log.trigger_type,
+        scenario: log.scenario,
+        scenario_label: scenarioLabelVi[log.scenario ?? ""] ?? log.scenario,
+        generated_week_id: log.generated_week_id
+          ? String(log.generated_week_id)
+          : null,
+        cycle_no: week?.no ?? null,
+        focus_part_type: week?.focus_part_type ?? null,
+        primary_focus_skill_key: week?.primary_focus_skill_key ?? null,
+        primary_focus_skill_label: week?.primary_focus_skill_key
+          ? getToeicSkillLabelVi(week.primary_focus_skill_key)
+          : null,
+        cycle_mode: week?.cycle_mode ?? null,
+        cycle_mode_label: week?.cycle_mode
+          ? cycleModeLabelVi[week.cycle_mode] ?? week.cycle_mode
+          : null,
+        expected_skill_gain: week?.expected_skill_gain ?? null,
+        expected_roi_per_hour: week?.expected_roi_per_hour ?? null,
+        assessment_type: week?.assessment_type ?? null,
+        reason_summary: normalizeDecisionReason(log.reasons?.[0] ?? ""),
+      };
     }),
   };
 };
@@ -1469,6 +1769,24 @@ export const getLearningPathV2NodeDetail = async (input: {
 
 type RoadmapCanvasUnitStatus = "completed" | "in_cycle" | "current" | "locked";
 
+type RoadmapCanvasCheckpointType = "entry_test" | "mini_test" | "full_test";
+
+type RoadmapCanvasCheckpointStatus = "completed" | "current" | "planned";
+
+type RoadmapCanvasCheckpoint = {
+  id: string;
+  type: RoadmapCanvasCheckpointType;
+  label: string;
+  cycle_no: number;
+  status: RoadmapCanvasCheckpointStatus;
+  test_id?: string | null;
+  week_study_id?: string | null;
+  day_study_id?: string | null;
+  planned_score?: number | null;
+  actual_score?: number | null;
+  submitted_at?: Date | null;
+};
+
 type RoadmapCanvasUnitStatusItem = {
   lesson_manager_id: string;
   status: RoadmapCanvasUnitStatus;
@@ -1640,6 +1958,205 @@ const loadRoadmapCanvasStrategyOptions = async (input: {
   });
 };
 
+const getCheckpointStatusFromAssessmentItem = (
+  status: WeekStudyStatus
+): RoadmapCanvasCheckpointStatus => {
+  if (status === WeekStudyStatus.COMPLETED) return "completed";
+  if (status === WeekStudyStatus.IN_PROGRESS) return "current";
+  return "planned";
+};
+
+const getCheckpointLabel = (type: RoadmapCanvasCheckpointType): string => {
+  if (type === "entry_test") return "Entry Test";
+  if (type === "mini_test") return "Mini Test";
+  return "Full Test";
+};
+
+const findAssessmentItemInWeek = (
+  dayStudies: IDayStudy[]
+): {
+  dayStudy: IDayStudy;
+  item: IDayStudy["sessions"][number]["items"][number];
+  type: Exclude<RoadmapCanvasCheckpointType, "entry_test">;
+} | null => {
+  for (const dayStudy of dayStudies) {
+    for (const session of dayStudy.sessions ?? []) {
+      for (const item of session.items ?? []) {
+        if (item.kind === SessionType.MINI_TEST) {
+          return { dayStudy, item, type: "mini_test" };
+        }
+
+        if (item.kind === SessionType.FULL_TEST) {
+          return { dayStudy, item, type: "full_test" };
+        }
+      }
+    }
+  }
+
+  return null;
+};
+
+const getRoadmapSimulationBaseCycleNo = (input: {
+  selectedOption?: ILearningPathStrategyOption | null;
+  weekStudies: IWeekStudy[];
+}): number => {
+  if (!input.selectedOption?._id) return 1;
+
+  const optionId = String(input.selectedOption._id);
+  const firstLinkedWeek = input.weekStudies
+    .filter(
+      (week) =>
+        week.learning_path_strategy_option_id &&
+        String(week.learning_path_strategy_option_id) === optionId
+    )
+    .sort((a, b) => a.no - b.no)[0];
+
+  return firstLinkedWeek?.no ?? 1;
+};
+
+const loadActualAssessmentTestsByTestId = async (input: {
+  user_id: string;
+  testIds: string[];
+}): Promise<Map<string, IUserTest>> => {
+  const validTestIds = Array.from(
+    new Set(input.testIds.filter((id) => Types.ObjectId.isValid(id)))
+  );
+  if (validTestIds.length === 0) return new Map();
+
+  const userTests = await UserTest.find({
+    user_id: input.user_id,
+    test_id: { $in: validTestIds.map((id) => new Types.ObjectId(id)) },
+    submit_type: { $in: [UserTestSubmitType.MINI_TEST, UserTestSubmitType.FULL_TEST] },
+  })
+    .sort({ submit_at: -1, created_at: -1 })
+    .lean<IUserTest[]>();
+
+  const byTestId = new Map<string, IUserTest>();
+  for (const userTest of userTests) {
+    const testId = String(userTest.test_id);
+    if (!byTestId.has(testId)) {
+      byTestId.set(testId, userTest);
+    }
+  }
+
+  return byTestId;
+};
+
+const buildRoadmapCanvasCheckpoints = async (input: {
+  user_id: string;
+  learning_path_id: string;
+  selectedOption?: ILearningPathStrategyOption | null;
+  weekStudies: IWeekStudy[];
+  allDayStudies: IDayStudy[];
+}): Promise<RoadmapCanvasCheckpoint[]> => {
+  const checkpointsById = new Map<string, RoadmapCanvasCheckpoint>();
+  const dayStudiesByWeekId = new Map<string, IDayStudy[]>();
+  const assessmentTestIds: string[] = [];
+
+  for (const dayStudy of input.allDayStudies ?? []) {
+    const weekId = String(dayStudy.week_id);
+    const group = dayStudiesByWeekId.get(weekId) ?? [];
+    group.push(dayStudy);
+    dayStudiesByWeekId.set(weekId, group);
+  }
+
+  const latestEntryTest = await getLatestUserTestBySubmitType({
+    user_id: input.user_id,
+    submit_type: UserTestSubmitType.INITIAL_ASSESSMENT,
+  });
+
+  if (latestEntryTest) {
+    checkpointsById.set("entry-test", {
+      id: "entry-test",
+      type: "entry_test",
+      label: getCheckpointLabel("entry_test"),
+      cycle_no: 0,
+      status: "completed",
+      test_id: String(latestEntryTest.test_id),
+      actual_score: latestEntryTest.score,
+      submitted_at: latestEntryTest.submit_at,
+    });
+  }
+
+  const baseCycleNo = getRoadmapSimulationBaseCycleNo({
+    selectedOption: input.selectedOption,
+    weekStudies: input.weekStudies,
+  });
+
+  for (const cycle of input.selectedOption?.roadmap_simulation?.cycles ?? []) {
+    const cycleNo = baseCycleNo + cycle.cycle_no - 1;
+    const type = cycle.assessment_type;
+    const id = `cycle-${cycleNo}-${type}`;
+
+    checkpointsById.set(id, {
+      id,
+      type,
+      label: getCheckpointLabel(type),
+      cycle_no: cycleNo,
+      status: "planned",
+      planned_score:
+        typeof cycle.planned_score_after === "number"
+          ? cycle.planned_score_after
+          : null,
+    });
+  }
+
+  for (const weekStudy of input.weekStudies) {
+    const weekDayStudies = dayStudiesByWeekId.get(String(weekStudy._id)) ?? [];
+    const assessment = findAssessmentItemInWeek(weekDayStudies);
+    if (!assessment) continue;
+
+    const testId = assessment.item.activity_id
+      ? String(assessment.item.activity_id)
+      : null;
+    if (testId) {
+      assessmentTestIds.push(testId);
+    }
+
+    const id = `cycle-${weekStudy.no}-${assessment.type}`;
+    const existing = checkpointsById.get(id);
+
+    checkpointsById.set(id, {
+      ...existing,
+      id,
+      type: assessment.type,
+      label: getCheckpointLabel(assessment.type),
+      cycle_no: weekStudy.no,
+      status: getCheckpointStatusFromAssessmentItem(assessment.item.status),
+      test_id: testId,
+      week_study_id: String(weekStudy._id),
+      day_study_id: String(assessment.dayStudy._id),
+      planned_score: existing?.planned_score ?? null,
+    });
+  }
+
+  const actualAssessmentByTestId = await loadActualAssessmentTestsByTestId({
+    user_id: input.user_id,
+    testIds: assessmentTestIds,
+  });
+
+  for (const checkpoint of checkpointsById.values()) {
+    if (!checkpoint.test_id) continue;
+
+    const actual = actualAssessmentByTestId.get(checkpoint.test_id);
+    if (!actual) continue;
+
+    checkpoint.status = "completed";
+    checkpoint.actual_score = actual.score;
+    checkpoint.submitted_at = actual.submit_at;
+  }
+
+  return [...checkpointsById.values()].sort((a, b) => {
+    if (a.cycle_no !== b.cycle_no) return a.cycle_no - b.cycle_no;
+    const typeOrder: Record<RoadmapCanvasCheckpointType, number> = {
+      entry_test: 0,
+      mini_test: 1,
+      full_test: 2,
+    };
+    return typeOrder[a.type] - typeOrder[b.type];
+  });
+};
+
 const buildRoadmapCanvasSnapshot = (input: {
   selectedOption?: ILearningPathStrategyOption | null;
   currentWeekStudy?: IWeekStudy | null;
@@ -1648,6 +2165,7 @@ const buildRoadmapCanvasSnapshot = (input: {
   roadmapStrategyOptions: ILearningPathStrategyOption[];
   includeProjection: boolean;
   requiresStrategySelection: boolean;
+  checkpoints: RoadmapCanvasCheckpoint[];
 }) => {
   const currentCycleLessonManagerIds = new Set<string>();
   const completedLessonManagerIds = new Set<string>();
@@ -1816,6 +2334,7 @@ const buildRoadmapCanvasSnapshot = (input: {
       }
       : null,
     current_learning: currentLearning,
+    checkpoints: input.checkpoints,
     units,
     part_roadmaps: partRoadmaps,
   };

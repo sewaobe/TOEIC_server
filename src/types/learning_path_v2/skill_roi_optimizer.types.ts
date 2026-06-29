@@ -13,6 +13,7 @@ export type SkillRoiPolicyV3 = {
   max_lesson_manager_count: number;
   max_ability_distance: number;
   minimum_unit_roi_per_hour: number;
+  allowed_unit_types?: SkillRoiLessonManagerUnitTypeV3[];
 };
 
 export type SkillRoiUserSkillInputV3 = {
@@ -20,16 +21,26 @@ export type SkillRoiUserSkillInputV3 = {
   part_type: number;
   skill_group: SkillRoiSkillGroupV3;
   ability: number;
+  status?: "weak" | "medium" | "strong";
   trend?: "improving" | "stable" | "declining";
   history_count: number;
 };
 
-export type SkillRoiPartAbilityInputV3 = { part_type: number; ability: number };
+export type SkillRoiPartAbilityInputV3 = {
+  part_type: number;
+  ability: number;
+  status?: "weak" | "medium" | "strong";
+  trend?: "improving" | "stable" | "declining";
+};
 
 export type SkillRoiLessonManagerInputV3 = {
   id: string;
   title: string;
   part_type: number;
+  score_band?: {
+    from?: number;
+    to?: number;
+  };
   unit_type: SkillRoiLessonManagerUnitTypeV3;
   node_role: "normal" | "support";
   target_tags: string[];

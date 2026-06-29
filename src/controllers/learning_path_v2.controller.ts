@@ -4,6 +4,7 @@ import {
   ensureLearningPathV2MentorAssigned,
   assertLearningPathV3SchedulerReady,
   getCurrentLearningPathCycleV2,
+  getLearningPathV2CurrentCycleExplanation,
   getLearningPathV2GenerationContext,
   getLearningPathV2NodeDetail,
   getLearningPathV2Overview,
@@ -284,6 +285,31 @@ export const getCurrentLearningPathCycleV2Controller = async (
 
     const result = await getCurrentLearningPathCycleV2({
       user_id: userId,
+      learning_path_id: learningPathId,
+    });
+
+    res.status(200).json(ApiResponse.success(result));
+  } catch (error) {
+    handleLearningPathV2ControllerError(error, res, next);
+  }
+};
+
+export const getLearningPathV2CurrentCycleExplanationController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { learningPathId } = req.params;
+    const userId = req.user?._id;
+
+    if (!userId) {
+      res.status(401).json(ApiResponse.fail("Không tìm thấy user_id."));
+      return;
+    }
+
+    const result = await getLearningPathV2CurrentCycleExplanation({
+      user_id: String(userId),
       learning_path_id: learningPathId,
     });
 

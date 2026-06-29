@@ -21,9 +21,9 @@ type CreateDayStudiesForWeekStudyCycleInput = {
   week_study_id: string;
   assessment_test_id: Types.ObjectId;
   /**
-     * Các LessonManager unit đã được Beam Search chọn cho cycle hiện tại.
-     * DayStudy không đọc roadmap dài hạn và không phụ thuộc route tuyến tính cũ.
-     */
+   * Các LessonManager unit đã được Skill ROI engine chọn cho cycle hiện tại.
+   * DayStudy chỉ bung unit thành activity theo thứ tự package, không tự chọn lại bài.
+   */
   cycle_units: PlannedRouteUnitV2[];
 };
 

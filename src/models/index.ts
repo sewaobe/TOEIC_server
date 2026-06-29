@@ -24,6 +24,7 @@ export * from "./dictation_attempt.model";
 export * from "./dictation_progress.model";
 export * from "./dictation_plan.model";
 export * from "./dictation.model";
+export * from "./dictionary_entry.model";
 export * from "./flashcard_attempt.model";
 export * from "./flashcard_plan.model";
 export * from "./flashcard_progress.model";

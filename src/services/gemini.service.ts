@@ -8,6 +8,7 @@ import {
   formatContentForPrompt,
 } from "./learningPath.retriever";
 import { saveDebugFile } from "./demo.service";
+import { DictionaryEntry } from "../models/dictionary_entry.model";
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
@@ -443,24 +444,17 @@ export const DictionarySchema = {
   type: Type.OBJECT,
   properties: {
     englishWord: { type: Type.STRING },
-    phonetic: { type: Type.STRING },
-    phonetics: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          text: { type: Type.STRING },
-          audio: { type: Type.STRING },
-        },
-      },
-    },
+    phonetic_uk: { type: Type.STRING },
+    phonetic_us: { type: Type.STRING },
+    audio_uk: { type: Type.STRING },
+    audio_us: { type: Type.STRING },
     translations: {
       type: Type.ARRAY,
       items: {
         type: Type.OBJECT,
         properties: {
-          partOfSpeech: { type: Type.STRING }, // N, V, Adj, Adv...
-          translatedDefinitions: {
+          partOfSpeech: { type: Type.STRING },
+          meanings: {
             type: Type.ARRAY,
             items: {
               type: Type.OBJECT,
@@ -470,18 +464,67 @@ export const DictionarySchema = {
               },
             },
           },
-          examples: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                en: { type: Type.STRING },
-                vi: { type: Type.STRING },
-              },
-            },
-          },
-          synonyms: { type: Type.ARRAY, items: { type: Type.STRING } },
-          antonyms: { type: Type.ARRAY, items: { type: Type.STRING } },
+        },
+      },
+    },
+    examples: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          en: { type: Type.STRING },
+          vi: { type: Type.STRING },
+        },
+      },
+    },
+    synonyms: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          word: { type: Type.STRING },
+          meaning: { type: Type.STRING },
+        },
+      },
+    },
+    antonyms: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          word: { type: Type.STRING },
+          meaning: { type: Type.STRING },
+        },
+      },
+    },
+    word_family: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          word: { type: Type.STRING },
+          partOfSpeech: { type: Type.STRING },
+        },
+      },
+    },
+    collocations: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          phrase: { type: Type.STRING },
+          meaning: { type: Type.STRING },
+        },
+      },
+    },
+    metadata: {
+      type: Type.OBJECT,
+      properties: {
+        source: { type: Type.STRING },
+        enrichedByAI: { type: Type.BOOLEAN },
+        missingFieldsFilledByAI: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
         },
       },
     },
@@ -489,10 +532,18 @@ export const DictionarySchema = {
   },
   propertyOrdering: [
     "englishWord",
-    "phonetic",
-    "phonetics",
+    "phonetic_uk",
+    "phonetic_us",
+    "audio_uk",
+    "audio_us",
     "translations",
+    "examples",
+    "synonyms",
+    "antonyms",
+    "word_family",
+    "collocations",
     "imageKeywords",
+    "metadata",
   ],
 };
 
@@ -539,7 +590,197 @@ export async function fetchUnsplashImages(keywords: string[], limit = 2) {
   }));
 }
 
+const normalizeDictionaryQuery = (value: string): string =>
+  value.trim().toLowerCase().replace(/\s+/g, " ");
+
+const isLikelyEnglishDictionaryQuery = (value: string): boolean =>
+  /^[a-zA-Z][a-zA-Z\s'-]*$/.test(value.trim());
+
+const findDictionaryCache = async (normalizedQuery: string) =>
+  DictionaryEntry.findOne({
+    $or: [
+      { normalized_key: normalizedQuery },
+      { query_aliases: normalizedQuery },
+    ],
+  });
+
+const touchDictionaryCache = async (
+  entryId: unknown,
+  alias?: string
+): Promise<void> => {
+  const normalizedAlias = alias ? normalizeDictionaryQuery(alias) : "";
+  const update: Record<string, any> = {
+    $inc: { lookup_count: 1 },
+    $set: { last_lookup_at: new Date() },
+  };
+
+  if (normalizedAlias) {
+    update.$addToSet = { query_aliases: normalizedAlias };
+  }
+
+  await DictionaryEntry.findByIdAndUpdate(entryId, update);
+};
+
+const buildCachedDictionaryResult = async (
+  cachedEntry: any,
+  alias?: string
+) => {
+  await touchDictionaryCache(cachedEntry._id, alias);
+
+  return {
+    model: cachedEntry.model_used ?? "cache",
+    cached: true,
+    json: cachedEntry.data,
+  };
+};
+
+const isRetryableDictionaryModelError = (err: any): boolean => {
+  const msg = err?.message || err?.error?.message || "";
+
+  return (
+    err instanceof SyntaxError ||
+    msg.includes("503") ||
+    msg.includes("UNAVAILABLE") ||
+    msg.includes("Empty structured response") ||
+    msg.includes("Unterminated string") ||
+    msg.includes("Unexpected end of JSON input")
+  );
+};
+
+const toStringValue = (value: unknown): string =>
+  typeof value === "string" ? value.trim() : "";
+
+const normalizeDictionaryPairs = (
+  items: any[] | undefined,
+  leftKey: string,
+  rightKey: string
+) => {
+  if (!Array.isArray(items)) return [];
+
+  const normalized: Array<Record<string, string>> = [];
+  let pending: Record<string, string> = {};
+
+  for (const item of items) {
+    if (!item || typeof item !== "object") continue;
+
+    const left = toStringValue(item[leftKey]);
+    const right = toStringValue(item[rightKey]);
+
+    if (left && right) {
+      normalized.push({ [leftKey]: left, [rightKey]: right });
+      pending = {};
+      continue;
+    }
+
+    if (left) {
+      if (pending[leftKey] && pending[rightKey]) {
+        normalized.push(pending);
+      }
+      pending = { [leftKey]: left };
+      continue;
+    }
+
+    if (right) {
+      if (pending[leftKey]) {
+        normalized.push({ ...pending, [rightKey]: right });
+        pending = {};
+      }
+    }
+  }
+
+  if (pending[leftKey] && pending[rightKey]) {
+    normalized.push(pending);
+  }
+
+  return normalized;
+};
+
+const normalizeDictionaryTranslations = (items: any[] | undefined) => {
+  if (!Array.isArray(items)) return [];
+
+  const normalized: Array<{ partOfSpeech: string; meanings: any[] }> = [];
+  let pendingPartOfSpeech = "";
+
+  for (const item of items) {
+    if (!item || typeof item !== "object") continue;
+
+    const partOfSpeech = toStringValue(item.partOfSpeech);
+    const meanings = Array.isArray(item.meanings)
+      ? item.meanings
+        .map((meaning: any) => ({
+          en: toStringValue(meaning?.en),
+          vi: toStringValue(meaning?.vi),
+        }))
+        .filter((meaning: any) => meaning.en || meaning.vi)
+      : [];
+
+    if (partOfSpeech && meanings.length > 0) {
+      normalized.push({ partOfSpeech, meanings });
+      pendingPartOfSpeech = "";
+      continue;
+    }
+
+    if (partOfSpeech) {
+      pendingPartOfSpeech = partOfSpeech;
+      continue;
+    }
+
+    if (meanings.length > 0) {
+      normalized.push({
+        partOfSpeech: pendingPartOfSpeech || "Other",
+        meanings,
+      });
+      pendingPartOfSpeech = "";
+    }
+  }
+
+  return normalized;
+};
+
+const normalizeDictionaryData = (parsed: any, fallbackWord: string) => ({
+  ...parsed,
+  englishWord: toStringValue(parsed?.englishWord) || fallbackWord,
+  phonetic_uk: toStringValue(parsed?.phonetic_uk),
+  phonetic_us: toStringValue(parsed?.phonetic_us),
+  audio_uk: toStringValue(parsed?.audio_uk),
+  audio_us: toStringValue(parsed?.audio_us),
+  translations: normalizeDictionaryTranslations(parsed?.translations),
+  examples: normalizeDictionaryPairs(parsed?.examples, "en", "vi"),
+  synonyms: normalizeDictionaryPairs(parsed?.synonyms, "word", "meaning"),
+  antonyms: normalizeDictionaryPairs(parsed?.antonyms, "word", "meaning"),
+  word_family: normalizeDictionaryPairs(
+    parsed?.word_family,
+    "word",
+    "partOfSpeech"
+  ),
+  collocations: normalizeDictionaryPairs(
+    parsed?.collocations,
+    "phrase",
+    "meaning"
+  ),
+  imageKeywords: Array.isArray(parsed?.imageKeywords)
+    ? parsed.imageKeywords.map(toStringValue).filter(Boolean)
+    : [],
+  metadata: {
+    source: "dictionaryapi.dev",
+    enrichedByAI: true,
+    ...(parsed?.metadata && typeof parsed.metadata === "object"
+      ? parsed.metadata
+      : {}),
+  },
+});
+
 export async function dictionaryLookup(query: string) {
+  if (!query || !query.trim()) {
+    throw new Error("Query tra từ điển không hợp lệ.");
+  }
+
+  const normalizedQuery = normalizeDictionaryQuery(query);
+  const cachedByQuery = await findDictionaryCache(normalizedQuery);
+  if (cachedByQuery) {
+    return buildCachedDictionaryResult(cachedByQuery, normalizedQuery);
+  }
+
   const promptPath = path.resolve(__dirname, "../configs/dictionary.txt");
   const promptTemplate = fs.readFileSync(promptPath, "utf8");
 
@@ -553,8 +794,11 @@ export async function dictionaryLookup(query: string) {
     try {
       console.log(`🧠 Trying model: ${model}`);
 
-      // STEP 1: dịch từ tiếng Việt -> tiếng Anh (nếu cần)
-      const translatePrompt = `
+      // STEP 1: dịch query không phải tiếng Anh sang từ/cụm tiếng Anh gần nhất.
+      let englishWord = query.trim();
+
+      if (!isLikelyEnglishDictionaryQuery(query)) {
+        const translatePrompt = `
                 Hãy dịch từ hoặc cụm sau sang tiếng Anh, chỉ trả về JSON có key "englishWord".
                 Không thêm giải thích nào khác.
 
@@ -562,26 +806,41 @@ export async function dictionaryLookup(query: string) {
                 Từ cần dịch: "${query}"
             `;
 
-      const translateResult = await ai.models.generateContent({
-        model,
-        contents: translatePrompt,
-        config: {
-          temperature: 0.2,
-          responseMimeType: "application/json",
-          responseSchema: TranslateSchema,
-        },
-      });
+        const translateResult = await ai.models.generateContent({
+          model,
+          contents: translatePrompt,
+          config: {
+            temperature: 0.2,
+            responseMimeType: "application/json",
+            responseSchema: TranslateSchema,
+          },
+        });
 
-      if (!translateResult.text)
-        throw new Error("Không nhận được phản hồi dịch.");
-      const englishWord =
-        JSON.parse(translateResult.text).englishWord?.trim() || query;
+        if (!translateResult.text) {
+          throw new Error("Không nhận được phản hồi dịch.");
+        }
+
+        englishWord =
+          JSON.parse(translateResult.text).englishWord?.trim() || query;
+      }
+
       console.log("🔤 Detected English word:", englishWord);
 
-      // STEP 2: lấy toàn bộ dữ liệu gốc từ dictionaryapi.dev
+      const normalizedEnglishWord = normalizeDictionaryQuery(englishWord);
+      const cachedByEnglishWord = await findDictionaryCache(
+        normalizedEnglishWord
+      );
+      if (cachedByEnglishWord) {
+        return buildCachedDictionaryResult(
+          cachedByEnglishWord,
+          normalizedQuery
+        );
+      }
+
+      // STEP 2: lấy toàn bộ dữ liệu gốc từ dictionaryapi.dev.
       const rawDictData = await fetchDictionaryRawData(englishWord);
 
-      // STEP 3: gửi sang Gemini để xử lý
+      // STEP 3: gửi sang Gemini để chuẩn hóa và bổ sung dữ liệu học tập.
       const prompt = promptTemplate.replace(
         "{{DICTIONARY_RAW_DATA}}",
         JSON.stringify(rawDictData, null, 2)
@@ -592,7 +851,7 @@ export async function dictionaryLookup(query: string) {
         contents: prompt,
         config: {
           temperature: 0.4,
-          maxOutputTokens: 4096,
+          maxOutputTokens: 8192,
           responseMimeType: "application/json",
           responseSchema: DictionarySchema,
         },
@@ -603,22 +862,52 @@ export async function dictionaryLookup(query: string) {
 
       const parsed = JSON.parse(text);
       console.log("📦 Gemini dictionary result:", parsed);
+      const normalizedDictionary = normalizeDictionaryData(
+        parsed,
+        englishWord
+      );
 
-      // STEP 4: Gọi Unsplash lấy ảnh minh họa
-      const imageKeywords = parsed.imageUrls || [englishWord];
+      // STEP 4: Gọi Unsplash lấy ảnh minh họa.
+      const imageKeywords = normalizedDictionary.imageKeywords.length > 0
+        ? normalizedDictionary.imageKeywords
+        : [englishWord];
       const images = await fetchUnsplashImages(imageKeywords);
+      const dictionaryData = {
+        ...normalizedDictionary,
+        imageUrls: images.map((img: any) => img.url),
+      };
+
+      await DictionaryEntry.findOneAndUpdate(
+        { normalized_key: normalizedEnglishWord },
+        {
+          $set: {
+            english_word: dictionaryData.englishWord,
+            normalized_key: normalizedEnglishWord,
+            data: dictionaryData,
+            source_raw: rawDictData,
+            model_used: model,
+            last_lookup_at: new Date(),
+          },
+          $addToSet: {
+            query_aliases: { $each: [normalizedQuery, normalizedEnglishWord] },
+          },
+          $inc: { lookup_count: 1 },
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
 
       return {
         model,
-        json: {
-          ...parsed,
-          imageUrls: images.map((img: any) => img.url),
-        },
+        cached: false,
+        json: dictionaryData,
       };
     } catch (err: any) {
       const msg = err?.message || err?.error?.message || "";
-      if (msg.includes("503") || msg.includes("UNAVAILABLE")) {
-        console.warn(`🚧 ${model} quá tải, thử model kế tiếp...`);
+      if (isRetryableDictionaryModelError(err)) {
+        console.warn(
+          `🚧 ${model} không trả JSON hợp lệ hoặc tạm quá tải, thử model kế tiếp...`,
+          msg
+        );
         continue;
       }
       console.error(`❌ Lỗi khi gọi ${model}:`, msg);
