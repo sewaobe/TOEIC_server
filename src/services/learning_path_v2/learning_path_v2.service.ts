@@ -41,6 +41,7 @@ import {
   createSkillFocusedCycle,
   type CreateSkillFocusedCycleResult,
 } from "./skill_focused_cycle.service";
+import { calculateProjectedToeicScore } from "./skill_roi_optimizer.service";
 import { emitToUser } from "../../socket/emitToUser.socket";
 
 import { DayStudy, WeekStudy } from "../../models";
@@ -880,63 +881,6 @@ type LearningPathV2OverviewResult = CurrentLearningPathCycleV2Result & {
   }
 };
 
-type PartAbilityMap = Record<number, number>;
-
-type ProjectedToeicScore = {
-  listening_ability: number;
-  reading_ability: number;
-  projected_listening_score: number;
-  projected_reading_score: number;
-  projected_total_score: number;
-};
-
-const TOEIC_PART_SCORE_WEIGHTS = {
-  1: 0.06,
-  2: 0.25,
-  3: 0.39,
-  4: 0.3,
-  5: 0.3,
-  6: 0.16,
-  7: 0.54,
-} as const;
-
-const clamp01 = (value: number): number =>
-  Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
-
-const roundToNearest5 = (value: number): number =>
-  Math.round(value / 5) * 5;
-
-const abilityToSectionScore = (ability: number): number => {
-  const score = 5 + clamp01(ability) * 490;
-  return Math.min(495, Math.max(5, roundToNearest5(score)));
-};
-
-export const calculateProjectedToeicScore = (
-  abilities: PartAbilityMap
-): ProjectedToeicScore => {
-  const listeningAbility =
-    clamp01(abilities[1]) * TOEIC_PART_SCORE_WEIGHTS[1] +
-    clamp01(abilities[2]) * TOEIC_PART_SCORE_WEIGHTS[2] +
-    clamp01(abilities[3]) * TOEIC_PART_SCORE_WEIGHTS[3] +
-    clamp01(abilities[4]) * TOEIC_PART_SCORE_WEIGHTS[4];
-
-  const readingAbility =
-    clamp01(abilities[5]) * TOEIC_PART_SCORE_WEIGHTS[5] +
-    clamp01(abilities[6]) * TOEIC_PART_SCORE_WEIGHTS[6] +
-    clamp01(abilities[7]) * TOEIC_PART_SCORE_WEIGHTS[7];
-
-  const projectedListeningScore = abilityToSectionScore(listeningAbility);
-  const projectedReadingScore = abilityToSectionScore(readingAbility);
-
-  return {
-    listening_ability: listeningAbility,
-    reading_ability: readingAbility,
-    projected_listening_score: projectedListeningScore,
-    projected_reading_score: projectedReadingScore,
-    projected_total_score: projectedListeningScore + projectedReadingScore,
-  };
-};
-
 const loadActiveLearningPath = async (
   input: LearningPathV2ReadInput
 ): Promise<ILearningPath> => {
@@ -1353,6 +1297,296 @@ export const getLearningPathV2Overview = async (
         requiresStrategySelection,
         checkpoints: roadmapCheckpoints,
       }),
+  };
+};
+
+const scenarioLabelVi: Record<string, string> = {
+  ONBOARDING: "Khởi tạo lộ trình",
+  NORMAL_PROGRESS: "Đang tiến bộ",
+  PLATEAU: "Chững lại",
+  BEHIND_SCHEDULE: "Chậm tiến độ",
+  PRE_DEADLINE: "Gần deadline",
+  FULLTEST_MONTHLY: "Đánh giá định kỳ",
+};
+
+const cycleModeLabelVi: Record<string, string> = {
+  main_learning: "Học trọng tâm",
+  remediation: "Củng cố điểm yếu",
+  review: "Ôn tập",
+  mixed_practice: "Luyện tập tổng hợp",
+  exam_practice: "Luyện đề",
+};
+
+const triggerLabelVi: Record<string, string> = {
+  initial_generation: "Tạo lộ trình ban đầu",
+  mini_test_completion: "Sau Mini Test",
+  full_test_review: "Sau Full Test",
+  manual: "Điều chỉnh thủ công",
+};
+
+const testTypeLabelVi: Record<string, string> = {
+  entry: "Entry Test",
+  mini: "Mini Test",
+  full: "Full Test",
+  manual: "Điều chỉnh thủ công",
+};
+
+const formatAbilityPercent = (ability?: number) =>
+  typeof ability === "number" && Number.isFinite(ability)
+    ? Math.round(ability * 100)
+    : null;
+
+const formatStudyMinutes = (minutes?: number) => {
+  const value = Number(minutes ?? 0);
+  if (!Number.isFinite(value) || value <= 0) return "Chưa có dữ liệu";
+  if (value < 60) return `${Math.round(value)} phút`;
+
+  const hours = value / 60;
+  return `${Math.round(hours * 10) / 10} giờ`;
+};
+
+const normalizeDecisionReason = (reason: string): string => {
+  if (!reason) return reason;
+
+  const skillMatch = reason.match(/^Skill\s+(.+?)\s+có package ROI cao nhất\.$/);
+  if (skillMatch) {
+    return `Kỹ năng ${getToeicSkillLabelVi(skillMatch[1])} có gói bài học đạt hiệu quả dự kiến cao nhất.`;
+  }
+
+  const plateauMatch = reason.match(/^Skill\s+(.+?)\s+không đạt ngưỡng tiến bộ\.$/);
+  if (plateauMatch) {
+    return `Kỹ năng ${getToeicSkillLabelVi(plateauMatch[1])} chưa đạt mức tiến bộ kỳ vọng.`;
+  }
+
+  if (reason.startsWith("Expected gain:")) {
+    return `Mức tăng năng lực dự kiến: ${reason.replace("Expected gain:", "").trim()}`;
+  }
+
+  if (reason.startsWith("Expected ROI/giờ:")) {
+    return `Hiệu quả học dự kiến mỗi giờ: ${reason.replace("Expected ROI/giờ:", "").trim()}`;
+  }
+
+  if (reason.startsWith("Projected Part ability:")) {
+    return `Năng lực Part dự kiến sau cycle: ${reason.replace("Projected Part ability:", "").trim()}`;
+  }
+
+  if (reason.startsWith("Ability-based TOEIC score gain proxy:")) {
+    return `Mức tăng điểm TOEIC mô phỏng từ ability: ${reason.replace("Ability-based TOEIC score gain proxy:", "").trim()}`;
+  }
+
+  return reason;
+};
+
+export const getLearningPathV2CurrentCycleExplanation = async (
+  input: LearningPathV2ReadInput
+) => {
+  const learningPath = await loadActiveLearningPath(input);
+  const currentWeekStudy = await findCurrentWeekStudy(learningPath);
+
+  if (!currentWeekStudy) {
+    return {
+      has_current_cycle: false,
+      message: "Lộ trình chưa có cycle học hiện tại.",
+    };
+  }
+
+  /*
+   * SchedulerDecisionLog là nguồn giải thích đúng nhất cho cycle hiện tại.
+   * WeekStudy cho biết kết quả cycle đã tạo, còn log cho biết snapshot năng lực
+   * và lý do tại thời điểm scheduler ra quyết định.
+   */
+  const decisionLog = await SchedulerDecisionLog.findOne({
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    generated_week_id: currentWeekStudy._id,
+    status: "applied",
+  })
+    .sort({ created_at: -1 })
+    .lean();
+
+  const fallbackLatestLog = decisionLog
+    ? null
+    : await SchedulerDecisionLog.findOne({
+        user_id: input.user_id,
+        learning_path_id: input.learning_path_id,
+        status: "applied",
+      })
+        .sort({ created_at: -1 })
+        .lean();
+
+  const effectiveLog = decisionLog ?? fallbackLatestLog;
+  const snapshot = effectiveLog?.input_snapshot;
+  const focusPartSnapshot = snapshot?.part_abilities?.find(
+    (part) => part.part_type === currentWeekStudy.focus_part_type
+  );
+  const focusSkillSnapshot = snapshot?.skill_abilities?.find(
+    (skill) => skill.skill_key === currentWeekStudy.primary_focus_skill_key
+  );
+  const extra = snapshot?.extra as Record<string, any> | undefined;
+  const selectedProjection = extra?.selected_projection as
+    | Record<string, number>
+    | undefined;
+  const topCandidates = Array.isArray(extra?.top_candidates)
+    ? extra.top_candidates.slice(0, 5).map((candidate: any) => ({
+        skill_key: candidate.skill_key,
+        skill_label: getToeicSkillLabelVi(candidate.skill_key),
+        part_type: candidate.part_type,
+        current_ability_percent: formatAbilityPercent(candidate.current_ability),
+        expected_skill_gain: candidate.expected_skill_gain,
+        expected_roi_per_hour: candidate.expected_roi_per_hour,
+        is_selected:
+          candidate.skill_key === currentWeekStudy.primary_focus_skill_key,
+      }))
+    : [];
+
+  const decisionTraceLogs = await SchedulerDecisionLog.find({
+    user_id: input.user_id,
+    learning_path_id: input.learning_path_id,
+    status: "applied",
+  })
+    .sort({ created_at: -1 })
+    .limit(8)
+    .lean();
+
+  const generatedWeekIds = decisionTraceLogs
+    .map((log) => log.generated_week_id)
+    .filter(Boolean);
+  const traceWeeks =
+    generatedWeekIds.length > 0
+      ? await WeekStudy.find({ _id: { $in: generatedWeekIds } })
+          .select(
+            "no primary_focus_skill_key focus_part_type cycle_mode expected_skill_gain expected_roi_per_hour assessment_type"
+          )
+          .lean()
+      : [];
+  const traceWeekById = new Map(
+    traceWeeks.map((week) => [String(week._id), week])
+  );
+
+  return {
+    has_current_cycle: true,
+    generated_from_current_cycle_log: Boolean(decisionLog),
+    cycle: {
+      week_id: String(currentWeekStudy._id),
+      cycle_no: currentWeekStudy.no,
+      status: currentWeekStudy.status,
+      expected_completion_at: currentWeekStudy.expected_completion_at,
+      focus_part_type: currentWeekStudy.focus_part_type,
+      primary_focus_skill_key: currentWeekStudy.primary_focus_skill_key,
+      primary_focus_skill_label: getToeicSkillLabelVi(
+        currentWeekStudy.primary_focus_skill_key
+      ),
+      covered_skill_keys: currentWeekStudy.covered_skill_keys ?? [],
+      covered_skill_labels: (currentWeekStudy.covered_skill_keys ?? []).map(
+        getToeicSkillLabelVi
+      ),
+      cycle_mode: currentWeekStudy.cycle_mode,
+      cycle_mode_label:
+        cycleModeLabelVi[currentWeekStudy.cycle_mode] ??
+        currentWeekStudy.cycle_mode,
+      expected_skill_gain: currentWeekStudy.expected_skill_gain,
+      expected_roi_per_hour: currentWeekStudy.expected_roi_per_hour,
+      assessment_type: currentWeekStudy.assessment_type,
+      assessment_estimated_minutes:
+        currentWeekStudy.assessment_estimated_minutes,
+    },
+    decision: effectiveLog
+      ? {
+          log_id: String(effectiveLog._id),
+          created_at: effectiveLog.created_at,
+          trigger_type: effectiveLog.trigger_type,
+          trigger_label:
+            triggerLabelVi[effectiveLog.trigger_type] ??
+            effectiveLog.trigger_type,
+          strategy: effectiveLog.strategy,
+          strategy_label: "Tối đa hóa hiệu quả học theo kỹ năng",
+          scenario: effectiveLog.scenario,
+          scenario_label:
+            scenarioLabelVi[effectiveLog.scenario ?? ""] ??
+            effectiveLog.scenario,
+          reasons: (effectiveLog.reasons ?? []).map(normalizeDecisionReason),
+          raw_reasons: effectiveLog.reasons ?? [],
+          warnings: effectiveLog.warnings ?? [],
+        }
+      : null,
+    evidence: {
+      current_score: snapshot?.current_score ?? null,
+      target_score: snapshot?.target_score ?? learningPath.target_score ?? null,
+      weekly_available_minutes: snapshot?.weekly_available_minutes ?? null,
+      weekly_available_label: formatStudyMinutes(
+        snapshot?.weekly_available_minutes
+      ),
+      test_type: snapshot?.test_type ?? null,
+      test_type_label: snapshot?.test_type
+        ? testTypeLabelVi[snapshot.test_type] ?? snapshot.test_type
+        : null,
+      focus_part: focusPartSnapshot
+        ? {
+            part_type: focusPartSnapshot.part_type,
+            ability_percent: formatAbilityPercent(focusPartSnapshot.ability),
+            status: focusPartSnapshot.status,
+            trend: focusPartSnapshot.trend,
+          }
+        : null,
+      focus_skill: focusSkillSnapshot
+        ? {
+            skill_key: focusSkillSnapshot.skill_key,
+            skill_label: getToeicSkillLabelVi(focusSkillSnapshot.skill_key),
+            part_type: focusSkillSnapshot.part_type,
+            ability_percent: formatAbilityPercent(focusSkillSnapshot.ability),
+            status: focusSkillSnapshot.status,
+            trend: focusSkillSnapshot.trend,
+          }
+        : null,
+      selected_projection: selectedProjection
+        ? {
+            skill_ability_before_percent: formatAbilityPercent(
+              selectedProjection.skill_ability_before
+            ),
+            skill_ability_after_percent: formatAbilityPercent(
+              selectedProjection.skill_ability_after
+            ),
+            part_ability_before_percent: formatAbilityPercent(
+              selectedProjection.part_ability_before
+            ),
+            part_ability_after_percent: formatAbilityPercent(
+              selectedProjection.part_ability_after
+            ),
+          }
+        : null,
+      top_candidates: topCandidates,
+    },
+    decision_trace: decisionTraceLogs.map((log) => {
+      const week = log.generated_week_id
+        ? traceWeekById.get(String(log.generated_week_id))
+        : undefined;
+
+      return {
+        log_id: String(log._id),
+        created_at: log.created_at,
+        trigger_type: log.trigger_type,
+        trigger_label: triggerLabelVi[log.trigger_type] ?? log.trigger_type,
+        scenario: log.scenario,
+        scenario_label: scenarioLabelVi[log.scenario ?? ""] ?? log.scenario,
+        generated_week_id: log.generated_week_id
+          ? String(log.generated_week_id)
+          : null,
+        cycle_no: week?.no ?? null,
+        focus_part_type: week?.focus_part_type ?? null,
+        primary_focus_skill_key: week?.primary_focus_skill_key ?? null,
+        primary_focus_skill_label: week?.primary_focus_skill_key
+          ? getToeicSkillLabelVi(week.primary_focus_skill_key)
+          : null,
+        cycle_mode: week?.cycle_mode ?? null,
+        cycle_mode_label: week?.cycle_mode
+          ? cycleModeLabelVi[week.cycle_mode] ?? week.cycle_mode
+          : null,
+        expected_skill_gain: week?.expected_skill_gain ?? null,
+        expected_roi_per_hour: week?.expected_roi_per_hour ?? null,
+        assessment_type: week?.assessment_type ?? null,
+        reason_summary: normalizeDecisionReason(log.reasons?.[0] ?? ""),
+      };
+    }),
   };
 };
 

@@ -1,4 +1,5 @@
 import {
+  calculateProjectedToeicScore,
   selectBestSkillRoiOpportunityForForecast,
 } from "./skill_roi_optimizer.service";
 import type {
@@ -39,6 +40,13 @@ type ExamPracticeSimulationDecision = {
 
 const clamp01 = (value: number): number =>
   Math.min(1, Math.max(0, value));
+
+const toPartAbilityMap = (
+  partAbilities: SkillRoiPartAbilityInputV3[]
+): Record<number, number> =>
+  Object.fromEntries(
+    partAbilities.map((part) => [part.part_type, part.ability])
+  );
 
 const normalizeScoreBand = (
   scoreBand: SkillRoiLessonManagerInputV3["score_band"]
@@ -322,9 +330,8 @@ export const simulateIdealSkillRoiRoadmap = async (
   const cycles: SimulatedSkillRoiCycleV3[] = [];
   const availableTotalMinutes = input.available_total_minutes;
   /*
-   * Score pacing chỉ tính giờ học tạo tiến bộ.
-   * Mini Test / Full Test vẫn chiếm lịch, nhưng chỉ đo lường nên không cộng vào
-   * requiredScoreGainPerHour hoặc plannedScoreAfter.
+   * requiredScoreGainPerHour chỉ là benchmark để đánh giá nhịp học theo deadline.
+   * Điểm dự kiến của roadmap được tính từ simulated Part abilities sau mỗi cycle.
    */
   const assessmentReserveMinutes = Math.min(
     availableTotalMinutes,
@@ -342,10 +349,17 @@ export const simulateIdealSkillRoiRoadmap = async (
       : availableLearningHours > 0
         ? remainingScoreGap / availableLearningHours
         : null;
+  const baselineProjectedScore = calculateProjectedToeicScore(
+    toPartAbilityMap(simulatedPartAbilities)
+  ).projected_total_score;
+  /*
+   * Hàm ability -> TOEIC score chỉ là mô hình nội bộ, nên không dùng trực tiếp
+   * làm điểm tuyệt đối. Entry/Full Test là anchor thật; projection chỉ đóng vai trò
+   * đo mức tăng tương đối sau mỗi cycle.
+   */
 
   let plannedScore = input.anchor_score;
   let remainingMinutes = availableTotalMinutes;
-  let usedLearningMinutes = 0;
   let miniTestCount = 0;
   let firstDecision: SelectedSkillRoiDecisionV3 | null = null;
   let stopReason: SimulatedSkillRoiRoadmapV3["stop_reason"] =
@@ -443,18 +457,18 @@ export const simulateIdealSkillRoiRoadmap = async (
     }
 
     remainingMinutes -= totalCycleMinutes;
-    usedLearningMinutes += estimatedLearningMinutes;
-
-    const plannedScoreAfter =
-      requiredScoreGainPerHour === null
-        ? input.anchor_score
-        : roundToSix(
-          Math.min(
-            input.target_score,
-            input.anchor_score +
-              requiredScoreGainPerHour * (usedLearningMinutes / 60)
-          )
-        );
+    const scoreProjection = calculateProjectedToeicScore(
+      toPartAbilityMap(simulatedPartAbilities)
+    );
+    const calibratedProjectedScore =
+      input.anchor_score +
+      (scoreProjection.projected_total_score - baselineProjectedScore);
+    const plannedScoreAfter = roundToSix(
+      Math.min(
+        input.target_score,
+        Math.max(plannedScoreBefore, calibratedProjectedScore)
+      )
+    );
     const plannedScoreGain = roundToSix(
       plannedScoreAfter - plannedScoreBefore
     );

@@ -21,11 +21,17 @@ export type SkillRoiUserSkillInputV3 = {
   part_type: number;
   skill_group: SkillRoiSkillGroupV3;
   ability: number;
+  status?: "weak" | "medium" | "strong";
   trend?: "improving" | "stable" | "declining";
   history_count: number;
 };
 
-export type SkillRoiPartAbilityInputV3 = { part_type: number; ability: number };
+export type SkillRoiPartAbilityInputV3 = {
+  part_type: number;
+  ability: number;
+  status?: "weak" | "medium" | "strong";
+  trend?: "improving" | "stable" | "declining";
+};
 
 export type SkillRoiLessonManagerInputV3 = {
   id: string;
