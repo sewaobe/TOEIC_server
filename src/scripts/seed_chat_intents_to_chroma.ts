@@ -5,6 +5,7 @@ import {
   CHAT_INTENT_COLLECTION,
   CHAT_INTENT_CATALOG_VERSION,
   CHAT_INTENT_EXAMPLES,
+  getChatIntentCatalogStats,
   validateIntentCatalog,
 } from "../services/chat_intent_examples.data";
 import { resetChatIntentCollectionCache } from "../core/collections/chat_intent";
@@ -31,7 +32,7 @@ function buildIntentRows() {
         contextType: intent.contextType,
         priority: intent.priority,
         type: "positive_example",
-        source: "intent_catalog_v4",
+        source: `intent_catalog_v${CHAT_INTENT_CATALOG_VERSION}`,
       },
     }))
   );
@@ -40,6 +41,7 @@ function buildIntentRows() {
 async function run() {
   validateIntentCatalog(CHAT_INTENT_EXAMPLES);
   const rows = buildIntentRows();
+  const stats = getChatIntentCatalogStats();
   const { chromaClient, embedder } = await initChroma();
 
   try {
@@ -71,7 +73,21 @@ async function run() {
   }
 
   const count = await collection.count();
-  console.log(`${CHAT_INTENT_COLLECTION} count: ${count}`);
+  console.log(
+    JSON.stringify(
+      {
+        collection: CHAT_INTENT_COLLECTION,
+        catalogVersion: stats.catalogVersion,
+        collectionVersion: stats.catalogVersion,
+        seededAt: new Date().toISOString(),
+        seedDocumentCount: count,
+        searchableIntentCount: stats.searchableIntentCount,
+        searchableExampleCount: stats.searchableExampleCount,
+      },
+      null,
+      2
+    )
+  );
 }
 
 if (require.main === module) {

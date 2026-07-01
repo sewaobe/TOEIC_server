@@ -11,4 +11,3 @@ const syncListeners = [
 
 // Đăng ký tất cả
 syncListeners.forEach((listener) => listener.register());
-

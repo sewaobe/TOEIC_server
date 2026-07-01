@@ -26,6 +26,7 @@ export interface ITopicVocabulary extends Document {
   vocabularies_id: Types.ObjectId[];
   isCollaborator: boolean;
   isPublic: boolean;
+  generation_request_id?: string;
   created_at: Date;
   created_by: Types.ObjectId;
   updated_at: Date;
@@ -51,10 +52,16 @@ const TopicVocabularySchema = new Schema<ITopicVocabulary>({
   vocabularies_id: [{ type: Schema.Types.ObjectId, ref: "Vocabulary" }],
   isCollaborator: { type: Boolean, default: false },
   isPublic: { type: Boolean, default: false },
+  generation_request_id: { type: String, trim: true },
   created_at: { type: Date, default: Date.now },
   created_by: { type: Schema.Types.ObjectId, ref: "User" },
   updated_at: Date,
 });
+
+TopicVocabularySchema.index(
+  { created_by: 1, generation_request_id: 1 },
+  { unique: true, sparse: true }
+);
 
 export const TopicVocabulary = mongoose.model<ITopicVocabulary>(
   "TopicVocabulary",

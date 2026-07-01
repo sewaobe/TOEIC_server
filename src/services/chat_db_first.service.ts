@@ -303,7 +303,8 @@ async function buildDbFirstProcessingState({
           userId,
           intent,
           effectiveRouteContext,
-          userText
+          userText,
+          clientContext
         );
   const responseMode =
     (intent === "explain_question" || intent === "question.explain_specific") &&

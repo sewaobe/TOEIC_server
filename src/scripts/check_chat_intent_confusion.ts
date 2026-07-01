@@ -12,6 +12,8 @@ type IntentCheck = {
 };
 
 const CHECKS: IntentCheck[] = [
+  { userText: "hi", expected: "smalltalk.greeting_feedback" },
+  { userText: "cảm ơn bạn", expected: "smalltalk.greeting_feedback" },
   { userText: "toi yeu phan nao", expected: "user_progress.summary" },
   { userText: "tien do hoc cua toi the nao", expected: "user_progress.summary" },
   {

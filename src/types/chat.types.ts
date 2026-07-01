@@ -20,9 +20,11 @@ export type ChatIntent =
   | "general_toeic_question"
   | "smalltalk.greeting_feedback"
   | "user_progress.summary"
+  | "user_progress.ability_map"
   | "test_attempt.analysis"
   | "question.explain_specific"
   | "question.translate_context"
+  | "question.similar_practice"
   | "vocabulary.contextual"
   | "grammar.contextual"
   | "toeic_knowledge.general"
@@ -32,6 +34,7 @@ export type ChatIntent =
   | "roadmap.explain_recommendation"
   | "roadmap.adjust"
   | "flashcard.personal"
+  | "flashcard.create"
   | "listening_practice.analysis"
   | "app.navigation_support"
   | "safe_fallback"
@@ -124,7 +127,6 @@ export interface IntentCandidate {
   matchedExamples: string[];
   supportCount?: number;
   rerankScore?: number;
-  legacyRuleScore?: number;
 }
 
 export interface RoutingDiagnosticCandidate {
@@ -148,6 +150,10 @@ export interface RoutingDiagnostics {
   fastPathHit?: boolean;
   semanticIntent?: ChatIntent;
   legacyRuleIntent?: ChatIntent;
+  semanticEntity?: string;
+  semanticAction?: string;
+  semanticActionConfidence?: string;
+  actionLayerIntent?: ChatIntent;
   semanticDegraded?: boolean;
   rerankerDegraded?: boolean;
   retrievalLatencyMs?: number;
@@ -162,6 +168,12 @@ export interface RoutingDiagnostics {
   rerankTopK?: number;
   mismatchReason?: string;
   validationResult?: string;
+  ragStatus?: "rag_hit" | "rag_low_confidence" | "rag_ambiguous" | "rag_miss" | "rag_error";
+  ragDecision?: "RAG_DECIDED" | "RAG_ABSTAIN" | "RAG_ERROR";
+  ragAbstainReason?: "LOW_CONFIDENCE" | "AMBIGUOUS" | "NO_MATCH";
+  ragErrorCode?: string;
+  ragDistanceTooFar?: boolean;
+  geminiFallbackUsed?: boolean;
 }
 
 export interface ChatRoutingResult {
@@ -180,8 +192,10 @@ export type ChatActionType =
   | "open_question_review"
   | "review_mistakes"
   | "start_practice"
+  | "recommend_similar_practice"
   | "show_roadmap"
   | "open_flashcards"
+  | "open_flashcard_deck"
   | "replay_audio"
   | "request_roadmap_recompute";
 
@@ -227,6 +241,8 @@ export interface ChatClientContext {
   currentAudioTime?: number;
   userTimezone?: string;
   sourceAction?: "quick_question_explain" | string;
+  actionPayload?: Record<string, any>;
+  clientRequestId?: string;
   testTitle?: string;
 }
 
@@ -371,6 +387,21 @@ export type IChatStructuredView =
       nextStep?: string;
     }
   | {
+      type: "ability_map_summary";
+      title: string;
+      subtitle?: string;
+      stats: IStructuredStatItem[];
+      parts: Array<{
+        label: string;
+        domain?: string;
+        abilityPercent: number;
+        status: string;
+        trend?: string;
+        isFocusPart?: boolean;
+      }>;
+      highlights?: IStructuredListItem[];
+    }
+  | {
       type: "test_attempt_analysis";
       title: string;
       subtitle?: string;
@@ -390,6 +421,52 @@ export type IChatStructuredView =
       correctAnswer?: string;
       answer?: string;
       reminder?: string;
+    }
+  | {
+      type: "similar_practice_recommendations";
+      title: string;
+      subtitle?: string;
+      sourceTags: string[];
+      items: Array<{
+        lessonManagerId: string;
+        title: string;
+        part?: number;
+        targetTags: string[];
+        weight?: number;
+        fitScore?: number;
+        activities: Array<{
+          id: string;
+          type: "vocabulary" | "dictation" | "shadowing" | "quiz";
+          title: string;
+          estimatedMinutes?: number;
+          action: ChatAction;
+        }>;
+      }>;
+    }
+  | {
+      type: "flashcard_supply";
+      title: string;
+      subtitle?: string;
+      requestedCount: number;
+      returnedCount: number;
+      suppliedBy: {
+        systemCatalog: number;
+        gemini: number;
+      };
+      policyReason:
+        | "DB_ENOUGH"
+        | "FILL_FROM_GEMINI"
+        | "STRICT_SOURCE_LIMIT"
+        | "PARTIAL_DB_ONLY"
+        | "PARTIAL_AFTER_GENERATION"
+        | "REUSED_EXISTING_DECK";
+      words: Array<{
+        word: string;
+        type?: string;
+        definition?: string;
+        source: "systemCatalog" | "gemini";
+      }>;
+      action: ChatAction;
     }
   | {
       type: "navigation_support";

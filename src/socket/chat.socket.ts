@@ -217,7 +217,13 @@ function deriveSessionTitle(params: {
   routeContext?: ChatRouteContext;
 }) {
   const intent = params.botMessage?.meta?.intent;
-  if (intent === "check_progress" || intent === "user_progress.summary") return `Tiến độ học tập - ${formatShortDate()}`;
+  if (
+    intent === "check_progress" ||
+    intent === "user_progress.summary" ||
+    intent === "user_progress.ability_map"
+  ) {
+    return `Tiến độ học tập - ${formatShortDate()}`;
+  }
   if (intent === "analyze_test_result" || intent === "test_attempt.analysis") return "Phân tích bài test";
   if (
     intent === "explain_question" ||
@@ -359,6 +365,11 @@ export function registerChatHandlers(socket: SocketWithUser) {
                 rerankerVersion: routing.diagnostics.rerankerVersion,
                 resolverPolicy: routing.resolverPolicy,
                 reasonCodes: routing.reasonCodes,
+                ragStatus: routing.diagnostics.ragStatus,
+                ragDecision: routing.diagnostics.ragDecision,
+                ragAbstainReason: routing.diagnostics.ragAbstainReason,
+                ragErrorCode: routing.diagnostics.ragErrorCode,
+                ragDistanceTooFar: routing.diagnostics.ragDistanceTooFar,
             });
 
             let botMessage;

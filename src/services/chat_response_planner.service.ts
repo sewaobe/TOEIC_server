@@ -7,7 +7,15 @@ export function chooseResponseMode(intent: ChatIntent, context: any): ChatRespon
   if (!context.ok) return "fallback";
   if (intent === "smalltalk" || intent === "smalltalk.greeting_feedback") return "template";
   if (intent === "identify_question") return "template";
-  if (intent === "check_progress" || intent === "user_progress.summary") return "template";
+  if (intent === "question.similar_practice") return "template";
+  if (intent === "flashcard.create") return "template";
+  if (
+    intent === "check_progress" ||
+    intent === "user_progress.summary" ||
+    intent === "user_progress.ability_map"
+  ) {
+    return "template";
+  }
   if (
     intent === "roadmap.summary" ||
     intent === "roadmap.next_step" ||

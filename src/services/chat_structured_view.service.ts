@@ -81,16 +81,13 @@ function buildProgressView(context: DbFirstContext): IChatStructuredView | undef
   if (!context.ok) return undefined;
   const progress = context.data.progress;
   const latestTest = context.data.latestTest;
-  const weakParts = (context.data.skillParts ?? [])
-    .filter((part: any) => part.status === "weak")
-    .map((part: any) => `Part ${part.part_type}`)
-    .slice(0, 4);
+  const progressUnit = progress?.progressUnit === "stage" ? "stage" : "bài";
 
   const stats: IStructuredStatItem[] = [
     {
       label: "Hoàn thành",
       value: progress
-        ? `${numberText(progress.completedLessons)}/${numberText(progress.totalLessons)} bài`
+        ? `${numberText(progress.completedLessons)}/${numberText(progress.totalLessons)} ${progressUnit}`
         : "Chưa có",
       tone: "info",
     },
@@ -129,8 +126,74 @@ function buildProgressView(context: DbFirstContext): IChatStructuredView | undef
     subtitle: "Dữ liệu được lấy từ hồ sơ học tập và bài test gần nhất.",
     stats,
     highlights,
-    weakParts,
-    nextStep: "Mở lộ trình và hoàn thành hoạt động được giao cho hôm nay.",
+    nextStep: "Mở lộ trình và tiếp tục stage đang học.",
+  };
+}
+
+function buildAbilityMapView(context: DbFirstContext): IChatStructuredView | undefined {
+  if (!context.ok) return undefined;
+  const abilityMap = context.data.abilityMap;
+  const parts = Array.isArray(abilityMap?.parts) ? abilityMap.parts : [];
+  const stats: IStructuredStatItem[] = [
+    {
+      label: "Điểm test gần nhất",
+      value:
+        typeof abilityMap?.latestTestScore === "number"
+          ? `${numberText(abilityMap.latestTestScore)} điểm`
+          : "Chưa có",
+      tone: typeof abilityMap?.latestTestScore === "number" ? "success" : "default",
+    },
+    {
+      label: "Điểm ước tính",
+      value:
+        typeof abilityMap?.estimatedScore === "number"
+          ? `${numberText(abilityMap.estimatedScore)} điểm`
+          : "Chưa đủ",
+      tone: "info",
+    },
+    {
+      label: "Part yếu nhất",
+      value: abilityMap?.weakestPartType ? `Part ${abilityMap.weakestPartType}` : "Chưa rõ",
+      tone: "warning",
+    },
+    {
+      label: "Part tốt nhất",
+      value: abilityMap?.strongestPartType ? `Part ${abilityMap.strongestPartType}` : "Chưa rõ",
+      tone: "success",
+    },
+  ];
+
+  const highlights: IStructuredListItem[] = [
+    abilityMap?.latestTestScore != null && abilityMap?.estimatedScore != null
+      ? {
+          label: "Chênh lệch 2 mốc điểm",
+          value: `${numberText(Math.abs(abilityMap.estimatedScore - abilityMap.latestTestScore))} điểm`,
+          tone: "info",
+        }
+      : null,
+    parts.find((part: any) => part.trend === "improving")
+      ? {
+          label: "Part đang cải thiện",
+          value: `Part ${parts.find((part: any) => part.trend === "improving").partType}`,
+          tone: "success",
+        }
+      : null,
+  ].filter(Boolean) as IStructuredListItem[];
+
+  return {
+    type: "ability_map_summary",
+    title: "Bản đồ năng lực rút gọn",
+    subtitle: "Dựa trên snapshot năng lực theo từng part và bài test gần nhất.",
+    stats,
+    parts: parts.map((part: any) => ({
+      label: `Part ${part.partType}`,
+      domain: part.domain,
+      abilityPercent: part.abilityPercent,
+      status: part.status,
+      trend: part.trend,
+      isFocusPart: Boolean(part.isFocusPart),
+    })),
+    highlights,
   };
 }
 
@@ -215,14 +278,29 @@ function buildQuestionContextView(
 function buildRoadmapView(context: any): IChatStructuredView {
   const roadmap = context.data.roadmap;
   const nextStep = context.data.nextStep;
+  const currentCycle = context.data.currentCycle;
+  const cycleLabel = `Cycle ${roadmap.currentCycleNo}/${roadmap.totalCycles || roadmap.currentCycleNo}`;
+  const stageLabel = `${numberText(roadmap.completedStages)}/${numberText(roadmap.totalStages)} stage`;
+  const focus = [
+    currentCycle?.focusPartType ? `Part ${currentCycle.focusPartType}` : "",
+    currentCycle?.primaryFocusSkillKey
+      ? String(currentCycle.primaryFocusSkillKey)
+      : "",
+  ].filter(Boolean).join(" - ");
+
   return {
     type: "progress_summary",
     title: roadmap.title || "Lộ trình học",
-    subtitle: `Tuần ${roadmap.currentWeek}/${roadmap.totalWeeks || roadmap.currentWeek}`,
+    subtitle: cycleLabel,
     stats: [
       {
-        label: "Hoàn thành",
-        value: `${roadmap.completedDays}/${roadmap.totalDays} ngày`,
+        label: "Cycle",
+        value: cycleLabel,
+        tone: "info",
+      },
+      {
+        label: "Stage",
+        value: stageLabel,
         tone: "success",
       },
       {
@@ -236,8 +314,62 @@ function buildRoadmapView(context: any): IChatStructuredView {
       },
     ],
     nextStep: nextStep
-      ? `${nextStep.title || `Buổi ${nextStep.sessionNo}`}${nextStep.part ? ` - Part ${nextStep.part}` : ""}`
-      : "Đã hoàn thành các hoạt động hiện có.",
+      ? `${nextStep.stageNo ? `Stage ${nextStep.stageNo}` : "Stage tiếp theo"}${nextStep.sessionNo ? ` - Session ${nextStep.sessionNo}` : ""}: ${nextStep.title || "hoạt động tiếp theo"}${nextStep.part ? ` - Part ${nextStep.part}` : ""}`
+      : focus
+        ? `Trọng tâm hiện tại: ${focus}.`
+        : "Đã hoàn thành các stage hiện có.",
+  };
+
+}
+
+function buildSimilarPracticeView(context: DbFirstContext): IChatStructuredView | undefined {
+  if (!context.ok) return undefined;
+  const recommendations = Array.isArray(context.data.recommendations)
+    ? context.data.recommendations
+    : [];
+  return {
+    type: "similar_practice_recommendations",
+    title: "Bài luyện tương tự",
+    subtitle: "Chọn theo tag của câu hỏi và độ khó gần năng lực hiện tại.",
+    sourceTags: Array.isArray(context.data.sourceTags) ? context.data.sourceTags : [],
+    items: recommendations.map((item: any) => ({
+      lessonManagerId: item.lessonManagerId,
+      title: item.title,
+      part: item.part,
+      targetTags: item.targetTags ?? [],
+      weight: item.weight,
+      fitScore: item.fitScore,
+      activities: (item.activities ?? []).map((activity: any) => ({
+        id: activity.id,
+        type: activity.type,
+        title: activity.title,
+        estimatedMinutes: activity.estimatedMinutes,
+        action: activity.action,
+      })),
+    })),
+  };
+}
+
+function buildFlashcardSupplyView(context: DbFirstContext): IChatStructuredView | undefined {
+  if (!context.ok) return undefined;
+  const data = context.data;
+  return {
+    type: "flashcard_supply",
+    title: data.title || "Bá»™ flashcard má»›i",
+    subtitle: `${data.returnedCount}/${data.requestedCount} tá»« Ä‘Ã£ sáºµn sÃ ng`,
+    requestedCount: data.requestedCount,
+    returnedCount: data.returnedCount,
+    suppliedBy: data.suppliedBy,
+    policyReason: data.policyReason,
+    words: Array.isArray(data.words) ? data.words : [],
+    action: {
+      id: "open-created-flashcard-deck",
+      label: "Há»c ngay",
+      type: "open_flashcard_deck",
+      payload: {
+        topicVocabularyId: data.topicVocabularyId,
+      },
+    },
   };
 }
 
@@ -283,6 +415,10 @@ export function buildChatStructuredView(input: BuildStructuredViewInput): IChatS
     return buildProgressView(input.context);
   }
 
+  if (input.intent === "user_progress.ability_map") {
+    return buildAbilityMapView(input.context);
+  }
+
   if (input.intent === "analyze_test_result" || input.intent === "test_attempt.analysis") {
     return buildTestAttemptView(input.context, input.reply);
   }
@@ -295,6 +431,14 @@ export function buildChatStructuredView(input: BuildStructuredViewInput): IChatS
     input.intent === "grammar.contextual"
   ) {
     return buildQuestionContextView(input.context, input.reply, input.routeContext);
+  }
+
+  if (input.intent === "question.similar_practice") {
+    return buildSimilarPracticeView(input.context);
+  }
+
+  if (input.intent === "flashcard.create") {
+    return buildFlashcardSupplyView(input.context);
   }
 
   if (

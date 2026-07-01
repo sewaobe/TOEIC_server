@@ -20,11 +20,14 @@ export function buildActions(intent: ChatIntent, context: any): ChatAction[] {
       {
         id: "practice-similar",
         label: "Luyện câu tương tự",
-        type: "start_practice",
+        type: "recommend_similar_practice",
         payload: {
           part: question.part,
           tags: question.tags,
           sourceQuestionId: question.id,
+          questionId: question.id,
+          attemptId: attempt.id,
+          testId: attempt.testId,
         },
       },
       {
@@ -78,7 +81,11 @@ export function buildActions(intent: ChatIntent, context: any): ChatAction[] {
     ];
   }
 
-  if (intent === "check_progress" || intent === "user_progress.summary") {
+  if (
+    intent === "check_progress" ||
+    intent === "user_progress.summary" ||
+    intent === "user_progress.ability_map"
+  ) {
     return [
       {
         id: "show-roadmap",
@@ -133,6 +140,19 @@ export function buildActions(intent: ChatIntent, context: any): ChatAction[] {
         label: "Mở flashcard",
         type: "open_flashcards",
         payload: {},
+      },
+    ];
+  }
+
+  if (intent === "flashcard.create") {
+    return [
+      {
+        id: "open-created-flashcard-deck",
+        label: "Há»c ngay",
+        type: "open_flashcard_deck",
+        payload: {
+          topicVocabularyId: context.data.topicVocabularyId,
+        },
       },
     ];
   }

@@ -139,6 +139,32 @@ function buildQuickQuestionExplainTemplate(context: any, options: TemplateOption
   return lines.join("\n");
 }
 
+function formatRoadmapFocus(currentCycle: any) {
+  if (!currentCycle) return "";
+  const focus = [
+    currentCycle.focusPartType ? `Part ${currentCycle.focusPartType}` : "",
+    currentCycle.primaryFocusSkillKey
+      ? `skill ${currentCycle.primaryFocusSkillKey}`
+      : "",
+  ].filter(Boolean);
+  return focus.length ? focus.join(" - ") : "";
+}
+
+function formatRoadmapStep(nextStep: any) {
+  if (!nextStep) return "";
+  const label = [
+    nextStep.cycleNo ? `Cycle ${nextStep.cycleNo}` : "",
+    nextStep.stageNo ? `Stage ${nextStep.stageNo}` : "",
+    nextStep.sessionNo ? `Session ${nextStep.sessionNo}` : "",
+  ].filter(Boolean).join(" - ");
+  const title = nextStep.title || "hoạt động tiếp theo";
+  const part = nextStep.part ? `, Part ${nextStep.part}` : "";
+  const minutes = nextStep.plannedMinutes
+    ? ` (${nextStep.plannedMinutes} phút)`
+    : "";
+  return `${label ? `${label}: ` : ""}${title}${part}${minutes}`;
+}
+
 export function buildTemplateReply(intent: ChatIntent, context: any, options: TemplateOptions = {}) {
   if (intent === "smalltalk" || intent === "smalltalk.greeting_feedback") {
     return pickSmalltalkTemplate(options);
@@ -161,28 +187,75 @@ export function buildTemplateReply(intent: ChatIntent, context: any, options: Te
     return `Mình đang hiểu bạn đang hỏi ${questionLabel}: "${textQuestion}"`;
   }
 
+  if (intent === "question.similar_practice") {
+    const count = Array.isArray(context.data?.recommendations)
+      ? context.data.recommendations.length
+      : 0;
+    const tags = Array.isArray(context.data?.sourceTags)
+      ? context.data.sourceTags.slice(0, 3).join(", ")
+      : "";
+    return count
+      ? `Mình tìm được ${count} nhóm bài luyện tương tự${tags ? ` cho ${tags}` : ""}.`
+      : "Mình chưa tìm thấy bài luyện tương tự phù hợp với câu này.";
+  }
+
+  if (intent === "flashcard.create") {
+    const data = context.data;
+    const sourceText = [
+      data.suppliedBy?.systemCatalog ? `${data.suppliedBy.systemCatalog} tu tu kho he thong` : "",
+      data.suppliedBy?.gemini ? `${data.suppliedBy.gemini} tu AI bo sung` : "",
+    ].filter(Boolean).join(", ");
+    const partial =
+      data.policyReason === "STRICT_SOURCE_LIMIT" ||
+      data.policyReason === "PARTIAL_DB_ONLY" ||
+      data.policyReason === "PARTIAL_AFTER_GENERATION";
+    return [
+      `Minh da tao bo flashcard "${data.title}" voi ${data.returnedCount}/${data.requestedCount} tu.`,
+      sourceText ? `Nguon: ${sourceText}.` : "",
+      partial ? "So luong thap hon yeu cau vi minh chi giu cac tu hop le." : "",
+    ].filter(Boolean).join("\n");
+  }
+
   if (
     intent === "roadmap.summary" ||
     intent === "roadmap.next_step" ||
+    intent === "roadmap.explain_recommendation" ||
     intent === "roadmap.adjust"
   ) {
     const roadmap = context.data.roadmap;
+    const currentCycle = context.data.currentCycle;
     const nextStep = context.data.nextStep;
+    const focus = formatRoadmapFocus(currentCycle);
+    const stepText = formatRoadmapStep(nextStep);
 
     if (intent === "roadmap.summary") {
       return [
-        `Lộ trình "${roadmap.title}" hiện hoàn thành ${roadmap.completedDays}/${roadmap.totalDays} ngày (${roadmap.completionRate}%).`,
-        `Bạn đang ở tuần ${roadmap.currentWeek}/${roadmap.totalWeeks || roadmap.currentWeek}.`,
-        nextStep
-          ? `Bước tiếp theo: ${nextStep.title || `buổi ${nextStep.sessionNo}`}${nextStep.part ? `, Part ${nextStep.part}` : ""}${nextStep.plannedMinutes ? ` (${nextStep.plannedMinutes} phút)` : ""}.`
-          : "Bạn đã hoàn thành các hoạt động hiện có trong lộ trình.",
-      ].join("\n");
+        `Lộ trình "${roadmap.title}" hiện ở Cycle ${roadmap.currentCycleNo}/${roadmap.totalCycles || roadmap.currentCycleNo}.`,
+        `Bạn đã hoàn thành ${roadmap.completedStages}/${roadmap.totalStages} stage (${roadmap.completionRate}%).`,
+        focus ? `Trọng tâm cycle hiện tại: ${focus}.` : "",
+        stepText
+          ? `Bước tiếp theo: ${stepText}.`
+          : "Bạn đã hoàn thành các stage hiện có trong lộ trình.",
+      ].filter(Boolean).join("\n");
+
+    }
+
+    if (intent === "roadmap.explain_recommendation") {
+      return [
+        focus
+          ? `Stage này được chọn vì cycle hiện tại đang ưu tiên ${focus}.`
+          : "Stage này được chọn dựa trên trọng tâm cycle hiện tại trong lộ trình.",
+        currentCycle?.cycleMode ? `Chế độ cycle: ${currentCycle.cycleMode}.` : "",
+        nextStep?.reason ? `Lý do scheduler: ${formatDbInlineText(nextStep.reason, 220)}.` : "",
+        stepText ? `Hoạt động liên quan: ${stepText}.` : "",
+      ].filter(Boolean).join("\n");
     }
 
     if (intent === "roadmap.next_step") {
-      return nextStep
-        ? `Bước tiếp theo của bạn là ${nextStep.title || `buổi ${nextStep.sessionNo}`}${nextStep.part ? ` ở Part ${nextStep.part}` : ""}${nextStep.plannedMinutes ? `, dự kiến ${nextStep.plannedMinutes} phút` : ""}.`
-        : "Bạn đã hoàn thành các hoạt động hiện có trong lộ trình.";
+      return stepText
+        ? `Bước tiếp theo trong lộ trình là ${stepText}.`
+        : "Bạn đã hoàn thành các stage hiện có trong lộ trình.";
+
     }
 
     return "Bạn có thể mở phần lộ trình để điều chỉnh kế hoạch học. Mình sẽ không tự thay đổi lộ trình khi chưa có thao tác xác nhận của bạn.";
@@ -200,19 +273,41 @@ export function buildTemplateReply(intent: ChatIntent, context: any, options: Te
     return "Mình có thể hỗ trợ mở lộ trình, flashcard, trang review câu sai hoặc hướng dẫn bạn tiếp tục luyện TOEIC.";
   }
 
-  if (intent !== "check_progress" && intent !== "user_progress.summary") return context.fallback;
+  if (
+    intent !== "check_progress" &&
+    intent !== "user_progress.summary" &&
+    intent !== "user_progress.ability_map"
+  ) {
+    return context.fallback;
+  }
+
+  if (intent === "user_progress.ability_map") {
+    const abilityMap = context.data.abilityMap;
+    const parts = Array.isArray(abilityMap?.parts) ? abilityMap.parts.slice(0, 7) : [];
+    const weakest = abilityMap?.weakestPartType ? `Part ${abilityMap.weakestPartType}` : "chưa rõ";
+    const strongest = abilityMap?.strongestPartType ? `Part ${abilityMap.strongestPartType}` : "chưa rõ";
+    const lines = [
+      "Tóm tắt năng lực hiện tại của bạn:",
+      `- Điểm test gần nhất: ${abilityMap?.latestTestScore ?? "Chưa có"}.`,
+      `- Điểm ước tính theo năng lực: ${abilityMap?.estimatedScore ?? "Chưa đủ dữ liệu"}.`,
+      `- Part yếu nhất: ${weakest}; part tốt nhất: ${strongest}.`,
+      parts.length
+        ? `- Theo từng part: ${parts
+            .map((part: any) => `P${part.partType} ${part.abilityPercent}%`)
+            .join(", ")}.`
+        : "- Chưa có snapshot năng lực theo part.",
+    ];
+    return lines.join("\n");
+  }
 
   const progress = context.data.progress;
   const latestTest = context.data.latestTest;
-  const weakParts = (context.data.skillParts ?? [])
-    .filter((part: any) => part.status === "weak")
-    .map((part: any) => `Part ${part.part_type}`)
-    .slice(0, 3);
+  const progressUnit = progress?.progressUnit === "stage" ? "stage" : "bài";
 
   const lines = [
     "Tổng quan tiến độ của bạn:",
     progress
-      ? `- Hoàn thành ${progress.completedLessons}/${progress.totalLessons} bài (${Math.round(progress.completionRate ?? 0)}%).`
+      ? `- Hoàn thành ${progress.completedLessons}/${progress.totalLessons} ${progressUnit} (${Math.round(progress.completionRate ?? 0)}%).`
       : "- Chưa có bản ghi progress tổng hợp.",
     progress
       ? `- Streak hiện tại: ${progress.streakDays ?? 0} ngày, tổng thời gian học: ${progress.totalStudyTime ?? 0} phút.`
@@ -220,8 +315,7 @@ export function buildTemplateReply(intent: ChatIntent, context: any, options: Te
     latestTest
       ? `- Bài test gần nhất: ${latestTest.score ?? 0} điểm.`
       : "- Chưa có bài test gần nhất.",
-    weakParts.length ? `- Phần cần ưu tiên: ${weakParts.join(", ")}.` : "- Chưa xác định phần yếu rõ ràng.",
-    "Bước tiếp theo: mở lộ trình và hoàn thành hoạt động được giao cho hôm nay.",
+    "Bước tiếp theo: mở lộ trình và tiếp tục stage đang học.",
   ];
 
   return lines.filter(Boolean).join("\n");

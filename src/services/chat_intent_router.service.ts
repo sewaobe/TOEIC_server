@@ -20,6 +20,7 @@ import {
 } from "./chat_intent_examples.data";
 import { rankIntentCandidates } from "./chat_semantic_intent.service";
 import { rerankIntentCandidates, CHAT_INTENT_RERANKER_VERSION } from "./chat_intent_reranker.service";
+import { extractIntentSignal } from "./chat_intent_signal.service";
 import { resolveQuestionReferenceFromRouteContext } from "./chat_question_reference.service";
 
 const DEFAULT_MIN_CONFIDENCE = Number(
@@ -41,18 +42,21 @@ const DB_FIRST_INTENTS = new Set<ChatIntent>([
   "explain_question",
   "question.explain_specific",
   "question.translate_context",
+  "question.similar_practice",
   "vocabulary.contextual",
   "grammar.contextual",
   "analyze_test_result",
   "test_attempt.analysis",
   "check_progress",
   "user_progress.summary",
+  "user_progress.ability_map",
   "roadmap.guidance",
   "roadmap.summary",
   "roadmap.next_step",
   "roadmap.explain_recommendation",
   "roadmap.adjust",
   "flashcard.personal",
+  "flashcard.create",
   "app.navigation_support",
   "toeic_knowledge.general",
   "general_toeic_question",
@@ -163,7 +167,16 @@ function isSmalltalk(text: string) {
 
 function explicitNavigationIntent(text: string): ChatIntent | null {
   const value = normalizeText(text);
-  if (!/\b(mo|di den|chuyen toi|cho toi vao|xem trang|vao phan)\b/.test(value)) {
+  if (/\b(dang o dau trong lo trinh|toi o dau trong lo trinh|minh o dau trong lo trinh)\b/.test(value)) {
+    return null;
+  }
+  const hasNavigationAction =
+    /\b(mo|di den|chuyen toi|cho toi vao|xem trang|vao phan)\b/.test(value);
+  const hasUiLocateAction =
+    /\b(trong app|tren web|tab nao|muc nao|trang nao|nut nao|bam o dau|click o dau|xem o dau|o dau|cho nao|nam o dau|o dau trong app|o dau tren web|xem.*cho nao)\b/.test(value);
+  const nonUiWhere =
+    /\b(o dau tot|o dau hieu qua|trung tam nao|nen hoc o dau tot|nen hoc o dau hieu qua)\b/.test(value);
+  if (!hasNavigationAction && (!hasUiLocateAction || nonUiWhere)) {
     return null;
   }
   if (/\b(flashcard|flash card|on tu)\b/.test(value)) return "flashcard.personal";
@@ -174,10 +187,28 @@ function explicitNavigationIntent(text: string): ChatIntent | null {
   return null;
 }
 
+function isFlashcardCreateRequest(text: string) {
+  const value = normalizeText(text);
+  const hasCreateAction = /\b(tao|tao nhanh|sinh|generate|lam cho toi|lap|build|create)\b/.test(value);
+  const hasFlashcardTarget =
+    /\b(flashcard|flash card|bo tu|tu vung|tu de hoc|hoc tu|tu moi)\b/.test(value);
+  const hasCountedWordRequest = /\b\d{1,2}\s*(tu|flashcard|cards?)\b/.test(value);
+  const hasTopicOrQuestionSource =
+    /\b(chu de|ve|theo chu de|tu chu de|tu cau nay|trong cau nay|cau sai nay|cau nay)\b/.test(value) ||
+    /\b(office|business|meeting|travel|workplace|company|email|project|sales|customer)\b/.test(value);
+  return hasCreateAction && (hasFlashcardTarget || hasCountedWordRequest) && hasTopicOrQuestionSource;
+}
+
 function explicitRoadmapIntent(text: string): ChatIntent | null {
   const value = normalizeText(text);
   const mentionsRoadmap =
     /\b(roadmap|lo trinh|ke hoach hoc)\b/.test(value);
+  const roadmapProgressWhere =
+    /\b(dang o dau trong lo trinh|toi o dau trong lo trinh|minh o dau trong lo trinh)\b/.test(value);
+  const asksUiLocation =
+    !roadmapProgressWhere &&
+    /\b(trong app|tren web|tab nao|muc nao|trang nao|nut nao|bam o dau|click o dau|xem o dau|o dau|cho nao|nam o dau|o dau trong app|o dau tren web|xem.*cho nao)\b/.test(value) &&
+    !/\b(o dau tot|o dau hieu qua|trung tam nao|nen hoc o dau tot|nen hoc o dau hieu qua)\b/.test(value);
 
   if (
     /\b(tai sao|vi sao)\b/.test(value) &&
@@ -204,9 +235,18 @@ function explicitRoadmapIntent(text: string): ChatIntent | null {
 
   if (
     mentionsRoadmap &&
-    /\b(the nao|ra sao|toi dau|den dau|tien do|hien tai|hoan thanh)\b/.test(
+    !asksUiLocation &&
+    /\b(the nao|ra sao|thi sao|toi dau|den dau|tien do|hien tai|hoan thanh|dang o dau trong lo trinh)\b/.test(
       value
     )
+  ) {
+    return "roadmap.summary";
+  }
+
+  if (
+    mentionsRoadmap &&
+    !asksUiLocation &&
+    /^(roadmap|lo trinh|lo trinh hoc|ke hoach hoc|lo trinh cua toi)$/.test(value)
   ) {
     return "roadmap.summary";
   }
@@ -254,6 +294,13 @@ function explicitPersonalIntent(text: string): ChatIntent | null {
     /\b(phan tich|ket qua|sai|yeu|diem|review|the nao)\b/.test(value)
   ) {
     return "test_attempt.analysis";
+  }
+  if (
+    /\b(nang luc|ban do nang luc|trinh do hien tai|trinh do toeic|muc nao|manh part nao|yeu part nao|nang luc tung part|skill cua toi|uoc tinh diem hien tai)\b/.test(
+      value
+    )
+  ) {
+    return "user_progress.ability_map";
   }
   if (
     /\b(tien do|streak|target|muc tieu|diem gan nhat|diem hien tai|toi yeu phan nao|ky nang nao.*yeu|tong thoi gian hoc)\b/.test(
@@ -402,12 +449,20 @@ export function detectScope(
     };
   }
 
-  if (explicitPersonalIntent(text) === "user_progress.summary") {
+  const personalIntent = explicitPersonalIntent(text);
+  if (
+    personalIntent === "user_progress.summary" ||
+    personalIntent === "user_progress.ability_map"
+  ) {
     return {
       scope: "overall_progress",
       confidence: 0.96,
       slots,
-      reasonCodes: ["explicit_progress_scope"],
+      reasonCodes: [
+        personalIntent === "user_progress.ability_map"
+          ? "explicit_ability_map_scope"
+          : "explicit_progress_scope",
+      ],
     };
   }
 
@@ -477,6 +532,20 @@ function resolverPolicyForIntent(intentId: ChatIntent): ChatResolverPolicy {
     intentId === "general_toeic_question"
     ? "GENERAL_AI"
     : "DB_FIRST";
+}
+
+function scopeForIntent(intentId: ChatIntent): ChatScope {
+  return isQuestionIntent(intentId)
+    ? "single_question"
+    : intentId === "test_attempt.analysis"
+      ? "attempt_analysis"
+      : intentId === "user_progress.summary" ||
+          intentId === "user_progress.ability_map" ||
+          intentId.startsWith("roadmap.")
+        ? "overall_progress"
+        : intentId === "toeic_knowledge.general" || intentId === "general_toeic_question"
+          ? "general_knowledge"
+          : "unknown";
 }
 
 function routeResult(params: {
@@ -709,6 +778,9 @@ function canResolveQuestionForIntent(params: {
   followUpContext: FollowUpContext;
   userText: string;
 }) {
+  if (params.routeContext.questionId && params.routeContext.attemptId) {
+    return { ok: true as const, reason: "question_context_ready" };
+  }
   const resolution = hasValidQuestionResolution(
     params.userText,
     params.routeContext,
@@ -764,6 +836,23 @@ function validateContextPolicyForIntent(params: {
   const policy = entry.contextPolicy;
   const needsQuestionContext = isQuestionIntent(params.intentId);
   const needsAttemptContext = params.intentId === "test_attempt.analysis";
+
+  if (params.intentId === "question.similar_practice") {
+    if (!effectiveRouteContext.questionId && !params.followUpContext.resolvedQuestionId) {
+      return {
+        status: "missing_required_context",
+        policy: "CLARIFY_IF_CONTEXT_MISSING",
+        reason: "missing_question_reference",
+        routeContext: effectiveRouteContext,
+      };
+    }
+    return {
+      status: "ready",
+      policy: resolverPolicyForIntent(params.intentId),
+      reason: "question_context_ready",
+      routeContext: effectiveRouteContext,
+    };
+  }
 
   if (needsQuestionContext) {
     const resolution = canResolveQuestionForIntent({
@@ -827,6 +916,7 @@ function classifyLegacyRuleIntent(params: {
 }) {
   void params.routeContext;
   if (isSmalltalk(params.userText)) return "smalltalk.greeting_feedback" as const;
+  if (isFlashcardCreateRequest(params.userText)) return "flashcard.create" as const;
   const navigationIntent = explicitNavigationIntent(params.userText);
   if (navigationIntent) return navigationIntent;
   const roadmapIntent = explicitRoadmapIntent(params.userText);
@@ -840,7 +930,9 @@ function classifyLegacyRuleIntent(params: {
     );
   }
   if (scopeDecision.scope === "attempt_analysis") return "test_attempt.analysis" as const;
-  if (scopeDecision.scope === "overall_progress") return "user_progress.summary" as const;
+  if (scopeDecision.scope === "overall_progress") {
+    return explicitPersonalIntent(params.userText) ?? "user_progress.summary" as const;
+  }
   if (scopeDecision.scope === "general_knowledge") return "toeic_knowledge.general" as const;
   if (scopeDecision.scope === "unknown" && isAppHelpQuestion(params.userText)) return "app.navigation_support" as const;
   if (scopeDecision.scope === "unknown" && isClearlyOutOfToeicScope(params.userText)) return "safe_fallback" as const;
@@ -857,9 +949,9 @@ function resolveFastPathRoute(params: {
 }): ChatRoutingResult | null {
   const scopeDecision = detectScope(params.userText, params.conversationState);
   const normalizedUserText = normalizeText(params.userText);
-  const questionIntent = explicitQuestionIntent(params.userText);
-  const navigationIntent = explicitNavigationIntent(params.userText);
-  const roadmapIntent = explicitRoadmapIntent(params.userText);
+  const questionIntent = explicitQuestionIntent(params.userText) as ChatIntent;
+  const navigationIntent = explicitNavigationIntent(params.userText) as ChatIntent;
+  const roadmapIntent = explicitRoadmapIntent(params.userText) as ChatIntent;
   const smalltalkIntent = isSmalltalk(params.userText);
 
   const baseDiagnostics: Partial<RoutingDiagnostics> = {
@@ -871,6 +963,183 @@ function resolveFastPathRoute(params: {
     seedVersion: CHAT_INTENT_SEED_VERSION,
     rerankerVersion: CHAT_INTENT_RERANKER_VERSION,
   };
+
+  if (params.clientContext?.sourceAction === "quick_question_explain") {
+    if (
+      !params.routeContext?.questionId ||
+      !params.routeContext?.attemptId ||
+      !params.routeContext?.testId
+    ) {
+      return routeResult({
+        decision: {
+          kind: "clarify",
+          intentId: "question.explain_specific",
+          reason: "missing_required_context",
+        },
+        scopeDecision: {
+          ...scopeDecision,
+          scope: "single_question",
+          confidence: 0.9,
+        },
+        intent: "question.explain_specific",
+        source: "fast_path",
+        resolverPolicy: "CLARIFY_IF_CONTEXT_MISSING",
+        confidence: 0.9,
+        reason: "missing_required_context",
+        reasonCodes: ["fast_path_question_missing_context"],
+        diagnostics: {
+          ...baseDiagnostics,
+          semanticIntent: "question.explain_specific",
+          mismatchReason: "fast_path_question_missing_context",
+        },
+      });
+    }
+
+    return routeResult({
+      decision: {
+        kind: "route",
+        intentId: "question.explain_specific",
+        lane: "CONTEXTUAL",
+      },
+      scopeDecision: {
+        ...scopeDecision,
+        scope: "single_question",
+        confidence: 0.99,
+      },
+      intent: "question.explain_specific",
+      source: "fast_path",
+      resolverPolicy: resolverPolicyForIntent("question.explain_specific"),
+      confidence: 0.99,
+      margin: 1,
+      candidates: [
+        {
+          intentId: "question.explain_specific",
+          lane: "CONTEXTUAL",
+          confidence: 1,
+          score: 1,
+          matchedExamples: [],
+          rerankScore: 1,
+        },
+      ],
+      reason: "fast_path_quick_question",
+      reasonCodes: ["fast_path_quick_question"],
+      diagnostics: {
+        ...baseDiagnostics,
+        semanticIntent: "question.explain_specific",
+        winnerScore: 1,
+        top1Top2Margin: 1,
+      },
+    });
+  }
+
+  if (params.clientContext?.sourceAction === "recommend_similar_practice") {
+    const payload = params.clientContext.actionPayload ?? {};
+    const questionId = payload.questionId ?? payload.sourceQuestionId ?? params.routeContext?.questionId;
+    if (!questionId) {
+      return routeResult({
+        decision: {
+          kind: "clarify",
+          intentId: "question.similar_practice",
+          reason: "missing_required_context",
+        },
+        scopeDecision: {
+          ...scopeDecision,
+          scope: "single_question",
+          confidence: 0.9,
+        },
+        intent: "question.similar_practice",
+        source: "fast_path",
+        resolverPolicy: "CLARIFY_IF_CONTEXT_MISSING",
+        confidence: 0.9,
+        reason: "missing_required_context",
+        reasonCodes: ["fast_path_similar_practice_missing_context"],
+        diagnostics: {
+          ...baseDiagnostics,
+          semanticIntent: "question.similar_practice",
+          mismatchReason: "fast_path_similar_practice_missing_context",
+        },
+      });
+    }
+
+    return routeResult({
+      decision: {
+        kind: "route",
+        intentId: "question.similar_practice",
+        lane: "CONTEXTUAL",
+      },
+      scopeDecision: {
+        ...scopeDecision,
+        scope: "single_question",
+        confidence: 1,
+      },
+      intent: "question.similar_practice",
+      source: "fast_path",
+      resolverPolicy: resolverPolicyForIntent("question.similar_practice"),
+      confidence: 1,
+      margin: 1,
+      candidates: [
+        {
+          intentId: "question.similar_practice",
+          lane: "CONTEXTUAL",
+          confidence: 1,
+          score: 1,
+          matchedExamples: [],
+          rerankScore: 1,
+        },
+      ],
+      reason: "fast_path_similar_practice",
+      reasonCodes: ["fast_path_similar_practice"],
+      diagnostics: {
+        ...baseDiagnostics,
+        semanticIntent: "question.similar_practice",
+        winnerScore: 1,
+        top1Top2Margin: 1,
+      },
+    });
+  }
+
+  return null;
+
+  if (
+    params.clientContext?.sourceAction === "flashcard_create" ||
+    isFlashcardCreateRequest(params.userText)
+  ) {
+    return routeResult({
+      decision: {
+        kind: "route",
+        intentId: "flashcard.create",
+        lane: "CONTEXTUAL",
+      },
+      scopeDecision: {
+        ...scopeDecision,
+        scope: "overall_progress",
+        confidence: 0.98,
+      },
+      intent: "flashcard.create",
+      source: "fast_path",
+      resolverPolicy: resolverPolicyForIntent("flashcard.create"),
+      confidence: 0.98,
+      margin: 1,
+      candidates: [
+        {
+          intentId: "flashcard.create",
+          lane: "CONTEXTUAL",
+          confidence: 1,
+          score: 1,
+          matchedExamples: [],
+          rerankScore: 1,
+        },
+      ],
+      reason: "fast_path_flashcard_create",
+      reasonCodes: ["fast_path_flashcard_create"],
+      diagnostics: {
+        ...baseDiagnostics,
+        semanticIntent: "flashcard.create",
+        winnerScore: 1,
+        top1Top2Margin: 1,
+      },
+    });
+  }
 
   if (smalltalkIntent) {
     return routeResult({
@@ -893,7 +1162,6 @@ function resolveFastPathRoute(params: {
           score: 1,
           matchedExamples: [],
           rerankScore: 1,
-          legacyRuleScore: 1,
         },
       ],
       reason: "fast_path_smalltalk",
@@ -928,7 +1196,6 @@ function resolveFastPathRoute(params: {
           score: 1,
           matchedExamples: [],
           rerankScore: 1,
-          legacyRuleScore: 1,
         },
       ],
       reason: "fast_path_navigation",
@@ -966,7 +1233,6 @@ function resolveFastPathRoute(params: {
           score: 1,
           matchedExamples: [],
           rerankScore: 1,
-          legacyRuleScore: 1,
         },
       ],
       reason: "fast_path_roadmap",
@@ -1040,7 +1306,6 @@ function resolveFastPathRoute(params: {
           score: 1,
           matchedExamples: [],
           rerankScore: 1,
-          legacyRuleScore: 1,
         },
       ],
       reason: "fast_path_quick_question",
@@ -1048,6 +1313,45 @@ function resolveFastPathRoute(params: {
       diagnostics: {
         ...baseDiagnostics,
         semanticIntent: explicitIntent,
+        winnerScore: 1,
+        top1Top2Margin: 1,
+      },
+    });
+  }
+
+  if (params.clientContext?.sourceAction === "recommend_similar_practice") {
+    return routeResult({
+      decision: {
+        kind: "route",
+        intentId: "question.similar_practice",
+        lane: "CONTEXTUAL",
+      },
+      scopeDecision: {
+        ...scopeDecision,
+        scope: "single_question",
+        confidence: 1,
+      },
+      intent: "question.similar_practice",
+      source: "fast_path",
+      resolverPolicy: resolverPolicyForIntent("question.similar_practice"),
+      confidence: 1,
+      margin: 1,
+      candidates: [
+        {
+          intentId: "question.similar_practice",
+          lane: "CONTEXTUAL",
+          confidence: 1,
+          score: 1,
+          matchedExamples: [],
+          rerankScore: 1,
+        },
+      ],
+      reason: "fast_path_similar_practice",
+      reasonCodes: ["fast_path_similar_practice"],
+      diagnostics: {
+        ...baseDiagnostics,
+        fastPathHit: true,
+        semanticIntent: "question.similar_practice",
         winnerScore: 1,
         top1Top2Margin: 1,
       },
@@ -1107,7 +1411,6 @@ function resolveFastPathRoute(params: {
           score: 1,
           matchedExamples: [],
           rerankScore: 1,
-          legacyRuleScore: 1,
         },
       ],
       reason: "fast_path_question",
@@ -1142,7 +1445,6 @@ function resolveFastPathRoute(params: {
           score: 1,
           matchedExamples: [],
           rerankScore: 1,
-          legacyRuleScore: 1,
         },
       ],
       reason: "fast_path_app_help",
@@ -1197,15 +1499,26 @@ export async function routeChatMessage(params: {
     routeContext: params.routeContext,
     conversationState: params.conversationState,
   });
+  const signalRouteContext: ChatRouteContext = {
+    ...(params.routeContext ?? { page: "unknown" }),
+  };
+  if (followUpContext.resolvedQuestionId && !signalRouteContext.questionId) {
+    signalRouteContext.questionId = followUpContext.resolvedQuestionId;
+  }
+  if (followUpContext.resolvedAttemptId && !signalRouteContext.attemptId) {
+    signalRouteContext.attemptId = followUpContext.resolvedAttemptId;
+  }
   const legacyRuleIntent = classifyLegacyRuleIntent({
     userText,
     routeContext: params.routeContext,
     conversationState: params.conversationState,
   });
+  const actionSignal = extractIntentSignal(userText, signalRouteContext);
+  const actionLayerIntent = actionSignal.intentHint;
 
   const fastPath = resolveFastPathRoute({
     userText,
-    routeContext: params.routeContext,
+    routeContext: signalRouteContext,
     clientContext: params.clientContext,
     conversationState: params.conversationState,
     followUpContext,
@@ -1213,35 +1526,6 @@ export async function routeChatMessage(params: {
   });
   if (fastPath) {
     return fastPath;
-  }
-
-  if (isClearlyOutOfToeicScope(userText)) {
-    return routeResult({
-      decision: {
-        kind: "safe_fallback",
-        reason: "outside_toeic_scope",
-      },
-      scopeDecision: {
-        scope: "unknown",
-        confidence: 0.25,
-        slots: {},
-        reasonCodes: ["outside_toeic_scope"],
-      },
-      source: "fallback",
-      resolverPolicy: "SAFE_FALLBACK",
-      confidence: 0.25,
-      reason: "outside_toeic_scope",
-      reasonCodes: ["outside_toeic_scope"],
-      diagnostics: {
-        fastPathHit: false,
-        legacyRuleIntent,
-        semanticIntent: "safe_fallback",
-        semanticDegraded: true,
-        rerankerDegraded: true,
-        seedVersion: CHAT_INTENT_SEED_VERSION,
-        rerankerVersion: CHAT_INTENT_RERANKER_VERSION,
-      },
-    });
   }
 
   const semanticQuery = buildSemanticQuery(userText, followUpContext);
@@ -1259,6 +1543,7 @@ export async function routeChatMessage(params: {
   const reranked = await rerankIntentCandidates({
     userText: semanticQuery.userText,
     resolvedFollowUpText: semanticQuery.resolvedFollowUpText,
+    routeContext: signalRouteContext,
     candidates: semanticRanking.candidates,
   });
   const rerankLatencyMs = Date.now() - rerankStartedAt;
@@ -1274,22 +1559,45 @@ export async function routeChatMessage(params: {
       : winner
         ? 0.92
         : 0;
-  const roadmapConflict =
-    !!winner &&
-    hasRoadmapSignal(userText) &&
-    !isRoadmapIntent(winner.intentId) &&
-    candidates.some((candidate) => isRoadmapIntent(candidate.intentId));
-  const strongMarginConfident =
-    top1Top2Margin >= DEFAULT_STRONG_MARGIN && !roadmapConflict;
-  const confident =
-    !!winner &&
-    top1Top2Margin >= DEFAULT_MIN_MARGIN &&
-    (semanticConfidence >= DEFAULT_MIN_CONFIDENCE || strongMarginConfident);
+  const distanceTooFar =
+    typeof winner?.distance === "number" &&
+    Number.isFinite(winner.distance) &&
+    winner.distance > DEFAULT_MAX_DISTANCE;
+  const ragStatus: NonNullable<RoutingDiagnostics["ragStatus"]> =
+    semanticRanking.semanticDegraded
+      ? "rag_error"
+      : !winner
+        ? "rag_miss"
+        : distanceTooFar
+          ? "rag_low_confidence"
+          : semanticConfidence < DEFAULT_MIN_CONFIDENCE
+          ? "rag_low_confidence"
+          : top1Top2Margin < DEFAULT_MIN_MARGIN
+            ? "rag_ambiguous"
+            : "rag_hit";
+  const ragDecision: NonNullable<RoutingDiagnostics["ragDecision"]> =
+    ragStatus === "rag_hit"
+      ? "RAG_DECIDED"
+      : ragStatus === "rag_error"
+        ? "RAG_ERROR"
+        : "RAG_ABSTAIN";
+  const ragAbstainReason: RoutingDiagnostics["ragAbstainReason"] =
+    ragStatus === "rag_low_confidence"
+      ? "LOW_CONFIDENCE"
+      : ragStatus === "rag_ambiguous"
+        ? "AMBIGUOUS"
+        : ragStatus === "rag_miss"
+          ? "NO_MATCH"
+          : undefined;
 
   const buildSemanticDiagnostics = (overrides: Partial<RoutingDiagnostics> = {}) => ({
     fastPathHit: false,
     legacyRuleIntent,
     semanticIntent: winner?.intentId,
+    semanticEntity: actionSignal.entity,
+    semanticAction: actionSignal.action,
+    semanticActionConfidence: actionSignal.actionConfidence,
+    actionLayerIntent,
     semanticDegraded: semanticRanking.semanticDegraded || reranked.degraded,
     rerankerDegraded: reranked.degraded,
     retrievalLatencyMs,
@@ -1304,63 +1612,88 @@ export async function routeChatMessage(params: {
     followUp: followUpContext,
     chromaQueried: semanticRanking.queryCount > 0,
     chromaAvailable: semanticRanking.source === "chroma",
+    ragStatus,
+    ragDecision,
+    ragAbstainReason,
+    ragErrorCode: ragStatus === "rag_error" ? semanticRanking.errorCode ?? semanticRanking.degradedReason ?? "SEMANTIC_RANKING_ERROR" : undefined,
+    ragDistanceTooFar: distanceTooFar,
     ...overrides,
   });
 
-  if (!winner || !confident) {
-    if (isToeicGeneralQuestion(userText) || isExplicitGeneralKnowledge(userText)) {
-      return routeResult({
-        decision: {
-          kind: "general_ai",
-          intentId: "toeic_knowledge.general",
-        },
-        scopeDecision: {
-          scope: "general_knowledge",
-          confidence: semanticConfidence || 0.82,
-          slots: {},
-          reasonCodes: ["low_confidence_general_fallback"],
-        },
-        intent: "toeic_knowledge.general",
-        source: semanticRanking.semanticDegraded ? "fallback" : "semantic",
-        resolverPolicy: "GENERAL_AI",
-        confidence: semanticConfidence || 0.82,
-        margin: top1Top2Margin,
-        candidates,
-        reason: "low_confidence_general_fallback",
-        reasonCodes: ["low_confidence_general_fallback"],
-        chromaQueried: semanticRanking.queryCount > 0,
-        chromaAvailable: semanticRanking.source === "chroma",
-        diagnostics: buildSemanticDiagnostics({
-          semanticIntent: "toeic_knowledge.general",
-          validationResult: "LOW_CONFIDENCE",
-          mismatchReason: semanticRanking.semanticDegraded ? "semantic_degraded_general_fallback" : "low_confidence_general_fallback",
-        }),
+  if (ragDecision !== "RAG_DECIDED") {
+    if (winner) {
+      const validationStartedAt = Date.now();
+      const validation = validateContextPolicyForIntent({
+        intentId: winner.intentId,
+        routeContext: params.routeContext,
+        followUpContext,
+        userText,
       });
+      const validationLatencyMs = Date.now() - validationStartedAt;
+      if (validation.status === "missing_required_context") {
+        return routeResult({
+          decision: {
+            kind: "clarify",
+            intentId: winner.intentId,
+            reason: validation.reason,
+          },
+          scopeDecision: {
+            scope: "unknown",
+            confidence: semanticConfidence || 0.25,
+            slots: {},
+            reasonCodes: [validation.reason],
+          },
+          intent: winner.intentId,
+          source: semanticRanking.semanticDegraded ? "fallback" : "semantic",
+          resolverPolicy: validation.policy,
+          confidence: semanticConfidence || 0.25,
+          margin: top1Top2Margin,
+          candidates,
+          reason: validation.reason,
+          reasonCodes: [validation.reason],
+          chromaQueried: semanticRanking.queryCount > 0,
+          chromaAvailable: semanticRanking.source === "chroma",
+          diagnostics: buildSemanticDiagnostics({
+            validationLatencyMs,
+            semanticIntent: winner.intentId,
+            validationResult: "MISSING_REQUIRED_CONTEXT",
+            mismatchReason: validation.reason,
+          }),
+        });
+      }
     }
 
+    const reason =
+      ragStatus === "rag_error"
+        ? "rag_error"
+        : ragStatus === "rag_miss"
+          ? "rag_miss"
+          : ragStatus === "rag_ambiguous"
+            ? "rag_ambiguous"
+            : "rag_low_confidence";
     return routeResult({
       decision: {
-        kind: "clarify",
-        reason: semanticRanking.semanticDegraded ? "semantic_degraded" : "low_confidence",
+        kind: "safe_fallback",
+        reason,
       },
       scopeDecision: {
         scope: "unknown",
         confidence: semanticConfidence || 0.25,
         slots: {},
-        reasonCodes: [semanticRanking.semanticDegraded ? "semantic_degraded" : "low_confidence"],
+        reasonCodes: [reason],
       },
       source: semanticRanking.semanticDegraded ? "fallback" : "semantic",
-      resolverPolicy: semanticRanking.semanticDegraded ? "SAFE_FALLBACK" : "LOW_CONFIDENCE",
+      resolverPolicy: ragStatus === "rag_error" ? "SAFE_FALLBACK" : "LOW_CONFIDENCE",
       confidence: semanticConfidence || 0.25,
       margin: top1Top2Margin,
       candidates,
-      reason: semanticRanking.semanticDegraded ? "semantic_degraded" : "low_confidence",
-      reasonCodes: [semanticRanking.semanticDegraded ? "semantic_degraded" : "low_confidence"],
+      reason,
+      reasonCodes: [reason],
       chromaQueried: semanticRanking.queryCount > 0,
       chromaAvailable: semanticRanking.source === "chroma",
       diagnostics: buildSemanticDiagnostics({
-        validationResult: semanticRanking.semanticDegraded ? "UNSUPPORTED_CAPABILITY" : "LOW_CONFIDENCE",
-        mismatchReason: semanticRanking.semanticDegraded ? "semantic_degraded" : "low_confidence",
+        validationResult: ragDecision,
+        mismatchReason: reason,
       }),
     });
   }
@@ -1474,7 +1807,7 @@ export async function routeChatMessage(params: {
     ? "single_question"
     : winner.intentId === "test_attempt.analysis"
       ? "attempt_analysis"
-      : winner.intentId === "user_progress.summary"
+      : winner.intentId === "user_progress.summary" || winner.intentId === "user_progress.ability_map"
         ? "overall_progress"
         : winner.intentId.startsWith("roadmap.")
           ? "overall_progress"
@@ -1559,6 +1892,7 @@ export function toLegacyChatIntent(intent: ChatIntent): ChatIntent {
   }
   if (intent === "test_attempt.analysis") return "analyze_test_result";
   if (intent === "user_progress.summary") return "check_progress";
+  if (intent === "user_progress.ability_map") return "check_progress";
   if (intent === "toeic_knowledge.general") return "general_toeic_question";
   return intent;
 }

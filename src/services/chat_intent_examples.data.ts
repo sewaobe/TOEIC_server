@@ -1,4 +1,5 @@
 import { ChatIntent, IntentAvailability, IntentLane } from "../types/chat.types";
+import type { IntentSignalMetadata } from "./chat_intent_signal.service";
 
 export type IntentEngine =
   | "TEMPLATE"
@@ -26,39 +27,188 @@ export type IntentCatalogEntry = {
   priority: number;
   examples: string[];
   hardNegatives: string[];
-};
+} & IntentSignalMetadata;
+
+type RawIntentCatalogEntry = Omit<IntentCatalogEntry, keyof IntentSignalMetadata>;
 
 export const CHAT_INTENT_COLLECTION = "chat_intent_examples";
-export const CHAT_INTENT_CATALOG_VERSION = 4;
+export const CHAT_INTENT_CATALOG_VERSION = 11;
 
-export const CHAT_INTENT_EXAMPLES: IntentCatalogEntry[] = [
+const INTENT_SIGNAL_METADATA: Partial<Record<ChatIntent, IntentSignalMetadata>> = {
+  "smalltalk.greeting_feedback": {
+    entities: ["smalltalk"],
+    actions: ["general_ask"],
+    defaultAction: "general_ask",
+    forbiddenActions: ["create", "translate", "analyze", "locate_ui", "open", "navigate"],
+  },
+  "user_progress.summary": {
+    entities: ["progress"],
+    actions: ["ask_status", "general_ask", "analyze"],
+    defaultAction: "ask_status",
+    requiredContext: ["userId"],
+    forbiddenActions: ["locate_ui", "open", "navigate", "create", "translate"],
+  },
+  "user_progress.ability_map": {
+    entities: ["progress"],
+    actions: ["ask_status", "general_ask", "analyze"],
+    defaultAction: "ask_status",
+    requiredContext: ["userId"],
+    forbiddenActions: ["locate_ui", "open", "navigate", "create", "translate"],
+  },
+  "test_attempt.analysis": {
+    entities: ["attempt"],
+    actions: ["analyze", "ask_status", "general_ask"],
+    defaultAction: "analyze",
+    requiredContext: ["userId"],
+    forbiddenActions: ["locate_ui", "open", "navigate", "create", "translate"],
+  },
+  "question.explain_specific": {
+    entities: ["question"],
+    actions: ["explain", "analyze"],
+    defaultAction: "explain",
+    requiredContext: ["questionId", "attemptId"],
+    forbiddenActions: ["locate_ui", "open", "navigate", "create", "ask_status"],
+  },
+  "question.translate_context": {
+    entities: ["question"],
+    actions: ["translate"],
+    defaultAction: "translate",
+    requiredContext: ["questionId", "attemptId"],
+    forbiddenActions: ["locate_ui", "open", "navigate", "create", "ask_status"],
+  },
+  "question.similar_practice": {
+    entities: ["question"],
+    actions: ["recommend", "next_step"],
+    defaultAction: "recommend",
+    requiredContext: ["questionId"],
+    forbiddenActions: ["locate_ui", "open", "navigate", "create", "ask_status", "translate"],
+  },
+  "vocabulary.contextual": {
+    entities: ["question"],
+    actions: ["explain", "translate", "general_ask"],
+    defaultAction: "explain",
+    requiredContext: ["questionId", "attemptId"],
+    forbiddenActions: ["locate_ui", "open", "navigate", "create", "ask_status"],
+  },
+  "grammar.contextual": {
+    entities: ["question"],
+    actions: ["explain", "analyze", "general_ask"],
+    defaultAction: "explain",
+    requiredContext: ["questionId", "attemptId"],
+    forbiddenActions: ["locate_ui", "open", "navigate", "create", "ask_status"],
+  },
+  "toeic_knowledge.general": {
+    entities: ["toeic_knowledge"],
+    actions: ["general_ask", "recommend", "explain"],
+    defaultAction: "general_ask",
+    forbiddenActions: ["locate_ui", "open", "navigate", "create"],
+  },
+  "roadmap.guidance": {
+    entities: ["roadmap"],
+    actions: ["locate_ui", "open", "navigate"],
+    defaultAction: "locate_ui",
+    requiredContext: ["userId"],
+    forbiddenActions: ["ask_status", "analyze", "create", "translate"],
+  },
+  "roadmap.summary": {
+    entities: ["roadmap"],
+    actions: ["ask_status", "general_ask"],
+    defaultAction: "ask_status",
+    requiredContext: ["userId"],
+    forbiddenActions: ["locate_ui", "open", "navigate", "create", "translate"],
+  },
+  "roadmap.next_step": {
+    entities: ["roadmap"],
+    actions: ["next_step", "recommend"],
+    defaultAction: "next_step",
+    requiredContext: ["userId"],
+    forbiddenActions: ["locate_ui", "open", "navigate", "create", "translate"],
+  },
+  "roadmap.explain_recommendation": {
+    entities: ["roadmap"],
+    actions: ["explain", "analyze"],
+    defaultAction: "explain",
+    requiredContext: ["userId"],
+    forbiddenActions: ["locate_ui", "open", "navigate", "create", "translate"],
+  },
+  "roadmap.adjust": {
+    entities: ["roadmap"],
+    actions: ["adjust"],
+    defaultAction: "adjust",
+    requiredContext: ["userId"],
+    forbiddenActions: ["locate_ui", "open", "navigate", "translate"],
+  },
+  "flashcard.create": {
+    entities: ["flashcard"],
+    actions: ["create"],
+    defaultAction: "create",
+    requiredContext: ["userId"],
+    forbiddenActions: ["locate_ui", "open", "navigate", "ask_status", "translate"],
+  },
+  "flashcard.personal": {
+    entities: ["flashcard"],
+    actions: ["locate_ui", "open", "navigate", "general_ask"],
+    defaultAction: "open",
+    requiredContext: ["userId"],
+    forbiddenActions: ["create", "translate", "analyze"],
+  },
+  "listening_practice.analysis": {
+    entities: ["attempt"],
+    actions: ["analyze"],
+    defaultAction: "analyze",
+    requiredContext: ["attemptId"],
+    forbiddenActions: ["locate_ui", "open", "navigate", "create"],
+  },
+  "app.navigation_support": {
+    entities: ["app"],
+    actions: ["locate_ui", "open", "navigate"],
+    defaultAction: "locate_ui",
+    forbiddenActions: ["ask_status", "analyze", "create", "translate"],
+  },
+};
+
+const DEFAULT_SIGNAL_METADATA: IntentSignalMetadata = {
+  entities: ["toeic_knowledge"],
+  actions: ["general_ask"],
+  defaultAction: "general_ask",
+  forbiddenActions: [],
+};
+
+const RAW_CHAT_INTENT_EXAMPLES: RawIntentCatalogEntry[] = [
   {
     id: "smalltalk_greeting_feedback",
     intentId: "smalltalk.greeting_feedback",
     lane: "SYSTEM",
     engine: "TEMPLATE",
     availability: "ACTIVE",
-    semanticSearchEnabled: false,
+    semanticSearchEnabled: true,
     contextType: "template",
     contextPolicy: { onMissing: "SAFE_FALLBACK" },
     priority: 80,
     examples: [
-      "xin chao",
-      "chao ban",
-      "hello",
       "hi",
+      "hello",
       "hey",
       "alo",
+      "chao",
+      "xin chao",
+      "chao ban",
       "co ai o do khong",
       "bat dau hoc nao",
       "minh can hoi nhanh",
       "ban giup minh voi",
+      "cam on",
       "cam on ban",
       "cam on nhe",
+      "cam on nhieu",
+      "cam on ban nhe",
       "thanks",
       "thank you",
       "ok",
       "oke",
+      "uh",
+      "um",
+      "roi",
       "duoc roi",
       "minh hieu roi",
       "ro roi",
@@ -101,6 +251,9 @@ export const CHAT_INTENT_EXAMPLES: IntentCatalogEntry[] = [
       "tien do hoc cua toi the nao",
       "tong quan tien do cua toi ra sao",
       "toi dang hoc duoc bao nhieu phan tram",
+      "toi yeu phan nao",
+      "phan nao toi yeu nhat",
+      "phan nao toi can on nhieu nhat",
       "toi da hoan thanh bao nhieu bai",
       "muc tieu diem cua toi la bao nhieu",
       "diem hien tai cua toi la bao nhieu",
@@ -125,8 +278,47 @@ export const CHAT_INTENT_EXAMPLES: IntentCatalogEntry[] = [
       "phan tich de gan nhat cua toi",
       "bai test vua lam cua toi ra sao",
       "bai nay toi sai phan nao",
+      "toi yeu phan nao",
+      "phan nao toi yeu nhat",
       "buoc tiep theo trong roadmap la gi",
       "meo tang diem reading",
+    ],
+  },
+  {
+    id: "user_progress_ability_map",
+    intentId: "user_progress.ability_map",
+    lane: "CONTEXTUAL",
+    engine: "DB_FIRST",
+    availability: "ACTIVE",
+    semanticSearchEnabled: true,
+    contextType: "ability_map",
+    contextPolicy: { auth: true, onMissing: "SAFE_FALLBACK" },
+    priority: 88,
+    examples: [
+      "nang luc cua toi the nao",
+      "ban do nang luc cua toi",
+      "toi dang o muc nao",
+      "trinh do hien tai cua toi ra sao",
+      "toi yeu part nao",
+      "toi manh part nao",
+      "nang luc tung part cua toi the nao",
+      "skill cua toi hien tai ra sao",
+      "kha nang TOEIC hien tai cua toi the nao",
+      "trinh do toeic hien tai cua toi",
+      "uoc tinh diem hien tai theo nang luc",
+      "toi dang manh yeu nhu the nao",
+      "part nao cua toi dang yeu",
+      "part nao cua toi dang tot",
+      "xem ban do nang luc rut gon cho toi",
+    ],
+    hardNegatives: [
+      "tien do hoc cua toi the nao",
+      "tong quan tien do cua toi",
+      "streak hoc cua toi",
+      "de gan nhat cua toi the nao",
+      "phan tich de gan nhat cua toi",
+      "lo trinh cua toi the nao",
+      "buoc tiep theo trong roadmap la gi",
     ],
   },
   {
@@ -246,6 +438,10 @@ export const CHAT_INTENT_EXAMPLES: IntentCatalogEntry[] = [
       "menh de quan he la gi",
       "phan tich bai test nay",
       "tien do cua toi the nao",
+      "lo trinh hoc o dau",
+      "xem lo trinh o cho nao",
+      "mo flashcard",
+      "nang luc cua toi the nao",
     ],
   },
   {
@@ -298,6 +494,48 @@ export const CHAT_INTENT_EXAMPLES: IntentCatalogEntry[] = [
       "affect va effect khac nhau the nao",
       "meo lam part 7",
       "phan tich ket qua bai test",
+      "cau nay dung ngu phap gi",
+      "ngu phap cua cau nay la gi",
+      "lo trinh hoc o dau",
+      "xem lo trinh o cho nao",
+      "roadmap nam o dau trong app",
+      "mo flashcard",
+      "nang luc cua toi the nao",
+    ],
+  },
+  {
+    id: "question_similar_practice",
+    intentId: "question.similar_practice",
+    lane: "CONTEXTUAL",
+    engine: "DB_FIRST",
+    availability: "ACTIVE",
+    semanticSearchEnabled: true,
+    contextType: "similar_practice",
+    contextPolicy: {
+      auth: true,
+      allOf: ["questionId"],
+      onMissing: "CLARIFY",
+    },
+    priority: 87,
+    examples: [
+      "luyen cau tuong tu",
+      "goi y bai luyen tuong tu",
+      "cho toi bai luyen tuong tu cau nay",
+      "on luyen cau tuong tu",
+      "tim bai luyen cung tag cau nay",
+      "luyen them tag cua cau nay",
+      "goi y bai tap lien quan cau nay",
+      "toi muon luyen dang cau nay",
+      "co bai nao giong cau nay de luyen khong",
+      "luyen lai skill cua cau nay",
+    ],
+    hardNegatives: [
+      "giai thich cau nay",
+      "dich cau nay",
+      "tu nay nghia la gi",
+      "cau nay dung ngu phap gi",
+      "tao flashcard tu cau nay",
+      "mo flashcard",
     ],
   },
   {
@@ -350,6 +588,10 @@ export const CHAT_INTENT_EXAMPLES: IntentCatalogEntry[] = [
       "cach hoc tu vung toeic",
       "affect va effect khac nhau the nao",
       "mo flashcard",
+      "lo trinh hoc o dau",
+      "xem lo trinh o cho nao",
+      "roadmap nam o dau trong app",
+      "nang luc cua toi the nao",
     ],
   },
   {
@@ -402,6 +644,13 @@ export const CHAT_INTENT_EXAMPLES: IntentCatalogEntry[] = [
       "menh de quan he la gi",
       "cac chu diem ngu phap toeic quan trong",
       "meo lam part 5",
+      "cau nay dung ngu phap gi",
+      "ngu phap cua cau nay la gi",
+      "lo trinh hoc o dau",
+      "xem lo trinh o cho nao",
+      "roadmap nam o dau trong app",
+      "mo flashcard",
+      "nang luc cua toi the nao",
     ],
   },
   {
@@ -445,6 +694,8 @@ export const CHAT_INTENT_EXAMPLES: IntentCatalogEntry[] = [
       "lam sao tranh bay trong Part 5",
       "tu vung TOEIC ve van phong gom gi",
       "cach ghi nho tu vung TOEIC lau hon",
+      "lo trinh hoc o dau tot",
+      "nen hoc TOEIC o dau hieu qua",
     ],
     hardNegatives: [
       "giai thich cau nay",
@@ -469,9 +720,18 @@ export const CHAT_INTENT_EXAMPLES: IntentCatalogEntry[] = [
       "cho toi xem trang roadmap",
       "mo phan ke hoach hoc",
       "di den lo trinh hoc",
+      "lo trinh hoc o dau",
+      "xem lo trinh o cho nao",
+      "toi xem lo trinh o cho nao",
+      "roadmap nam o dau trong app",
+      "mo lo trinh hoc",
     ],
     hardNegatives: [
       "roadmap cua toi toi dau roi",
+      "lo trinh hoc",
+      "lo trinh thi sao",
+      "toi dang o dau trong lo trinh",
+      "lo trinh hoc o dau tot",
       "vi sao roadmap chon bai nay",
       "tien do hoc cua toi the nao",
     ],
@@ -487,14 +747,27 @@ export const CHAT_INTENT_EXAMPLES: IntentCatalogEntry[] = [
     contextPolicy: { auth: true, onMissing: "SAFE_FALLBACK" },
     priority: 90,
     examples: [
+      "lo trinh hoc",
+      "lo trinh thi sao",
+      "lo trinh cua toi",
       "lo trinh cua toi the nao",
       "roadmap cua toi toi dau roi",
       "lo trinh hien tai ra sao",
+      "toi dang o dau trong lo trinh",
       "toi da hoan thanh bao nhieu lo trinh",
       "tien do roadmap cua toi",
+      "toi dang o stage nao",
+      "toi dang o giai doan nao",
+      "cycle hien tai cua toi la gi",
+      "lo trinh cua toi dang o cycle nao",
+      "cycle hien tai tap trung phan nao",
     ],
     hardNegatives: [
       "mo lo trinh",
+      "lo trinh hoc o dau",
+      "xem lo trinh o cho nao",
+      "roadmap nam o dau trong app",
+      "lo trinh hoc o dau tot",
       "hom nay toi nen hoc gi",
       "tai sao he thong chon bai nay",
     ],
@@ -515,6 +788,10 @@ export const CHAT_INTENT_EXAMPLES: IntentCatalogEntry[] = [
       "toi nen hoc gi tiep theo",
       "roadmap giao bai gi tiep theo",
       "tiep theo toi can lam gi",
+      "stage tiep theo toi hoc gi",
+      "giai doan tiep theo cua lo trinh la gi",
+      "cycle nay toi can lam gi tiep theo",
+      "session tiep theo trong roadmap la gi",
     ],
     hardNegatives: [
       "mo roadmap",
@@ -538,6 +815,10 @@ export const CHAT_INTENT_EXAMPLES: IntentCatalogEntry[] = [
       "ly do toi phai hoc buoc nay",
       "tai sao bai nay duoc xep tiep theo",
       "giai thich de xuat hoc tap nay",
+      "vi sao stage nay hoc bai nay",
+      "tai sao cycle nay tap trung part nay",
+      "vi sao giai doan nay lai hoc skill nay",
+      "giai thich ly do stage hien tai",
     ],
     hardNegatives: [
       "mo roadmap",
@@ -566,6 +847,36 @@ export const CHAT_INTENT_EXAMPLES: IntentCatalogEntry[] = [
       "mo lo trinh",
       "lo trinh cua toi the nao",
       "hom nay toi nen hoc gi",
+    ],
+  },
+  {
+    id: "flashcard_create",
+    intentId: "flashcard.create",
+    lane: "CONTEXTUAL",
+    engine: "DB_FIRST",
+    availability: "ACTIVE",
+    semanticSearchEnabled: true,
+    contextType: "flashcard_supply",
+    contextPolicy: { auth: true, onMissing: "CLARIFY" },
+    priority: 91,
+    examples: [
+      "tao 20 tu chu de office",
+      "tao flashcard chu de business",
+      "tao 15 flashcard ve travel",
+      "tao bo tu vung ve meeting",
+      "tao nhanh 20 tu de hoc flashcard",
+      "tao flashcard tu cau nay",
+      "tao 10 tu trong cau nay",
+      "chi lay tu trong cau nay de tao flashcard",
+      "tao flashcard tu cau sai nay",
+      "tao bo tu de on cau nay",
+    ],
+    hardNegatives: [
+      "mo flashcard",
+      "di den flashcard",
+      "toi co bao nhieu flashcard can on",
+      "cach hoc tu vung toeic",
+      "luyen cau tuong tu",
     ],
   },
   {
@@ -598,6 +909,8 @@ export const CHAT_INTENT_EXAMPLES: IntentCatalogEntry[] = [
     lane: "CONTEXTUAL",
     engine: "DB_FIRST_AI",
     availability: "DISABLED",
+    // Internal-only capability for future listening/shadowing analysis flows.
+    // It is intentionally not routable from userText and stays out of Chroma.
     semanticSearchEnabled: false,
     contextType: "listening_practice",
     contextPolicy: {
@@ -681,6 +994,11 @@ export const CHAT_INTENT_EXAMPLES: IntentCatalogEntry[] = [
   },
 ];
 
+export const CHAT_INTENT_EXAMPLES: IntentCatalogEntry[] = RAW_CHAT_INTENT_EXAMPLES.map((entry) => ({
+  ...entry,
+  ...(INTENT_SIGNAL_METADATA[entry.intentId] ?? DEFAULT_SIGNAL_METADATA),
+}));
+
 export function validateIntentCatalog(
   catalog: IntentCatalogEntry[] = CHAT_INTENT_EXAMPLES
 ) {
@@ -698,11 +1016,17 @@ export function validateIntentCatalog(
     if (entry.availability === "DISABLED" && entry.semanticSearchEnabled) {
       throw new Error(`Disabled intent cannot be indexed: ${entry.intentId}`);
     }
+    if (entry.availability === "ACTIVE" && !entry.semanticSearchEnabled) {
+      throw new Error(`Active intent must be searchable or marked DISABLED: ${entry.intentId}`);
+    }
     if (entry.availability === "ACTION_ONLY" && entry.engine !== "ACTION") {
       throw new Error(`ACTION_ONLY intent must use ACTION engine: ${entry.intentId}`);
     }
     if (entry.semanticSearchEnabled && entry.examples.length === 0) {
       throw new Error(`Semantic intent requires positive examples: ${entry.intentId}`);
+    }
+    if (!entry.entities.length || !entry.actions.length) {
+      throw new Error(`Intent signal metadata is required: ${entry.intentId}`);
     }
     if (
       entry.lane === "CONTEXTUAL" &&
@@ -716,6 +1040,25 @@ export function validateIntentCatalog(
   return catalog;
 }
 
+export function getChatIntentCatalogStats(
+  catalog: IntentCatalogEntry[] = CHAT_INTENT_EXAMPLES
+) {
+  const searchable = catalog.filter(
+    (entry) => entry.semanticSearchEnabled && entry.availability !== "DISABLED"
+  );
+  return {
+    catalogVersion: CHAT_INTENT_CATALOG_VERSION,
+    searchableIntentCount: searchable.length,
+    searchableExampleCount: searchable.reduce((count, entry) => count + entry.examples.length, 0),
+    disabledIntentCount: catalog.filter((entry) => entry.availability === "DISABLED").length,
+    totalIntentCount: catalog.length,
+  };
+}
+
 export function getIntentCatalogEntry(intentId: ChatIntent) {
   return CHAT_INTENT_EXAMPLES.find((entry) => entry.intentId === intentId);
+}
+
+export function getIntentSignalMetadata(intentId: ChatIntent) {
+  return getIntentCatalogEntry(intentId);
 }

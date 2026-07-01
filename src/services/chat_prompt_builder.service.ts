@@ -12,6 +12,7 @@ export function buildPrompt(intent: ChatIntent, userText: string, trustedContext
     intent === "grammar.contextual";
   const isGeneralToeicKnowledge =
     intent === "toeic_knowledge.general" || intent === "general_toeic_question";
+  const isRoadmapIntent = intent.startsWith("roadmap.");
 
   const task = isGeneralToeicKnowledge
     ? [
@@ -70,6 +71,16 @@ export function buildPrompt(intent: ChatIntent, userText: string, trustedContext
         `- Bat buoc boc cau tra loi cuoi cung bang dong ${STUDENT_ANSWER_START} o truoc va dong ${STUDENT_ANSWER_END} o sau.`,
       ].join("\n")
     : "";
+  const roadmapRules = isRoadmapIntent
+    ? [
+        "ROADMAP_RULES:",
+        "- Roadmap trong hệ thống này được chia theo Cycle và Stage, không trả lời theo lịch ngày/tuần nếu TRUSTED_CONTEXT không cung cấp.",
+        "- WeekStudy.no trong TRUSTED_CONTEXT là cycleNo; DayStudy.dayOfWeek đã được map thành stageNo.",
+        "- Khi nói tiến độ roadmap, ưu tiên currentCycleNo/totalCycles và completedStages/totalStages.",
+        "- Khi nói bước tiếp theo, dùng Stage, Session, Part, title, plannedMinutes và reason nếu có.",
+        "- Không dùng các cụm 'hôm nay', 'x/y ngày', 'tuần X/Y' cho roadmap trừ khi user hỏi riêng về calendar.",
+      ].join("\n")
+    : "";
 
   return [
     "PERSONA: Ban la TOEIC Learning Coach trong web app hoc TOEIC ca nhan hoa.",
@@ -80,6 +91,7 @@ export function buildPrompt(intent: ChatIntent, userText: string, trustedContext
     `TASK:\n${task}`,
     compactAnswerRules,
     explainQuestionRules,
+    roadmapRules,
     `USER_MESSAGE:\n${userText}`,
     `TRUSTED_CONTEXT:\n${JSON.stringify(trustedContext, null, 2)}`,
     [

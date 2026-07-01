@@ -6,12 +6,19 @@ import { UserSkill } from "../models/user_skill.model";
 import { UserSkillHistory } from "../models/user_skill_history.model";
 import { UserTest } from "../models/user_test.model";
 import { LearningPath } from "../models/learning_path.model";
+import { LessonManager } from "../models/lesson_manager.model";
 import {
+  ChatClientContext,
   ChatIntent,
   ChatRouteContext,
   DbFirstContext,
 } from "../types/chat.types";
 import { resolveQuestionReferenceFromRouteContext } from "./chat_question_reference.service";
+import { normalizeToeicSkillTags } from "../utils/toeic_skill.util";
+import {
+  createFlashcardSupplyDeck,
+  FlashcardSupplyRequest,
+} from "./flashcard_supply.service";
 
 export function ensureObjectId(id?: string) {
   if (!id || !Types.ObjectId.isValid(id)) return null;
@@ -568,6 +575,85 @@ export async function buildTestResultContext(
   };
 }
 
+function summarizeLearningPathStages(roadmap: any) {
+  if (!roadmap) return null;
+  const cycles = Array.isArray(roadmap.week_study_ids)
+    ? roadmap.week_study_ids
+    : [];
+  const stages = cycles.flatMap((cycle: any) =>
+    Array.isArray(cycle?.days) ? cycle.days : []
+  );
+  const completedStages = stages.filter(
+    (stage: any) => stage?.status === "completed"
+  ).length;
+  const totalStages = stages.length;
+  return {
+    learningPathId: String(roadmap._id),
+    currentCycleNo: Number(roadmap.current_week ?? 1) || 1,
+    totalCycles: cycles.length,
+    completedCycles: cycles.filter(
+      (cycle: any) => cycle?.status === "completed"
+    ).length,
+    completedStages,
+    totalStages,
+    completionRate: totalStages
+      ? Math.round((completedStages / totalStages) * 100)
+      : 0,
+    targetScore: roadmap.target_score,
+    status: roadmap.status,
+  };
+}
+
+const CHAT_TOEIC_PART_SCORE_WEIGHT: Record<number, number> = {
+  1: 0.06,
+  2: 0.25,
+  3: 0.39,
+  4: 0.3,
+  5: 0.3,
+  6: 0.16,
+  7: 0.54,
+};
+
+const CHAT_TOEIC_SECTION_SCORE_RANGE = 490;
+
+function estimateCurrentScoreFromPartAbilities(skillParts: any[] = []) {
+  if (!Array.isArray(skillParts) || skillParts.length === 0) return null;
+  const total = skillParts.reduce((sum, part) => {
+    const partType = Number(part?.part_type);
+    const ability = Number(part?.ability);
+    const weight = CHAT_TOEIC_PART_SCORE_WEIGHT[partType];
+    if (!Number.isFinite(ability) || typeof weight !== "number") return sum;
+    return sum + Math.max(0, Math.min(1, ability)) * weight * CHAT_TOEIC_SECTION_SCORE_RANGE;
+  }, 0);
+  return Number.isFinite(total) ? Math.round(total / 5) * 5 : null;
+}
+
+function summarizeAbilityMap(skill: any, latestTest: any) {
+  const parts = Array.isArray(skill?.parts)
+    ? [...skill.parts]
+        .map((part: any) => ({
+          partType: Number(part?.part_type),
+          abilityPercent: Math.round(Math.max(0, Math.min(1, Number(part?.ability) || 0)) * 100),
+          status: String(part?.status ?? "medium"),
+          trend: part?.trend ? String(part.trend) : undefined,
+          historyCount: Number(part?.history_count ?? 0),
+          domain: Number(part?.part_type) <= 4 ? "Listening" : "Reading",
+          isFocusPart: false,
+        }))
+        .filter((part: any) => Number.isFinite(part.partType))
+        .sort((left: any, right: any) => left.partType - right.partType)
+    : [];
+  const weakestPart = [...parts].sort((left: any, right: any) => left.abilityPercent - right.abilityPercent)[0];
+  const strongestPart = [...parts].sort((left: any, right: any) => right.abilityPercent - left.abilityPercent)[0];
+  return {
+    latestTestScore: typeof latestTest?.score === "number" ? latestTest.score : null,
+    estimatedScore: estimateCurrentScoreFromPartAbilities(skill?.parts ?? []),
+    parts,
+    weakestPartType: weakestPart?.partType,
+    strongestPartType: strongestPart?.partType,
+  };
+}
+
 export async function buildProgressContext(userId: string): Promise<DbFirstContext> {
   const userObjectId = ensureObjectId(userId);
   const [progress, skill, latestSkillHistory, latestTest] = await Promise.all([
@@ -582,8 +668,31 @@ export async function buildProgressContext(userId: string): Promise<DbFirstConte
       : null,
     UserTest.findOne({ user_id: userId }).sort({ submit_at: -1 }).lean(),
   ]);
+  let activeRoadmap = userObjectId
+    ? await LearningPath.findOne({ user_id: userObjectId, isActive: true })
+        .sort({ updated_at: -1 })
+        .populate({
+          path: "week_study_ids",
+          populate: { path: "days", model: "DayStudy" },
+        })
+        .lean()
+    : null;
 
-  if (!progress && !skill && !latestTest) {
+  if (!activeRoadmap && userObjectId) {
+    activeRoadmap = await LearningPath.findOne({ user_id: userObjectId })
+      .sort({ updated_at: -1 })
+      .populate({
+        path: "week_study_ids",
+        populate: { path: "days", model: "DayStudy" },
+      })
+      .lean();
+  }
+
+  const roadmapProgress = summarizeLearningPathStages(activeRoadmap);
+  const shouldUseRoadmapProgress =
+    roadmapProgress && (!progress || Number(progress.total_lessons ?? 0) <= 0);
+
+  if (!progress && !skill && !latestTest && !roadmapProgress) {
     return {
       ok: false,
       errorType: "MISSING_CONTEXT",
@@ -599,19 +708,42 @@ export async function buildProgressContext(userId: string): Promise<DbFirstConte
     data: {
       progress: progress
         ? {
-            completedLessons: progress.completed_lessons,
-            totalLessons: progress.total_lessons,
-            completionRate: progress.completion_rate,
+            completedLessons: shouldUseRoadmapProgress
+              ? roadmapProgress.completedStages
+              : progress.completed_lessons,
+            totalLessons: shouldUseRoadmapProgress
+              ? roadmapProgress.totalStages
+              : progress.total_lessons,
+            completionRate: shouldUseRoadmapProgress
+              ? roadmapProgress.completionRate
+              : progress.completion_rate,
             totalStudyTime: progress.total_study_time,
             streakDays: progress.streak_days,
             longestStreak: progress.longest_streak,
             currentScore: progress.current_score,
-            targetScore: progress.target_score,
-            status: progress.status,
+            targetScore: progress.target_score || roadmapProgress?.targetScore,
+            status: progress.status || roadmapProgress?.status,
             lastStudyDate: progress.last_study_date,
+            progressUnit: shouldUseRoadmapProgress ? "stage" : "lesson",
           }
-        : null,
+        : roadmapProgress
+          ? {
+              completedLessons: roadmapProgress.completedStages,
+              totalLessons: roadmapProgress.totalStages,
+              completionRate: roadmapProgress.completionRate,
+              totalStudyTime: 0,
+              streakDays: 0,
+              longestStreak: 0,
+              currentScore: latestTest?.score ?? 0,
+              targetScore: roadmapProgress.targetScore,
+              status: roadmapProgress.status,
+              lastStudyDate: null,
+              progressUnit: "stage",
+            }
+          : null,
+      roadmapProgress,
       skillParts: skill?.parts ?? [],
+      abilityMap: summarizeAbilityMap(skill, latestTest),
       latestSkillHistory: latestSkillHistory
         ? {
             sourceUserTestId: latestSkillHistory.source_user_test_id,
@@ -681,19 +813,34 @@ export async function buildRoadmapContext(
   const weeks = (Array.isArray(roadmap.week_study_ids)
     ? roadmap.week_study_ids
     : []) as any[];
-  const days = weeks.flatMap((week) =>
-    Array.isArray(week?.days) ? week.days : []
+  const cycles = [...weeks].sort(
+    (a, b) => Number(a?.no ?? 0) - Number(b?.no ?? 0)
   );
-  const sessions = days.flatMap((day) =>
-    (Array.isArray(day?.sessions) ? day.sessions : []).map((session: any) => ({
-      ...session,
-      dayId: String(day?._id ?? ""),
-      dayOfWeek: day?.dayOfWeek,
-      dayStatus: day?.status,
+  const currentCycle =
+    [...cycles].reverse().find((cycle) => cycle?.status === "in_progress") ??
+    cycles[cycles.length - 1] ??
+    null;
+  const stages = cycles.flatMap((cycle) =>
+    (Array.isArray(cycle?.days) ? cycle.days : []).map((stage: any) => ({
+      ...stage,
+      cycleId: String(cycle?._id ?? ""),
+      cycleNo: Number(cycle?.no ?? 0) || undefined,
+      cycleStatus: cycle?.status,
     }))
   );
-  const completedDays = days.filter(
-    (day) => day?.status === "completed"
+  const sessions = stages.flatMap((stage) =>
+    (Array.isArray(stage?.sessions) ? stage.sessions : []).map((session: any) => ({
+      ...session,
+      stageId: String(stage?._id ?? ""),
+      stageNo: stage?.dayOfWeek,
+      stageStatus: stage?.status,
+      cycleId: stage?.cycleId,
+      cycleNo: stage?.cycleNo,
+      cycleStatus: stage?.cycleStatus,
+    }))
+  );
+  const completedStages = stages.filter(
+    (stage) => stage?.status === "completed"
   ).length;
   const completedSessions = sessions.filter(
     (session) => session?.status === "completed"
@@ -701,10 +848,16 @@ export async function buildRoadmapContext(
   const nextSession =
     sessions.find((session) => session?.status === "in_progress") ??
     sessions.find((session) => session?.status !== "completed");
-  const totalDays = days.length;
-  const completionRate = totalDays
-    ? Math.round((completedDays / totalDays) * 100)
+  const totalStages = stages.length;
+  const completedCycles = cycles.filter(
+    (cycle) => cycle?.status === "completed"
+  ).length;
+  const completionRate = totalStages
+    ? Math.round((completedStages / totalStages) * 100)
     : 0;
+  const currentCycleNo =
+    Number(currentCycle?.no ?? roadmap.current_week ?? 1) || 1;
+  const totalCycles = cycles.length;
 
   return {
     ok: true,
@@ -719,30 +872,303 @@ export async function buildRoadmapContext(
         timePerDay: roadmap.time_per_day,
         daysPerWeek: roadmap.days_per_week,
         targetCompletionDate: roadmap.target_completion_date,
-        currentWeek: roadmap.current_week ?? 1,
-        totalWeeks: weeks.length,
-        completedWeeks: weeks.filter(
-          (week) => week?.status === "completed"
-        ).length,
-        totalDays,
-        completedDays,
+        currentCycleNo,
+        totalCycles,
+        completedCycles,
+        totalStages,
+        completedStages,
         completionRate,
         totalSessions: sessions.length,
         completedSessions,
         isActive: roadmap.isActive,
+        // Backward-compatible aliases for old metadata consumers only.
+        currentWeek: currentCycleNo,
+        totalWeeks: totalCycles,
+        completedWeeks: completedCycles,
+        totalDays: totalStages,
+        completedDays: completedStages,
       },
+      currentCycle: currentCycle
+        ? {
+            id: String(currentCycle._id),
+            cycleNo: Number(currentCycle.no ?? currentCycleNo),
+            status: currentCycle.status,
+            cycleMode: currentCycle.cycle_mode,
+            focusPartType: currentCycle.focus_part_type,
+            primaryFocusSkillKey: currentCycle.primary_focus_skill_key,
+            coveredSkillKeys: currentCycle.covered_skill_keys ?? [],
+            assessmentType: currentCycle.assessment_type ?? null,
+            expectedSkillGain: currentCycle.expected_skill_gain,
+            expectedRoiPerHour: currentCycle.expected_roi_per_hour,
+          }
+        : null,
       nextStep: nextSession
         ? {
-            dayId: nextSession.dayId,
-            dayOfWeek: nextSession.dayOfWeek,
+            cycleNo: nextSession.cycleNo,
+            stageId: nextSession.stageId,
+            stageNo: nextSession.stageNo,
             sessionNo: nextSession.session_no,
             status: nextSession.status,
             part: nextSession.part_type,
             title: nextSession.lesson_manager_title,
             plannedMinutes: nextSession.planned_minutes,
             reason: nextSession.scheduler_reason,
+            // Backward-compatible aliases for old metadata consumers only.
+            dayId: nextSession.stageId,
+            dayOfWeek: nextSession.stageNo,
           }
         : null,
+    },
+  };
+}
+
+function parsePartType(value: unknown) {
+  if (typeof value === "number" && value >= 1 && value <= 7) return value;
+  const match = String(value ?? "").match(/part\s*([1-7])|^([1-7])$/i);
+  const part = Number(match?.[1] ?? match?.[2]);
+  return Number.isFinite(part) && part >= 1 && part <= 7 ? part : undefined;
+}
+
+function normalizeActionTags(tags: unknown, partType?: number) {
+  const rawTags = Array.isArray(tags)
+    ? tags.map((tag) => String(tag).trim()).filter(Boolean)
+    : [];
+  const normalized = normalizeToeicSkillTags(rawTags, partType);
+  return {
+    rawTags,
+    skills: normalized,
+    keys: normalized.map((skill) => skill.key),
+    labels: normalized.map((skill) => skill.label_vi),
+  };
+}
+
+function getAbilityForSimilarPractice(userSkill: any, skillKeys: string[], partType?: number) {
+  const parts = Array.isArray(userSkill?.parts) ? userSkill.parts : [];
+  for (const part of parts) {
+    const matchedSkill = (part.skills ?? []).find((skill: any) =>
+      skillKeys.includes(String(skill.skill_key))
+    );
+    if (typeof matchedSkill?.ability === "number") return matchedSkill.ability;
+  }
+  const matchedPart = parts.find((part: any) => Number(part.part_type) === partType);
+  if (typeof matchedPart?.ability === "number") return matchedPart.ability;
+  return null;
+}
+
+function activityTitle(activityType: string) {
+  if (activityType === "vocabulary") return "Ôn flashcard";
+  if (activityType === "dictation") return "Luyện nghe chép chính tả";
+  if (activityType === "shadowing") return "Luyện shadowing";
+  if (activityType === "quiz") return "Làm quiz";
+  return "Luyện tập";
+}
+
+function normalizePlainText(text = "") {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\u0111/g, "d")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseFlashcardCount(userText = "", payload: any = {}) {
+  const explicit = Number(payload.count);
+  if (Number.isFinite(explicit)) return explicit;
+  const match = normalizePlainText(userText).match(/\b(\d{1,2})\s*(?:tu|flashcard|cards?)\b/);
+  return match ? Number(match[1]) : undefined;
+}
+
+function parseFlashcardTopic(userText = "", payload: any = {}) {
+  if (payload.topic) return String(payload.topic).trim();
+  const value = normalizePlainText(userText);
+  const match =
+    value.match(/\bchu de\s+(.+)$/) ??
+    value.match(/\bve\s+(.+)$/) ??
+    value.match(/\btopic\s+(.+)$/);
+  if (!match?.[1]) return "";
+  return match[1]
+    .replace(/\b(de hoc|cho toi|nhe|di|flashcard|tu vung|tu)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildFlashcardSupplyRequest(
+  userText: string,
+  routeContext?: ChatRouteContext,
+  clientContext?: ChatClientContext
+): FlashcardSupplyRequest {
+  const payload = clientContext?.actionPayload ?? {};
+  const normalized = normalizePlainText(userText);
+  const strict =
+    payload.expansion === "strict" ||
+    /\b(chi lay|chi tao|trong cau nay|co trong cau nay|strict)\b/.test(normalized);
+  const questionId = String(payload.questionId ?? routeContext?.questionId ?? "").trim();
+  const wantsQuestion =
+    payload.source?.kind === "question_error" ||
+    payload.kind === "question_error" ||
+    /\b(cau nay|cau sai nay|tu cau nay|trong cau nay)\b/.test(normalized);
+  const topic = parseFlashcardTopic(userText, payload);
+  const clientRequestId =
+    String(payload.clientRequestId ?? clientContext?.clientRequestId ?? "").trim() ||
+    `flashcard-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  return {
+    clientRequestId,
+    count: parseFlashcardCount(userText, payload),
+    source: wantsQuestion
+      ? {
+          kind: "question_error",
+          questionId,
+        }
+      : {
+          kind: "topic",
+          topic,
+        },
+    expansion: strict ? "strict" : "related",
+  };
+}
+
+export async function buildFlashcardSupplyContext(
+  userId: string,
+  routeContext: ChatRouteContext | undefined,
+  userText: string,
+  clientContext?: ChatClientContext
+): Promise<DbFirstContext> {
+  const result = await createFlashcardSupplyDeck({
+    userId,
+    routeContext,
+    request: buildFlashcardSupplyRequest(userText, routeContext, clientContext),
+  });
+
+  if (!result.ok) return result;
+
+  return {
+    ok: true,
+    contextType: "flashcard_supply",
+    data: result.data,
+  };
+}
+
+export async function buildSimilarPracticeContext(
+  userId: string,
+  routeContext?: ChatRouteContext,
+  clientContext?: any
+): Promise<DbFirstContext> {
+  const payload = clientContext?.actionPayload ?? {};
+  const questionId = ensureObjectId(payload.questionId ?? payload.sourceQuestionId ?? routeContext?.questionId);
+  const partType = parsePartType(payload.part);
+  const question = questionId ? await Question.findById(questionId).lean() : null;
+  const sourceTags = normalizeActionTags(
+    payload.tags ?? question?.tags ?? [],
+    partType ?? parsePartType(partFromQuestion(question))
+  );
+  const effectivePartType = partType ?? sourceTags.skills[0]?.part_type ?? parsePartType(partFromQuestion(question));
+
+  if (!sourceTags.rawTags.length && !sourceTags.keys.length) {
+    return {
+      ok: false,
+      errorType: "NO_DATA",
+      outcome: "no_data",
+      fallback: "Mình chưa thấy tag kỹ năng của câu này nên chưa thể gợi ý bài luyện tương tự.",
+    };
+  }
+
+  const userObjectId = ensureObjectId(userId);
+  const userSkill = userObjectId
+    ? await UserSkill.findOne({ user_id: userObjectId }).sort({ updated_at: -1 }).lean()
+    : null;
+  const currentAbility = getAbilityForSimilarPractice(userSkill, sourceTags.keys, effectivePartType);
+  const tagQuery = Array.from(new Set([...sourceTags.rawTags, ...sourceTags.keys, ...sourceTags.labels]));
+  let lessonManagers = await LessonManager.find({
+    status: "approved",
+    ...(effectivePartType ? { part_type: effectivePartType } : {}),
+    target_tags: { $in: tagQuery },
+  })
+    .select("title part_type target_tags weight planned_completion_time recommended_activity_order")
+    .lean();
+  if (!lessonManagers.length && effectivePartType) {
+    lessonManagers = await LessonManager.find({
+      status: "approved",
+      part_type: effectivePartType,
+      target_tags: { $exists: true, $ne: [] },
+    })
+      .select("title part_type target_tags weight planned_completion_time recommended_activity_order")
+      .lean();
+  }
+
+  const items = lessonManagers
+    .map((lesson: any) => {
+      const target = normalizeActionTags(lesson.target_tags ?? [], lesson.part_type);
+      const targetKeys = new Set([
+        ...target.keys,
+        ...target.labels,
+        ...(lesson.target_tags ?? []).map((tag: string) => String(tag)),
+      ]);
+      const matchCount = tagQuery.filter((tag) => targetKeys.has(tag)).length;
+      const activities = [...(lesson.recommended_activity_order ?? [])]
+        .filter((activity: any) => activity.activity_type !== "lesson")
+        .sort((a: any, b: any) => Number(a.order ?? 0) - Number(b.order ?? 0))
+        .slice(0, 3)
+        .map((activity: any) => ({
+          id: String(activity.activity_id),
+          type: String(activity.activity_type),
+          title: activityTitle(String(activity.activity_type)),
+          estimatedMinutes: activity.estimated_minutes,
+          action: {
+            id: `practice-${activity.activity_type}-${activity.activity_id}`,
+            label: "Luyện ngay",
+            type: "start_practice",
+            payload: {
+              activityType: activity.activity_type,
+              activityId: String(activity.activity_id),
+              lessonManagerId: String(lesson._id),
+              tags: sourceTags.rawTags,
+            },
+          },
+        }));
+      const fitDistance =
+        typeof currentAbility === "number" && typeof lesson.weight === "number"
+          ? Math.abs(lesson.weight - currentAbility)
+          : 0.5;
+      return {
+        lessonManagerId: String(lesson._id),
+        title: lesson.title,
+        part: lesson.part_type,
+        targetTags: lesson.target_tags ?? [],
+        weight: lesson.weight,
+        fitScore: Number((1 - Math.min(1, fitDistance)).toFixed(3)),
+        matchCount,
+        activities,
+      };
+    })
+    .filter((item: any) => item.matchCount > 0 && item.activities.length > 0)
+    .sort((a: any, b: any) =>
+      b.matchCount - a.matchCount ||
+      b.fitScore - a.fitScore ||
+      (a.weight ?? 1) - (b.weight ?? 1)
+    )
+    .slice(0, 5);
+
+  if (!items.length) {
+    return {
+      ok: false,
+      errorType: "NO_DATA",
+      outcome: "no_data",
+      fallback: "Mình chưa tìm thấy bài luyện phù hợp với tag của câu này.",
+    };
+  }
+
+  return {
+    ok: true,
+    contextType: "similar_practice",
+    data: {
+      sourceTags: sourceTags.rawTags,
+      normalizedSkillKeys: sourceTags.keys,
+      currentAbility,
+      recommendations: items,
     },
   };
 }
@@ -751,7 +1177,8 @@ export async function buildDbFirstContext(
   userId: string,
   intent: ChatIntent,
   routeContext?: ChatRouteContext,
-  userText = ""
+  userText = "",
+  clientContext?: ChatClientContext
 ): Promise<DbFirstContext> {
   if (intent === "smalltalk" || intent === "smalltalk.greeting_feedback") {
     return {
@@ -761,6 +1188,12 @@ export async function buildDbFirstContext(
     };
   }
   if (intent === "identify_question") return buildQuestionIdentificationContext(userId, userText, routeContext);
+  if (intent === "question.similar_practice") {
+    return buildSimilarPracticeContext(userId, routeContext, clientContext);
+  }
+  if (intent === "flashcard.create") {
+    return buildFlashcardSupplyContext(userId, routeContext, userText, clientContext);
+  }
   if (
     intent === "explain_question" ||
     intent === "question.explain_specific" ||
@@ -773,7 +1206,13 @@ export async function buildDbFirstContext(
   if (intent === "analyze_test_result" || intent === "test_attempt.analysis") {
     return buildTestResultContext(userId, routeContext, userText);
   }
-  if (intent === "check_progress" || intent === "user_progress.summary") return buildProgressContext(userId);
+  if (
+    intent === "check_progress" ||
+    intent === "user_progress.summary" ||
+    intent === "user_progress.ability_map"
+  ) {
+    return buildProgressContext(userId);
+  }
   if (
     intent === "roadmap.summary" ||
     intent === "roadmap.next_step" ||

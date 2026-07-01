@@ -1,4 +1,7 @@
-import { getChatIntentCollection } from "../core/collections/chat_intent";
+import {
+  getChatIntentCollection,
+  resetChatIntentCollectionCache,
+} from "../core/collections/chat_intent";
 import {
   ChatClientContext,
   ChatRouteContext,
@@ -23,6 +26,8 @@ export type SemanticRankingResult = {
   source: "chroma" | "fallback";
   queryCount: number;
   semanticDegraded: boolean;
+  degradedReason?: "EMPTY_QUERY" | "EMPTY_COLLECTION" | "QUERY_ERROR";
+  errorCode?: string;
   retrievalTopK: number;
   rerankTopK: number;
 };
@@ -55,14 +60,29 @@ export async function rankIntentCandidates(params: {
       source: "fallback",
       queryCount: 0,
       semanticDegraded: true,
+      degradedReason: "EMPTY_QUERY",
+      errorCode: "EMPTY_QUERY",
       retrievalTopK: params.retrievalTopK ?? 40,
       rerankTopK: params.rerankTopK ?? 6,
     };
   }
 
   try {
-    const collection = await getChatIntentCollection();
-    const count = await collection.count();
+    let collection = await getChatIntentCollection();
+    let count = 0;
+    try {
+      count = await collection.count();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (/ChromaNotFoundError|requested resource could not be found/i.test(message)) {
+        console.warn("Chat intent collection cache is stale; recreating it ერთხელ.");
+        await resetChatIntentCollectionCache();
+        collection = await getChatIntentCollection();
+        count = await collection.count();
+      } else {
+        throw err;
+      }
+    }
     if (!count) {
       return {
         retrievalHits: [],
@@ -70,6 +90,8 @@ export async function rankIntentCandidates(params: {
         source: "fallback",
         queryCount: 1,
         semanticDegraded: true,
+        degradedReason: "EMPTY_COLLECTION",
+        errorCode: "EMPTY_COLLECTION",
         retrievalTopK: params.retrievalTopK ?? 40,
         rerankTopK: params.rerankTopK ?? 6,
       };
@@ -166,12 +188,15 @@ export async function rankIntentCandidates(params: {
     };
   } catch (err) {
     console.warn("Semantic intent ranking failed:", err);
+    const errorCode = err instanceof Error ? err.name || "QUERY_ERROR" : "QUERY_ERROR";
     return {
       retrievalHits: [],
       candidates: [],
       source: "fallback",
       queryCount: 1,
       semanticDegraded: true,
+      degradedReason: "QUERY_ERROR",
+      errorCode,
       retrievalTopK: params.retrievalTopK ?? 40,
       rerankTopK: params.rerankTopK ?? 6,
     };
