@@ -12,9 +12,10 @@ Hãy xử lý theo yêu cầu sau:
 
 1. **Gộp các entry trùng nhau.**
 
-2. **Giữ lại những phonetics có cả `text` và `audio`.**
-   - Nếu có nhiều, chỉ chọn tối đa 2.
-   - Ưu tiên bản US làm `phonetic` chính, nếu không có thì lấy bản đầu tiên.
+2. **Tách phiên âm và audio theo giọng UK/US nếu dữ liệu gốc có.**
+   - Trả về `phonetic_uk`, `audio_uk`, `phonetic_us`, `audio_us`.
+   - Nếu thiếu UK hoặc US thì để chuỗi rỗng.
+   - Không trả về `phonetic` hoặc `phonetics`.
 
 3. **Dịch toàn bộ định nghĩa và ví dụ sang tiếng Việt tự nhiên**, nhưng vẫn **giữ cả bản tiếng Anh song song**.
 
@@ -33,24 +34,43 @@ Hãy xử lý theo yêu cầu sau:
    `"noun"` → `"N"`
    `"verb"` → `"V"`
 
-5. **Gộp và rút gọn nghĩa:**
+5. **Gộp và rút gọn nghĩa theo hướng học TOEIC:**
    - Mỗi `translation` tương ứng với một `partOfSpeech`.
-   - `translatedDefinitions` là mảng các cặp câu song ngữ:
+   - Bỏ nghĩa slang, nhạy cảm, quá hiếm hoặc không hữu ích cho học viên TOEIC.
+   - `meanings` là mảng các cặp câu song ngữ:
      ```json
      { "en": "A tropical fruit with a soft inside.", "vi": "Một loại trái cây nhiệt đới có ruột mềm." }
      ```
-   - `examples` là mảng các cặp tương tự:
+
+6. **Tạo tối đa 4 ví dụ song ngữ phù hợp TOEIC/business context.**
+   - Nếu dữ liệu gốc thiếu ví dụ, hãy bổ sung ví dụ tự nhiên.
+   - `examples` là mảng cấp cao nhất:
      ```json
      { "en": "I eat a banana every day.", "vi": "Tôi ăn chuối mỗi ngày." }
      ```
 
-6. **Giữ lại tối đa 4 từ đồng nghĩa (`synonyms`) và 4 từ trái nghĩa (`antonyms`).**
+7. **Tạo tối đa 5 từ đồng nghĩa và 5 từ trái nghĩa nếu phù hợp.**
+   - Mỗi mục gồm `word` và `meaning` tiếng Việt.
+   - Nếu không có mục phù hợp thì trả về mảng rỗng.
 
-7. **Gợi ý tối đa 3 từ khóa tiếng Anh cho Unsplash (`imageKeywords`)**
+8. **Tạo họ từ (`word_family`) nếu có.**
+   - Mỗi mục gồm `word` và `partOfSpeech`.
+   - Ưu tiên noun/verb/adjective/adverb thường gặp.
+
+9. **Tạo cụm từ/collocation phổ biến nếu có.**
+   - Mỗi mục gồm `phrase` và `meaning` tiếng Việt.
+   - Ưu tiên cụm thường gặp trong TOEIC/business context.
+
+10. **Gợi ý tối đa 3 từ khóa tiếng Anh cho Unsplash (`imageKeywords`)**
    - Nếu là Noun: tên vật thể hoặc bối cảnh thực tế (vd: “banana fruit”, “banana tree”)
    - Nếu là Verb: hành động cụ thể (vd: “run action”, “jump movement”)
    - Nếu là Adj: đặc điểm cụ thể (vd: “curved shape”, “happy face”)
    - Không dùng từ khóa mơ hồ như “concept”, “color”, “background”.
+
+11. **Metadata**
+   - `source` luôn là `"dictionaryapi.dev"`.
+   - `enrichedByAI` luôn là `true`.
+   - `missingFieldsFilledByAI` liệt kê các nhóm dữ liệu được AI bổ sung vì dữ liệu gốc thiếu, ví dụ: `examples`, `collocations`, `word_family`, `synonyms`.
 
 ---
 
@@ -58,25 +78,38 @@ Trả về JSON đúng định dạng sau:
 
 {
   "englishWord": "<từ tiếng Anh>",
-  "phonetic": "<phiên âm chính>",
-  "phonetics": [
-    { "text": "<phiên âm>", "audio": "<link mp3>" }
-  ],
+  "phonetic_uk": "<phiên âm UK hoặc chuỗi rỗng>",
+  "phonetic_us": "<phiên âm US hoặc chuỗi rỗng>",
+  "audio_uk": "<link mp3 UK hoặc chuỗi rỗng>",
+  "audio_us": "<link mp3 US hoặc chuỗi rỗng>",
   "translations": [
     {
       "partOfSpeech": "N",
-      "translatedDefinitions": [
+      "meanings": [
         { "en": "A tropical fruit.", "vi": "Một loại trái cây nhiệt đới." },
         { "en": "The banana tree.", "vi": "Cây chuối." }
       ],
-      "examples": [
-        { "en": "I like eating bananas.", "vi": "Tôi thích ăn chuối." }
-      ],
-      "synonyms": ["plantain", "fruit", "yellow fruit"],
-      "antonyms": ["meat", "egg"]
     }
   ],
-  "imageKeywords": ["banana", "banana tree", "yellow banana"]
+  "examples": [
+    { "en": "I like eating bananas.", "vi": "Tôi thích ăn chuối." }
+  ],
+  "synonyms": [
+    { "word": "plantain", "meaning": "chuối lá, chuối nấu ăn" }
+  ],
+  "antonyms": [],
+  "word_family": [
+    { "word": "banana", "partOfSpeech": "N" }
+  ],
+  "collocations": [
+    { "phrase": "a bunch of bananas", "meaning": "một nải chuối" }
+  ],
+  "imageKeywords": ["banana", "banana tree", "yellow banana"],
+  "metadata": {
+    "source": "dictionaryapi.dev",
+    "enrichedByAI": true,
+    "missingFieldsFilledByAI": ["examples", "collocations"]
+  }
 }
 
 ---

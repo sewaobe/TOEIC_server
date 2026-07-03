@@ -1,9 +1,129 @@
 import { PipelineStage, Types } from "mongoose";
-import { IUserTest, UserTest } from "../models";
+import { Group, IUserTest, UserTest } from "../models";
+import { UserTestSubmitType } from "../models/enums/UserTestSubmitType";
 import { TestStatus } from "../models/enums/TestStatus";
 import { IUserRecentTest } from "../dto/IUserRecentTest";
 import { IUserTestHistory } from "../dto/IUserTestHistory";
 import { PaginationResult } from "../dto/PaginationResult";
+import type {
+  NormalizedTestResultV2,
+  RawUserTestLikeInput,
+} from "../types/learning_path_v2";
+
+export interface CreateLearningPathUserTestInput {
+  user_id: string;
+  test_id: string;
+  normalized_result: NormalizedTestResultV2;
+}
+
+export const buildCompletedPartFromNormalizedResult = (
+  normalizedResult: NormalizedTestResultV2
+): string => {
+  const partTypes = new Set<number>();
+
+  for (const part of normalizedResult.part_results) {
+    if (part.part_type !== undefined) {
+      partTypes.add(part.part_type);
+    }
+  }
+
+  if (partTypes.size === 0) {
+    for (const answer of normalizedResult.answers) {
+      if (answer.part_type !== undefined) {
+        partTypes.add(answer.part_type);
+      }
+    }
+  }
+
+  return [...partTypes]
+    .sort((a, b) => a - b)
+    .map((partType) => `Part ${partType}`)
+    .join(",");
+};
+
+export const getLatestUserTestBySubmitType = async (input: {
+  user_id: string;
+  submit_type: UserTestSubmitType;
+}): Promise<IUserTest | null> => {
+  const userIdCandidates: unknown[] = [input.user_id];
+
+  /*
+   * Support both string and ObjectId user_id because historical UserTest
+   * documents are not guaranteed to use one consistent type.
+   */
+  if (Types.ObjectId.isValid(input.user_id)) {
+    userIdCandidates.push(new Types.ObjectId(input.user_id));
+  }
+
+  return UserTest.findOne({
+    user_id: { $in: userIdCandidates },
+    submit_type: input.submit_type,
+  }).sort({ submit_at: -1 });
+};
+
+export const buildRawUserTestLikeInputFromUserTest = async (
+  userTest: IUserTest
+): Promise<RawUserTestLikeInput> => {
+  const questionIds = (userTest.answers ?? [])
+    .map((answer) => answer.question_id)
+    .filter(Boolean);
+
+  const groups = await Group.find({
+    questions: { $in: questionIds },
+  })
+    .select("_id part questions")
+    .populate({
+      path: "questions",
+      select: "_id tags irt_difficulty weight correctAnswer",
+    })
+    .lean();
+
+  const questionMetaMap = new Map<
+    string,
+    {
+      part_type?: number;
+      tags: string[];
+      irt_difficulty: number;
+    }
+  >();
+
+  for (const group of groups as any[]) {
+    for (const question of group.questions ?? []) {
+      questionMetaMap.set(String(question._id), {
+        part_type: group.part,
+        tags: Array.isArray(question.tags) ? question.tags : [],
+        irt_difficulty:
+          typeof question.irt_difficulty === "number"
+            ? question.irt_difficulty
+            : typeof question.weight === "number"
+              ? question.weight
+              : 0,
+      });
+    }
+  }
+
+  return {
+    test_id: String(userTest.test_id),
+    submitted_at: userTest.submit_at,
+    score: userTest.score,
+    duration: userTest.duration,
+    completedPart: userTest.completedPart,
+    parts: userTest.parts,
+    answers: (userTest.answers ?? []).map((answer) => {
+      const questionId = String(answer.question_id);
+      const meta = questionMetaMap.get(questionId);
+
+      return {
+        question_id: questionId,
+        selected_option: answer.selectedOption,
+        is_correct: answer.isCorrect,
+        part_type: meta?.part_type,
+        tags: meta?.tags ?? [],
+        irt_difficulty: meta?.irt_difficulty ?? 0,
+      };
+    }),
+  };
+};
 
 export const getRecentUserTestsService = async (
   userId: string,
@@ -176,11 +296,10 @@ export const getDemoTestTagAccuracyService = async (
 
 const mapAnswer = (ans: any, idx: number) => {
   const qid = ans.question_id?._id ?? ans.question_id;
-  const match = ans.question_id.name?.match(/Question\s*(\d+)/i);
 
   return {
     question_id: qid.toString(),
-    question_no: match ? Number(match[1]) : idx + 1,
+    question_no: idx + 1,
     selectedOption: ans.selectedOption,
     isCorrect: ans.isCorrect,
     correctAnswer: ans.question_id.correctAnswer,
