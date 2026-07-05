@@ -21,6 +21,7 @@ export * from "./vocabulary_word.model";
 export * from "./practice_topic_vocabulary.model";
 export * from "./week_study.model";
 export * from "./dictation_attempt.model";
+export * from "./dictation_progress.model";
 export * from "./dictation_plan.model";
 export * from "./dictation.model";
 export * from "./dictionary_entry.model";

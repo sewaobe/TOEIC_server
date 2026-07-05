@@ -1,11 +1,21 @@
 import fs from 'fs';
 import path from 'path';
-import { createLogger, format, transports, Logger } from 'winston';
+import { createLogger, format, transports, Logger, type transport } from 'winston';
 import DailyRotateFile from 'winston-daily-rotate-file';
 
 const logDir = 'logs';
-if (!fs.existsSync(logDir)) {
-  fs.mkdirSync(logDir);
+
+const fileLoggingEnabled = process.env.LOG_TO_FILE !== 'false';
+
+let canUseFileLogging = false;
+if (fileLoggingEnabled) {
+  try {
+    fs.mkdirSync(logDir, { recursive: true });
+    fs.accessSync(logDir, fs.constants.W_OK);
+    canUseFileLogging = true;
+  } catch (error) {
+    console.warn('[logger] File logging disabled:', error);
+  }
 }
 
 // Định nghĩa format log
@@ -18,6 +28,35 @@ const logFormat = format.printf(
   },
 );
 
+const loggerTransports: transport[] = [new transports.Console()];
+
+if (canUseFileLogging) {
+  const appFileTransport = new DailyRotateFile({
+    filename: path.join(logDir, 'app-%DATE%.log'),
+    datePattern: 'YYYY-MM-DD',
+    maxSize: '20m',
+    maxFiles: '14d',
+  });
+
+  const errorFileTransport = new DailyRotateFile({
+    level: 'error',
+    filename: path.join(logDir, 'error-%DATE%.log'),
+    datePattern: 'YYYY-MM-DD',
+    maxSize: '10m',
+    maxFiles: '30d',
+  });
+
+  appFileTransport.on('error', (error) => {
+    console.warn('[logger] File transport error:', error);
+  });
+
+  errorFileTransport.on('error', (error) => {
+    console.warn('[logger] File transport error:', error);
+  });
+
+  loggerTransports.push(appFileTransport, errorFileTransport);
+}
+
 const logger: Logger = createLogger({
   level: 'info',
   format: format.combine(
@@ -25,22 +64,7 @@ const logger: Logger = createLogger({
     format.errors({ stack: true }),
     logFormat,
   ),
-  transports: [
-    new transports.Console(),
-    new DailyRotateFile({
-      filename: path.join(logDir, 'app-%DATE%.log'),
-      datePattern: 'YYYY-MM-DD',
-      maxSize: '20m',
-      maxFiles: '14d',
-    }),
-    new DailyRotateFile({
-      level: 'error',
-      filename: path.join(logDir, 'error-%DATE%.log'),
-      datePattern: 'YYYY-MM-DD',
-      maxSize: '10m',
-      maxFiles: '30d',
-    }),
-  ],
+  transports: loggerTransports,
 });
 
 export default logger;

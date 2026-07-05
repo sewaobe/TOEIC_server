@@ -1,5 +1,5 @@
 import Router from 'express';
-import { createChatSessionController, deleteChatSessionController, getAllChatMessageInSessionController, getChatSessionByUserIdController, processUserMessageController } from '../controllers/chat.controller';
+import { createChatSessionController, deleteChatSessionController, getAllChatMessageInSessionController, getChatSessionByUserIdController, logChatActionClickController, processUserMessageController } from '../controllers/chat.controller';
 import { createSpeakingSessionController, processSpeakingTurnController, endSpeakingSessionController } from '../controllers/speaking.controller';
 import { getSpeakingSessionsController, getSpeakingSessionMessagesController } from '../controllers/speakingHistory.controller';
 import { getSpeakingSessionReportController } from '../controllers/speakingReport.controller';
@@ -11,6 +11,7 @@ router.get("/session", getChatSessionByUserIdController);
 router.delete("/session/:sessionId", deleteChatSessionController);
 router.get("/message/:sessionId", getAllChatMessageInSessionController);
 router.post("/message", processUserMessageController);
+router.post("/action-click", logChatActionClickController);
 
 /**
  * @openapi

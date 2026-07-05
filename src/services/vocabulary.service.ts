@@ -1,6 +1,20 @@
 import { Types } from "mongoose";
 import { FlashCardPlan, IVocabulary, TopicVocabulary, Vocabulary } from "../models";
 
+function normalizeVocabularyWord(word?: string) {
+  return String(word ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function withNormalizedWord(data: Partial<IVocabulary>) {
+  return {
+    ...data,
+    ...(data.word ? { normalized_word: normalizeVocabularyWord(data.word) } : {}),
+  };
+}
+
 export const getVocabulariesByTopicService = async (
   topicId: string,
   page: number = 1,
@@ -41,9 +55,9 @@ export const createVocabularyService = async (
   topicId?: string
 ) => {
   const isArray = Array.isArray(vocabData);
-  const dataArray = isArray ? vocabData : [vocabData];
+  const dataArray = (isArray ? vocabData : [vocabData]).filter(Boolean) as Partial<IVocabulary>[];
 
-  const savedVocabs = await Vocabulary.insertMany(dataArray);
+  const savedVocabs = await Vocabulary.insertMany(dataArray.map(withNormalizedWord));
 
   // Nếu có topicId thì gắn vocab vào topic
   if (topicId && Types.ObjectId.isValid(topicId)) {
@@ -59,7 +73,7 @@ export const createVocabularyService = async (
 };
 
 export const updateVocabularyService = async (id: string, vocabData: Partial<IVocabulary>) => {
-  return Vocabulary.findByIdAndUpdate(id, vocabData, { new: true });
+  return Vocabulary.findByIdAndUpdate(id, withNormalizedWord(vocabData), { new: true });
 };
 
 export const deleteVocabularyService = async (id: string, topicId?: string) => {
