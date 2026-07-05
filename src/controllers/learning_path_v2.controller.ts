@@ -476,6 +476,7 @@ export const submitLearningPathV2AssessmentController = async (
       assessment_type,
       week_study_id,
       day_study_id,
+      debug_scenario_override,
     } = req.body ?? {};
     const normalizedAssessmentType = assessment_type as LearningPathV2AssessmentType;
 
@@ -501,6 +502,11 @@ export const submitLearningPathV2AssessmentController = async (
         typeof week_study_id === "string" ? week_study_id : undefined,
       day_study_id:
         typeof day_study_id === "string" ? day_study_id : undefined,
+      debug_scenario_override:
+        normalizedAssessmentType === "mini_test" &&
+        debug_scenario_override === "PLATEAU"
+          ? "PLATEAU"
+          : undefined,
     });
 
     res
