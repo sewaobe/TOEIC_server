@@ -17,7 +17,7 @@ import {
   TOEIC_SKILL_DEFINITIONS,
 } from "../../utils/toeic_skill.util";
 
-const MINI_TEST_ESTIMATED_MINUTES = 60;
+const MINI_TEST_ESTIMATED_MINUTES = 30;
 const FULL_TEST_ESTIMATED_MINUTES = 120;
 const FULL_TEST_AFTER_MINI_TEST_COUNT = 3;
 

@@ -47,7 +47,7 @@ import {
 } from "../day_study.service";
 import { createSkillRoiWeekStudy } from "../week_study.service";
 
-const MINI_TEST_ESTIMATED_MINUTES = 60;
+const MINI_TEST_ESTIMATED_MINUTES = 30;
 const FULL_TEST_ESTIMATED_MINUTES = 120;
 const FULL_TEST_AFTER_MINI_TEST_COUNT = 3;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
