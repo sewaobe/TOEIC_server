@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateDeepSeekText, streamDeepSeekText } from "./deepseek";
 
 type GeminiModelConfig = {
   model: string;
@@ -8,13 +9,14 @@ type GeminiModelConfig = {
 export type LlmGenerationResult = {
   text: string;
   model: string;
+  provider?: "gemini" | "deepseek";
 };
 
 type StreamChunkHandler = (chunk: string) => boolean | void;
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
-const CHAT_TEXT_MODEL_CHAIN: GeminiModelConfig[] = [
+const DEFAULT_CHAT_TEXT_MODEL_CHAIN: GeminiModelConfig[] = [
   { model: "gemini-2.5-flash", timeoutMs: 30_000 },
   { model: "gemini-3-flash-preview", timeoutMs: 20_000 },
   { model: "gemini-3.1-flash-lite", timeoutMs: 20_000 },
@@ -22,6 +24,23 @@ const CHAT_TEXT_MODEL_CHAIN: GeminiModelConfig[] = [
   { model: "gemini-2.5-flash-lite", timeoutMs: 20_000 },
   { model: "gemma-4-31b-it", timeoutMs: 35_000 },
 ];
+
+function getChatTextModelChain() {
+  const preferGemma =
+    process.env.CHAT_LLM_PREFER_GEMMA === "1" ||
+    process.env.CHAT_LLM_MODEL_ORDER === "gemma-first";
+
+  if (!preferGemma) return DEFAULT_CHAT_TEXT_MODEL_CHAIN;
+
+  return [
+    ...DEFAULT_CHAT_TEXT_MODEL_CHAIN.filter((config) =>
+      config.model.toLowerCase().startsWith("gemma")
+    ),
+    ...DEFAULT_CHAT_TEXT_MODEL_CHAIN.filter(
+      (config) => !config.model.toLowerCase().startsWith("gemma")
+    ),
+  ];
+}
 
 function getGeminiErrorStatus(error: any) {
   return error?.status ?? error?.code ?? error?.error?.code ?? error?.response?.status;
@@ -126,24 +145,33 @@ async function streamModel(
 export async function generateFromPromptWithMeta(prompt: string): Promise<LlmGenerationResult> {
   let lastError: unknown;
 
-  for (let index = 0; index < CHAT_TEXT_MODEL_CHAIN.length; index += 1) {
-    const config = CHAT_TEXT_MODEL_CHAIN[index];
+  const modelChain = getChatTextModelChain();
+  for (let index = 0; index < modelChain.length; index += 1) {
+    const config = modelChain[index];
     try {
       console.info(`[llm] Trying chat model: ${config.model}`);
       const text = await callModel(prompt, config);
       console.info(`[llm] Chat model succeeded: ${config.model}`);
-      return { text, model: config.model };
+      return { text, model: config.model, provider: "gemini" };
     } catch (err) {
       lastError = err;
-      const canRetry = isTransientGeminiError(err) && index < CHAT_TEXT_MODEL_CHAIN.length - 1;
+      const canRetry = isTransientGeminiError(err) && index < modelChain.length - 1;
       console.warn(
         `[llm] Chat model failed: ${config.model}; retry=${canRetry}; error=${summarizeGeminiError(err)}`
       );
-      if (!isTransientGeminiError(err)) throw err;
+      if (!isTransientGeminiError(err)) break;
     }
   }
 
-  throw lastError ?? new Error("Gemini model chain failed");
+  try {
+    console.info("[llm] Gemini chain failed; trying DeepSeek fallback");
+    return await generateDeepSeekText({ prompt });
+  } catch (deepSeekError) {
+    console.warn(
+      `[llm] DeepSeek fallback failed: ${summarizeGeminiError(deepSeekError)}`
+    );
+    throw lastError ?? deepSeekError ?? new Error("Gemini and DeepSeek model chains failed");
+  }
 }
 
 export async function streamFromPromptWithMeta(
@@ -152,8 +180,9 @@ export async function streamFromPromptWithMeta(
 ): Promise<LlmGenerationResult> {
   let lastError: unknown;
 
-  for (let index = 0; index < CHAT_TEXT_MODEL_CHAIN.length; index += 1) {
-    const config = CHAT_TEXT_MODEL_CHAIN[index];
+  const modelChain = getChatTextModelChain();
+  for (let index = 0; index < modelChain.length; index += 1) {
+    const config = modelChain[index];
     let hasEmittedChunk = false;
     try {
       console.info(`[llm] Trying chat stream model: ${config.model}`);
@@ -163,18 +192,27 @@ export async function streamFromPromptWithMeta(
         return emitted;
       });
       console.info(`[llm] Chat stream model succeeded: ${config.model}`);
-      return { text: result.text, model: config.model };
+      return { text: result.text, model: config.model, provider: "gemini" };
     } catch (err) {
       lastError = err;
-      const canRetry = !hasEmittedChunk && isTransientGeminiError(err) && index < CHAT_TEXT_MODEL_CHAIN.length - 1;
+      const canRetry = !hasEmittedChunk && isTransientGeminiError(err) && index < modelChain.length - 1;
       console.warn(
         `[llm] Chat stream model failed: ${config.model}; emitted=${hasEmittedChunk}; retry=${canRetry}; error=${summarizeGeminiError(err)}`
       );
-      if (hasEmittedChunk || !isTransientGeminiError(err)) throw err;
+      if (hasEmittedChunk) throw err;
+      if (!isTransientGeminiError(err)) break;
     }
   }
 
-  throw lastError ?? new Error("Gemini model chain failed");
+  try {
+    console.info("[llm] Gemini stream chain failed before emitting; trying DeepSeek fallback");
+    return await streamDeepSeekText({ prompt }, onChunk);
+  } catch (deepSeekError) {
+    console.warn(
+      `[llm] DeepSeek stream fallback failed: ${summarizeGeminiError(deepSeekError)}`
+    );
+    throw lastError ?? deepSeekError ?? new Error("Gemini and DeepSeek stream chains failed");
+  }
 }
 
 export async function generateFromPrompt(prompt: string) {

@@ -1,6 +1,7 @@
 import { generateFromPromptWithMeta, streamFromPromptWithMeta } from "../core/llm";
 import { ChatMessage } from "../models/chat_message.model";
 import { ChatSession } from "../models/chat_session.model";
+import { UserTest } from "../models/user_test.model";
 import { buildActions } from "./chat_action_builder.service";
 import {
   buildDbFirstContext,
@@ -29,6 +30,7 @@ import {
   formatDbTextForChat,
 } from "./chat_db_text_formatter.service";
 import {
+  ChatClientContext,
   ChatRouteContext,
   ChatRoutePage,
   DbFirstInput,
@@ -40,6 +42,8 @@ import {
   IQuickQuestionView,
   IQuickQuestionVocabularyItem,
   ChatRoutingResult,
+  ClarifyOption,
+  ChatAction,
 } from "../types/chat.types";
 
 function normalizeDbFirstContextErrorType(context: DbFirstContext) {
@@ -96,6 +100,494 @@ const DB_FIRST_PAGES = new Set<ChatRoutePage>([
 
 const AI_FALLBACK_REPLY =
   "Mình đã lấy dữ liệu từ bài làm của bạn, nhưng AI đang quá tải hoặc phản hồi chậm. Bạn thử lại sau ít phút nhé.";
+
+const GEMINI_UNKNOWN_FALLBACK_REPLY =
+  "Minh chua xac dinh duoc doi tuong ban dang hoi. Ban muon minh dung cau dang chon tren man hinh, bai lam gan nhat, hay ban se gui them noi dung cu the?";
+
+async function loadRecentChatHistoryForFallback(sessionId: string, limit = 40) {
+  const messages = await ChatMessage.find({ session_id: sessionId })
+    .sort({ created_at: -1 })
+    .limit(limit)
+    .lean();
+  return messages
+    .reverse()
+    .map((message: any) => `${message.sender === "user" ? "User" : "Bot"}: ${message.text}`)
+    .join("\n");
+}
+
+async function loadLatestQuickQuestionContext(sessionId: string) {
+  const latestUserMessage = await ChatMessage.findOne({
+    session_id: sessionId,
+    sender: "user",
+  })
+    .sort({ created_at: -1 })
+    .lean();
+  return (latestUserMessage?.meta as any)?.quickQuestionContext;
+}
+
+function compactJsonForPrompt(value: unknown, maxLength = 6000) {
+  const text = JSON.stringify(value ?? {}, null, 2);
+  return text.length > maxLength ? `${text.slice(0, maxLength)}\n...(truncated)` : text;
+}
+
+function buildGeminiUnknownFallbackPrompt(params: {
+  userText: string;
+  sessionHistory: string;
+  routeContext?: ChatRouteContext;
+  clientContext?: ChatClientContext;
+  quickQuestionContext?: unknown;
+  routing: ChatRoutingResult;
+  context: DbFirstContext;
+}) {
+  const routingSummary = {
+    decision: params.routing.decision.kind,
+    intent: params.routing.intent,
+    source: params.routing.source,
+    confidence: params.routing.confidence,
+    resolverPolicy: params.routing.resolverPolicy,
+    reasonCodes: params.routing.reasonCodes,
+    chromaQueried: params.routing.diagnostics.chromaQueried,
+    chromaAvailable: params.routing.diagnostics.chromaAvailable,
+    semanticDegraded: params.routing.diagnostics.semanticDegraded,
+    topCandidates: params.routing.diagnostics.candidates?.slice(0, 5),
+    winnerScore: params.routing.diagnostics.winnerScore,
+    top1Top2Margin: params.routing.diagnostics.top1Top2Margin,
+    geminiFallbackReason: params.routing.diagnostics.geminiFallbackReason,
+  };
+  const availableContext = params.context.ok
+    ? {
+        contextType: params.context.contextType,
+        data: params.context.data,
+      }
+    : {
+        errorType: params.context.errorType,
+        fallback: params.context.fallback,
+        outcome: params.context.outcome,
+      };
+
+  return [
+    "PERSONA: Ban la TOEIC Learning Coach trong web app hoc TOEIC ca nhan hoa.",
+    "TASK: Tra loi cau hoi hien tai neu co du du lieu tu lich su chat, route context, quick question context, hoac kien thuc TOEIC chung.",
+    "STRICT RULES:",
+    "- Tra loi bang tieng Viet tu nhien, ngan gon, ro rang.",
+    "- Khong bia diem so, bai lam, cau hoi, dap an, roadmap, flashcard, attempt hay du lieu ca nhan neu khong co trong AVAILABLE_CONTEXT.",
+    "- Neu cau hoi can object cu the nhu cau nay, bai nay, de nay ma khong co object/context, khong tra ve cau tu choi chung chung. Hay dat mot cau hoi lam ro cu the, de user chon/mo/gui them doi tuong can xem.",
+    "- Neu cau hoi la kien thuc TOEIC chung hoac loi khuyen hoc TOEIC va khong can du lieu ca nhan, hay tra loi truc tiep.",
+    "- Khong nhac den intent, Chroma, router, prompt, diagnostics, policy hay rule noi bo.",
+    "- Trang thai thieu du lieu chi la noi bo; cau tra loi cuoi cung phai la huong dan hoac cau hoi lam ro co the hanh dong.",
+    "",
+    `USER_MESSAGE:\n${params.userText}`,
+    "",
+    `CHAT_HISTORY:\n${params.sessionHistory || "(khong co lich su chat)"}`,
+    "",
+    `ROUTE_CONTEXT:\n${compactJsonForPrompt(params.routeContext, 2500)}`,
+    "",
+    `CLIENT_CONTEXT:\n${compactJsonForPrompt(params.clientContext, 2500)}`,
+    "",
+    `QUICK_QUESTION_CONTEXT:\n${compactJsonForPrompt(params.quickQuestionContext, 4000)}`,
+    "",
+    `ROUTING_SUMMARY:\n${compactJsonForPrompt(routingSummary, 4000)}`,
+    "",
+    `AVAILABLE_CONTEXT:\n${compactJsonForPrompt(availableContext, 8000)}`,
+    "",
+    "OUTPUT: Chi tra ve cau tra loi cuoi cung cho hoc vien.",
+  ].join("\n");
+}
+
+async function generateGeminiUnknownFallbackReply(params: {
+  input: DbFirstInput;
+  routing: ChatRoutingResult;
+  context: DbFirstContext;
+}) {
+  const [sessionHistory, quickQuestionContext] = await Promise.all([
+    loadRecentChatHistoryForFallback(params.input.sessionId),
+    loadLatestQuickQuestionContext(params.input.sessionId),
+  ]);
+  const prompt = buildGeminiUnknownFallbackPrompt({
+    userText: params.input.userText,
+    sessionHistory,
+    routeContext: params.input.routeContext,
+    clientContext: params.input.clientContext,
+    quickQuestionContext,
+    routing: params.routing,
+    context: params.context,
+  });
+  const result = await generateFromPromptWithMeta(prompt);
+  return {
+    model: result.model,
+    text: validateReply(result.text, GEMINI_UNKNOWN_FALLBACK_REPLY),
+  };
+}
+
+function optionKey(option: ClarifyOption) {
+  return option.value.questionId
+    ? `question:${option.value.questionId}`
+    : option.value.attemptId
+      ? `attempt:${option.value.attemptId}`
+      : option.reason;
+}
+
+function buildWrongQuestionOptionFromAttempt(
+  attempt: any,
+  reason: "latest_wrong_question_in_current_attempt" | "latest_wrong_question_global"
+): ClarifyOption | null {
+  if (!attempt) return null;
+  const wrongAnswer = (attempt.answers ?? []).find((answer: any) => !answer.isCorrect);
+  const question: any = wrongAnswer?.question_id;
+  const questionId = question?._id ?? wrongAnswer?.question_id;
+  if (!questionId) return null;
+
+  const preview = formatDbInlineText(
+    String(question?.textQuestion ?? question?.name ?? ""),
+    80
+  );
+  const labelPrefix =
+    reason === "latest_wrong_question_in_current_attempt"
+      ? "Câu sai gần nhất trong bài này"
+      : "Câu sai gần nhất";
+  return {
+    label: `${labelPrefix}${preview ? ` - ${preview}` : ""}`,
+    value: {
+      questionId: String(questionId),
+      attemptId: String(attempt._id),
+      testId: attempt.test_id ? String(attempt.test_id) : undefined,
+      textPreview: preview || undefined,
+    },
+    reason,
+    confidence: reason === "latest_wrong_question_in_current_attempt" ? 0.62 : 0.45,
+  };
+}
+
+export async function loadLatestWrongQuestionInAttemptOption(
+  userId: string,
+  attemptId?: string
+): Promise<ClarifyOption | null> {
+  const attemptObjectId = ensureObjectId(attemptId);
+  if (!attemptObjectId) return null;
+
+  const attempt = await UserTest.findOne({
+    _id: attemptObjectId,
+    user_id: userId,
+    "answers.isCorrect": false,
+  })
+    .populate({
+      path: "answers.question_id",
+      model: "Question",
+      select: "name textQuestion",
+    })
+    .lean();
+
+  return buildWrongQuestionOptionFromAttempt(attempt, "latest_wrong_question_in_current_attempt");
+}
+
+export async function loadLatestWrongQuestionOption(userId: string): Promise<ClarifyOption | null> {
+  const latestAttempt = await UserTest.findOne({
+    user_id: userId,
+    "answers.isCorrect": false,
+  })
+    .sort({ submit_at: -1 })
+    .populate({
+      path: "answers.question_id",
+      model: "Question",
+      select: "name textQuestion",
+    })
+    .lean();
+
+  return buildWrongQuestionOptionFromAttempt(latestAttempt, "latest_wrong_question_global");
+}
+
+export async function loadLatestAttemptOption(userId: string): Promise<ClarifyOption | null> {
+  const latestAttempt = await UserTest.findOne({
+    user_id: userId,
+  })
+    .sort({ submit_at: -1 })
+    .lean();
+
+  if (!latestAttempt?._id) return null;
+  const submittedAt = latestAttempt.submit_at
+    ? new Date(latestAttempt.submit_at).toLocaleDateString("vi-VN")
+    : "";
+  const score =
+    typeof latestAttempt.score === "number" ? ` - ${latestAttempt.score} điểm` : "";
+  return {
+    label: `Bài làm gần nhất${submittedAt ? ` (${submittedAt})` : ""}${score}`,
+    value: {
+      attemptId: String(latestAttempt._id),
+      testId: latestAttempt.test_id ? String(latestAttempt.test_id) : undefined,
+    },
+    reason: "latest_attempt",
+    confidence: 0.8,
+  };
+}
+
+function selectedRouteContextForClarifyOption(
+  option: ClarifyOption,
+  baseRouteContext?: ChatRouteContext
+): ChatRouteContext {
+  const selected: ChatRouteContext = {
+    ...(baseRouteContext ?? { page: "unknown" as const }),
+  };
+  if (option.value.testId) selected.testId = option.value.testId;
+  if (option.value.attemptId) selected.attemptId = option.value.attemptId;
+  if (option.value.questionId) {
+    selected.questionId = option.value.questionId;
+    selected.currentVisibleQuestionId = option.value.questionId;
+    selected.selectedQuestionId = option.value.questionId;
+  }
+  if (option.value.questionNumber) {
+    selected.questionNumber = option.value.questionNumber;
+    selected.currentQuestionNumber = option.value.questionNumber;
+    selected.currentVisibleQuestionNumber = option.value.questionNumber;
+    selected.selectedQuestionNumber = option.value.questionNumber;
+  }
+  if (option.value.questionId) {
+    selected.questionRefs = [
+      {
+        questionId: option.value.questionId,
+        questionNumber: option.value.questionNumber ?? selected.currentQuestionNumber ?? 0,
+        textPreview: option.value.textPreview,
+        attemptId: selected.attemptId,
+        testId: selected.testId,
+      },
+    ].filter((ref) => ref.questionNumber > 0);
+    selected.visibleQuestionRefs = selected.questionRefs;
+    selected.currentQuestionIndex = 0;
+  }
+  return selected;
+}
+
+function buildClarifyOptionActions(params: {
+  options: ClarifyOption[];
+  originalUserText: string;
+  routeContext?: ChatRouteContext;
+  previousIntentId?: string;
+}): ChatAction[] {
+  return params.options.map((option, index) => {
+    const manualInput = option.reason === "manual_input";
+    return {
+      id: `select-clarify-option-${index + 1}`,
+      label: option.label,
+      type: "select_clarify_option",
+      payload: {
+        originalUserText: params.originalUserText,
+        selectedRouteContext: manualInput
+          ? params.routeContext
+          : selectedRouteContextForClarifyOption(option, params.routeContext),
+        manualInput,
+        previousIntentId: params.previousIntentId,
+        optionReason: option.reason,
+        optionConfidence: option.confidence,
+      },
+    };
+  });
+}
+
+function needsQuestionClarifyCandidates(intentId?: string) {
+  return (
+    !!intentId &&
+    (/^(question|grammar|vocabulary)\./.test(intentId) ||
+      intentId === "flashcard.create")
+  );
+}
+
+function screenQuestionOption(params: {
+  label: string;
+  reason: string;
+  confidence: number;
+  ref: { questionId?: string; questionNumber?: number; textPreview?: string };
+  routeContext?: ChatRouteContext;
+}): ClarifyOption | null {
+  if (!params.ref.questionId) return null;
+  return {
+    label: params.label,
+    value: {
+      questionId: params.ref.questionId,
+      questionNumber: params.ref.questionNumber,
+      textPreview: params.ref.textPreview,
+      attemptId: params.routeContext?.attemptId,
+      testId: params.routeContext?.testId,
+    },
+    reason: params.reason,
+    confidence: params.confidence,
+  };
+}
+
+function formatQuestionClarifyLabel(
+  prefix: string,
+  questionNumber: number | undefined,
+  suffix: string
+) {
+  return questionNumber && Number.isFinite(questionNumber)
+    ? `${prefix} ${questionNumber} ${suffix}`
+    : `Cau ${suffix}`;
+}
+
+function buildScreenQuestionClarifyOptions(routeContext?: ChatRouteContext) {
+  const options: ClarifyOption[] = [];
+  const refs = routeContext?.visibleQuestionRefs ?? routeContext?.questionRefs ?? [];
+  const currentIndex =
+    typeof routeContext?.currentQuestionIndex === "number"
+      ? routeContext.currentQuestionIndex
+      : refs.findIndex(
+          (ref) =>
+            ref.questionId === routeContext?.currentVisibleQuestionId ||
+            ref.questionNumber === routeContext?.currentVisibleQuestionNumber
+        );
+  const visibleRef =
+    refs[currentIndex] ??
+    refs.find(
+      (ref) =>
+        ref.questionId === routeContext?.currentVisibleQuestionId ||
+        ref.questionNumber === routeContext?.currentVisibleQuestionNumber
+    ) ??
+    (routeContext?.currentVisibleQuestionId
+      ? {
+          questionId: routeContext.currentVisibleQuestionId,
+          questionNumber: routeContext.currentVisibleQuestionNumber,
+        }
+      : undefined);
+
+  const visibleOption = visibleRef
+    ? screenQuestionOption({
+        label: formatQuestionClarifyLabel(
+          "Cau",
+          visibleRef.questionNumber ?? routeContext?.currentVisibleQuestionNumber,
+          "dang hien thi"
+        ),
+        reason: "current_visible_question",
+        confidence: 0.95,
+        ref: visibleRef,
+        routeContext,
+      })
+    : null;
+  if (visibleOption) options.push(visibleOption);
+
+  const previousRef = currentIndex > 0 ? refs[currentIndex - 1] : undefined;
+  const previousOption = previousRef
+    ? screenQuestionOption({
+        label: formatQuestionClarifyLabel("Cau", previousRef.questionNumber, "phia tren"),
+        reason: "previous_visible_question",
+        confidence: 0.82,
+        ref: previousRef,
+        routeContext,
+      })
+    : null;
+  if (previousOption) options.push(previousOption);
+
+  const nextRef =
+    currentIndex >= 0 && currentIndex < refs.length - 1
+      ? refs[currentIndex + 1]
+      : undefined;
+  const nextOption = nextRef
+    ? screenQuestionOption({
+        label: formatQuestionClarifyLabel("Cau", nextRef.questionNumber, "phia duoi"),
+        reason: "next_visible_question",
+        confidence: 0.8,
+        ref: nextRef,
+        routeContext,
+      })
+    : null;
+  if (nextOption) options.push(nextOption);
+
+  const selectedRef =
+    refs.find(
+      (ref) =>
+        ref.questionId === routeContext?.selectedQuestionId ||
+        ref.questionNumber === routeContext?.selectedQuestionNumber
+    ) ??
+    (routeContext?.selectedQuestionId
+      ? {
+          questionId: routeContext.selectedQuestionId,
+          questionNumber: routeContext.selectedQuestionNumber,
+        }
+      : undefined);
+  if (
+    selectedRef?.questionId &&
+    selectedRef.questionId !== visibleRef?.questionId
+  ) {
+    const selectedOption = screenQuestionOption({
+      label: formatQuestionClarifyLabel(
+        "Cau",
+        selectedRef.questionNumber ?? routeContext?.selectedQuestionNumber,
+        "dang chon"
+      ),
+      reason: "selected_question",
+      confidence: 0.78,
+      ref: selectedRef,
+      routeContext,
+    });
+    if (selectedOption) options.push(selectedOption);
+  }
+
+  return options;
+}
+
+export async function buildClarifyOptionsForReply(params: {
+  userId: string;
+  routing: ChatRoutingResult;
+  routeContext?: ChatRouteContext;
+}) {
+  if (
+    params.routing.decision.kind !== "clarify_with_options" &&
+    params.routing.decision.kind !== "clarify"
+  ) {
+    return [];
+  }
+
+  const options: ClarifyOption[] = [];
+  const manualOptions: ClarifyOption[] = [];
+  const seen = new Set<string>();
+  const addOption = (option: ClarifyOption) => {
+    const key = optionKey(option);
+    if (seen.has(key)) return;
+    seen.add(key);
+    if (option.reason === "manual_input") {
+      manualOptions.push(option);
+      return;
+    }
+    options.push(option);
+  };
+
+  const needsQuestionCandidate = needsQuestionClarifyCandidates(
+    params.routing.decision.intentId
+  );
+
+  if (needsQuestionCandidate) {
+    for (const option of buildScreenQuestionClarifyOptions(params.routeContext)) {
+      addOption(option);
+    }
+  }
+
+  if (params.routing.decision.kind === "clarify_with_options") {
+    for (const option of params.routing.decision.options) {
+      addOption(option);
+    }
+  }
+
+  if (needsQuestionCandidate) {
+    const latestWrongInAttempt = await loadLatestWrongQuestionInAttemptOption(
+      params.userId,
+      params.routeContext?.attemptId
+    );
+    if (latestWrongInAttempt) addOption(latestWrongInAttempt);
+    if (!options.length) {
+      const latestWrongOption = await loadLatestWrongQuestionOption(params.userId);
+      if (latestWrongOption) addOption(latestWrongOption);
+    }
+  }
+  if (params.routing.decision.intentId === "test_attempt.analysis") {
+    const latestAttemptOption = await loadLatestAttemptOption(params.userId);
+    if (latestAttemptOption) addOption(latestAttemptOption);
+  }
+  addOption({
+    label: "Tôi sẽ gửi nội dung câu hỏi khác",
+    value: {},
+    reason: "manual_input",
+    confidence: 1,
+  });
+
+  return [...options, ...manualOptions];
+}
 
 export function shouldUseDbFirstChat(params: {
   mode?: "legacy" | "db_first";
@@ -246,8 +738,12 @@ async function buildDbFirstProcessingState({
     routing.decision.kind === "route" ||
     routing.decision.kind === "general_ai"
       ? routing.decision.intentId
+      : routing.decision.kind === "gemini_fallback" && routing.decision.intentId
+        ? routing.decision.intentId
       : routing.decision.kind === "clarify" && routing.decision.intentId
         ? routing.decision.intentId
+        : routing.decision.kind === "clarify_with_options" && routing.decision.intentId
+          ? routing.decision.intentId
         : "safe_fallback";
   const baseRouteContext: ChatRouteContext = routeContext ?? {
     page: "unknown",
@@ -255,6 +751,7 @@ async function buildDbFirstProcessingState({
   const resolvedFollowUp = routing.diagnostics.followUp;
   const scopedRouteContext: ChatRouteContext = {
     ...baseRouteContext,
+    ...(routing.diagnostics.recoveredRouteContext ?? {}),
     ...(!baseRouteContext.attemptId && routing.source === "follow_up" && conversationState?.attemptId
       ? { attemptId: conversationState.attemptId }
       : {}),
@@ -290,8 +787,8 @@ async function buildDbFirstProcessingState({
             scopedRouteContext?.currentQuestionNumber,
         }
       : scopedRouteContext;
-  const context =
-    routing.decision.kind === "clarify"
+  let context =
+    routing.decision.kind === "clarify" || routing.decision.kind === "clarify_with_options"
       ? {
           ok: false as const,
           errorType: "MISSING_REQUIRED_CONTEXT" as const,
@@ -306,12 +803,19 @@ async function buildDbFirstProcessingState({
           userText,
           clientContext
         );
+  if (intent === "user_progress.ability_map" && !context.ok) {
+    context = {
+      ...context,
+      fallback:
+        "Minh chua co du du lieu de danh gia nang luc hien tai. Ban hay lam mot bai test hoac hoan thanh mot hoat dong hoc truoc nhe.",
+    };
+  }
   const responseMode =
     (intent === "explain_question" || intent === "question.explain_specific") &&
     clientContext?.sourceAction === "quick_question_explain"
       ? "template"
       : chooseResponseMode(intent, context);
-  const actions = buildActions(intent, context);
+  const actions = buildActions(intent, context, { userText });
   const initialResponseState = buildInitialResponseState(context);
 
   return {
@@ -347,6 +851,7 @@ function buildDbFirstMeta(params: {
     | "forbidden"
     | "unauthorized"
     | "unsupported_capability"
+    | "gemini_fallback"
     | "safe_fallback";
 }) {
   return {
@@ -626,10 +1131,10 @@ async function resolveDbFirstReply(
     effectiveRouteContext,
     context,
     responseMode,
-    actions,
     initialResponseState,
     routing,
   } = state;
+  let actions = state.actions;
 
   let usedAI = false;
   let aiModel = "db-first-template";
@@ -639,7 +1144,64 @@ async function resolveDbFirstReply(
   let reply = initialResponseState.reply;
   let contextType = initialResponseState.contextType;
 
-  if (responseMode === "template") {
+  if (
+    routing.decision.kind === "clarify_with_options" ||
+    routing.decision.kind === "clarify"
+  ) {
+    const clarifyIntentId = routing.decision.intentId;
+    const clarifyReason = routing.decision.reason;
+    const clarifyOptions = await buildClarifyOptionsForReply({
+      userId: input.userId,
+      routing,
+      routeContext: effectiveRouteContext,
+    });
+    routing.decision = {
+      kind: "clarify_with_options",
+      intentId: clarifyIntentId,
+      reason: clarifyReason,
+      options: clarifyOptions,
+    };
+    routing.diagnostics.clarifyOptions = clarifyOptions;
+    actions = buildClarifyOptionActions({
+      options: clarifyOptions,
+      originalUserText: input.userText,
+      routeContext: effectiveRouteContext,
+      previousIntentId: clarifyIntentId,
+    });
+    const isQuestionTarget =
+      !!clarifyIntentId && /^(question|grammar|vocabulary)\./.test(clarifyIntentId);
+    const isFlashcardQuestionTarget = clarifyIntentId === "flashcard.create";
+    reply = isQuestionTarget
+      ? "Mình hiểu bạn muốn hỏi về một câu hỏi, nhưng chưa xác định chắc câu nào. Bạn chọn câu phù hợp bên dưới để mình xử lý tiếp nhé."
+      : isFlashcardQuestionTarget
+        ? "Minh hieu ban muon tao flashcard tu mot cau hoi, nhung chua xac dinh chac cau nao. Ban chon cau phu hop ben duoi de minh tao bo flashcard nhe."
+      : clarifyIntentId === "test_attempt.analysis"
+        ? "Mình hiểu bạn muốn xem thông tin bài làm, nhưng chưa xác định chắc bài nào. Bạn chọn bài phù hợp bên dưới để mình xử lý tiếp nhé."
+        : "Mình hiểu bạn muốn xem thông tin liên quan, nhưng chưa xác định chắc đối tượng nào. Bạn chọn mục phù hợp bên dưới để mình xử lý tiếp nhé.";
+    contextType = "clarify_with_options";
+  }
+
+  if (routing.decision.kind === "gemini_fallback") {
+    contextType = "gemini_unknown_fallback";
+    try {
+      const aiResult = await generateGeminiUnknownFallbackReply({
+        input,
+        routing,
+        context,
+      });
+      usedAI = true;
+      aiModel = aiResult.model;
+      reply = aiResult.text;
+      errorType = undefined;
+    } catch (err) {
+      console.warn("Gemini unknown fallback failed:", err);
+      usedAI = false;
+      reply = GEMINI_UNKNOWN_FALLBACK_REPLY;
+      errorType = "AI_SERVICE_ERROR";
+    }
+  }
+
+  if (routing.decision.kind !== "gemini_fallback" && responseMode === "template") {
     const smalltalkSubtype =
       intent === "smalltalk" || intent === "smalltalk.greeting_feedback"
         ? resolveSmalltalkSubtype(input.userText)
@@ -676,7 +1238,7 @@ async function resolveDbFirstReply(
     }
   }
 
-  if (responseMode === "ai") {
+  if (routing.decision.kind !== "gemini_fallback" && responseMode === "ai") {
     if (!context.ok) {
       reply = context.fallback;
       errorType = normalizeDbFirstContextErrorType(context);
@@ -752,7 +1314,12 @@ async function resolveDbFirstReply(
     quickQuestionContext,
     structuredView,
     routing,
-    resolverOutcome: context.ok ? "resolved" : context.outcome ?? "safe_fallback",
+    resolverOutcome:
+      routing.decision.kind === "gemini_fallback"
+        ? "gemini_fallback"
+        : context.ok
+          ? "resolved"
+          : context.outcome ?? "safe_fallback",
   });
 
   return { reply, meta };
@@ -789,3 +1356,10 @@ export async function processDbFirstMessageStreamService(
 
   return { botMessage };
 }
+
+export const __test__ = {
+  buildClarifyOptionActions,
+  buildClarifyOptionsForReply,
+  loadLatestWrongQuestionInAttemptOption,
+  selectedRouteContextForClarifyOption,
+};

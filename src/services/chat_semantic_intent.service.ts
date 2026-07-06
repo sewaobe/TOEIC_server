@@ -3,6 +3,7 @@ import {
   resetChatIntentCollectionCache,
 } from "../core/collections/chat_intent";
 import {
+  ChatIntent,
   ChatClientContext,
   ChatRouteContext,
   IntentCandidate,
@@ -12,6 +13,7 @@ import {
   getIntentCatalogEntry,
   IntentCatalogEntry,
 } from "./chat_intent_examples.data";
+import { extractIntentSignal } from "./chat_intent_signal.service";
 
 export type SemanticRankingResult = {
   retrievalHits: Array<{
@@ -45,6 +47,26 @@ function resolveCatalogEntry(metadata: any): IntentCatalogEntry | undefined {
   return entry;
 }
 
+function parseMetadataList(value: unknown) {
+  return String(value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function metadataExampleType(metadata: Record<string, unknown>) {
+  return String(metadata.exampleType ?? metadata.type ?? "positive_example");
+}
+
+function sourceIntentFromMetadata(metadata: Record<string, unknown>) {
+  return String(metadata.sourceIntent ?? metadata.intentId ?? "") as ChatIntent;
+}
+
+function average(values: number[]) {
+  if (!values.length) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
 export async function rankIntentCandidates(params: {
   userText: string;
   routeContext?: ChatRouteContext;
@@ -62,6 +84,20 @@ export async function rankIntentCandidates(params: {
       semanticDegraded: true,
       degradedReason: "EMPTY_QUERY",
       errorCode: "EMPTY_QUERY",
+      retrievalTopK: params.retrievalTopK ?? 40,
+      rerankTopK: params.rerankTopK ?? 6,
+    };
+  }
+
+  if (process.env.CHAT_INTENT_FORCE_CHROMA_ERROR === "1") {
+    return {
+      retrievalHits: [],
+      candidates: [],
+      source: "fallback",
+      queryCount: 1,
+      semanticDegraded: true,
+      degradedReason: "QUERY_ERROR",
+      errorCode: "FORCED_CHROMA_ERROR",
       retrievalTopK: params.retrievalTopK ?? 40,
       rerankTopK: params.rerankTopK ?? 6,
     };
@@ -122,47 +158,131 @@ export async function rankIntentCandidates(params: {
       };
     });
 
+    type EvidenceHit = {
+      document: string;
+      distance: number;
+      score: number;
+      exampleType: string;
+    };
     const byIntent = new Map<
       string,
       {
         entry: IntentCatalogEntry;
-        score: number;
-        bestDistance: number;
-        examples: string[];
-        supportCount: number;
+        positiveHits: EvidenceHit[];
+        profileHits: EvidenceHit[];
+        negativeHits: EvidenceHit[];
       }
     >();
 
+    function ensureIntentEvidence(entry: IntentCatalogEntry) {
+      const current = byIntent.get(entry.intentId);
+      if (current) return current;
+      const next = {
+        entry,
+        positiveHits: [] as EvidenceHit[],
+        profileHits: [] as EvidenceHit[],
+        negativeHits: [] as EvidenceHit[],
+      };
+      byIntent.set(entry.intentId, next);
+      return next;
+    }
+
     for (let index = 0; index < documents.length; index += 1) {
-      const metadata = metadatas[index] ?? {};
-      const entry = resolveCatalogEntry(metadata);
+      const metadata = (metadatas[index] ?? {}) as Record<string, unknown>;
+      const exampleType = metadataExampleType(metadata);
+      const sourceIntent = sourceIntentFromMetadata(metadata);
+      const entry =
+        exampleType === "boundary_negative"
+          ? getIntentCatalogEntry(sourceIntent)
+          : resolveCatalogEntry(metadata);
       if (!entry) continue;
 
       const distance = Number(distances[index] ?? Number.POSITIVE_INFINITY);
       if (!Number.isFinite(distance)) continue;
-
-      const exampleScore =
-        distanceToScore(distance) +
-        entry.priority / 1000;
-      const current = byIntent.get(entry.intentId);
-      if (!current) {
-        byIntent.set(entry.intentId, {
-          entry,
-          score: exampleScore,
-          bestDistance: distance,
-          examples: [String(documents[index] ?? "")],
-          supportCount: 1,
-        });
-        continue;
+      const hit = {
+        document: String(documents[index] ?? ""),
+        distance,
+        score: distanceToScore(distance),
+        exampleType,
+      };
+      const evidence = ensureIntentEvidence(entry);
+      if (exampleType === "boundary_negative") {
+        evidence.negativeHits.push(hit);
+      } else if (exampleType === "intent_profile") {
+        evidence.profileHits.push(hit);
+      } else {
+        evidence.positiveHits.push(hit);
       }
-
-      current.score += exampleScore * 0.65;
-      current.bestDistance = Math.min(current.bestDistance, distance);
-      current.examples.push(String(documents[index] ?? ""));
-      current.supportCount += 1;
     }
 
-    const ranked = Array.from(byIntent.values()).sort((a, b) => b.score - a.score);
+    const signal = extractIntentSignal(userText, params.routeContext);
+    if (signal.intentHint) {
+      const hintedEntry = getIntentCatalogEntry(signal.intentHint);
+      if (
+        hintedEntry &&
+        hintedEntry.availability !== "DISABLED" &&
+        hintedEntry.semanticSearchEnabled
+      ) {
+        ensureIntentEvidence(hintedEntry).profileHits.push({
+          document: `signal hint ${signal.intentHint} entity ${signal.entity ?? ""} action ${signal.action}`,
+          distance: 0.18,
+          score: 0.96,
+          exampleType: "signal_hint",
+        });
+      }
+    }
+
+    const ranked = Array.from(byIntent.values())
+      .map((item) => {
+        const positiveHits = [...item.positiveHits].sort((a, b) => b.score - a.score);
+        const profileHits = [...item.profileHits].sort((a, b) => b.score - a.score);
+        const negativeHits = [...item.negativeHits].sort((a, b) => b.score - a.score);
+        const positiveScores = positiveHits.map((hit) => hit.score);
+        const profileScores = profileHits.map((hit) => hit.score);
+        const negativeScores = negativeHits.map((hit) => hit.score);
+        const bestPositive = positiveScores[0] ?? 0;
+        const avgTop3Positive = average(positiveScores.slice(0, 3));
+        const bestProfile = profileScores[0] ?? 0;
+        const hasSignalHint = profileHits.some((hit) => hit.exampleType === "signal_hint");
+        const negativeEvidenceScore = Math.min(
+          negativeScores.slice(0, 3).reduce((sum, score) => sum + score, 0) * 0.55,
+          1.25
+        );
+        const supportScore = Math.min(positiveHits.length, 5) * 0.035;
+        const priorityScore = item.entry.priority / 2000;
+        const profileScore = bestProfile * 0.45;
+        const positiveScore = bestPositive * 1.45 + avgTop3Positive * 0.75;
+        const signalHintScore = hasSignalHint ? 2.4 : 0;
+        const score =
+          positiveScore +
+          profileScore +
+          supportScore +
+          priorityScore -
+          negativeEvidenceScore +
+          signalHintScore;
+        const bestDistance = positiveHits[0]?.distance ?? profileHits[0]?.distance;
+        return {
+          ...item,
+          score,
+          bestDistance,
+          evidenceBreakdown: {
+            positiveScore,
+            profileScore,
+            negativeEvidenceScore,
+            signalHintScore,
+            supportScore,
+            priorityScore,
+            finalScore: score,
+            bestPositiveDistance: positiveHits[0]?.distance,
+            bestProfileDistance: profileHits[0]?.distance,
+          },
+          positiveHits,
+          profileHits,
+          negativeHits,
+        };
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score);
     const candidates = ranked.map<IntentCandidate>((item, index) => {
       const nextScore = ranked[index + 1]?.score ?? 0;
       return {
@@ -172,8 +292,15 @@ export async function rankIntentCandidates(params: {
           item.score > 0 ? item.score / (item.score + Math.max(nextScore, 0.001)) : 0,
         score: item.score,
         distance: item.bestDistance,
-        matchedExamples: item.examples.slice(0, 3),
-        supportCount: item.supportCount,
+        matchedExamples: item.positiveHits.slice(0, 3).map((hit) => hit.document),
+        matchedProfileExamples: item.profileHits.slice(0, 2).map((hit) => hit.document),
+        negativeMatchedExamples: item.negativeHits.slice(0, 3).map((hit) => hit.document),
+        supportCount: item.positiveHits.length,
+        entities: item.entry.entities,
+        actions: item.entry.actions,
+        defaultAction: item.entry.defaultAction,
+        forbiddenActions: item.entry.forbiddenActions,
+        evidenceBreakdown: item.evidenceBreakdown,
       };
     }).slice(0, params.rerankTopK ?? 6);
 

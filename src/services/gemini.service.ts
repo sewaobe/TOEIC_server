@@ -9,18 +9,39 @@ import {
 } from "./learningPath.retriever";
 import { saveDebugFile } from "./demo.service";
 import { DictionaryEntry } from "../models/dictionary_entry.model";
+import { generateDeepSeekJson } from "../core/deepseek";
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 });
 
-const MODELS = [
+const MODELS: string[] = [
+  "gemini-3.5-flash",
   "gemini-2.5-flash",
   "gemini-3-flash-preview",
   "gemini-3.1-flash-lite",
   "gemini-3.1-flash-lite-preview",
   "gemini-2.5-flash-lite",
 ];
+
+async function generateDeepSeekJsonFallback(params: {
+  prompt: string;
+  jsonSchema: unknown;
+  taskName: string;
+  temperature?: number;
+  maxTokens?: number;
+}) {
+  console.warn(`[DeepSeek fallback] Gemini chain failed for ${params.taskName}; trying DeepSeek.`);
+  const result = await generateDeepSeekJson({
+    prompt: params.prompt,
+    jsonSchema: params.jsonSchema,
+    taskName: params.taskName,
+    temperature: params.temperature,
+    maxTokens: params.maxTokens,
+  });
+  console.log(`[DeepSeek fallback] ${params.taskName} succeeded with model: ${result.model}`);
+  return result;
+}
 
 export const ToeicPlanSchema = {
   type: Type.OBJECT,
@@ -295,13 +316,25 @@ export async function generateToeicPlan(userInput: any) {
         continue;
       }
       console.error(`❌ Lỗi khi gọi ${model}:`, msg);
-      throw err;
+      continue;
     }
   }
 
-  throw new Error(
-    "Tất cả model đều quá tải hoặc không khả dụng, vui lòng thử lại sau."
-  );
+  const fallback = await generateDeepSeekJsonFallback({
+    prompt,
+    jsonSchema: ToeicPlanSchema,
+    taskName: "toeic_plan",
+    temperature: 0.1,
+    maxTokens: 65000,
+  });
+  if (fallback.json && typeof fallback.json === "object") {
+    try {
+      writeTotalsReport(fallback.json);
+    } catch (e) {
+      console.warn("DeepSeek TOEIC plan totals report failed:", e);
+    }
+  }
+  return { model: fallback.model, json: fallback.json };
 }
 
 // ========== GENERATE WEEKLY PLAN WITH RAG ==========
@@ -431,13 +464,18 @@ export async function generateWeeklyPlanWithRAG(
         continue;
       }
       console.error(`❌ Lỗi khi gọi ${model}:`, msg);
-      throw err;
+      continue;
     }
   }
 
-  throw new Error(
-    "Tất cả model đều quá tải hoặc không khả dụng, vui lòng thử lại sau."
-  );
+  const fallback = await generateDeepSeekJsonFallback({
+    prompt,
+    jsonSchema: WeeklyPlanSchema,
+    taskName: "weekly_plan",
+    temperature: 0.1,
+    maxTokens: 32000,
+  });
+  return { model: fallback.model, json: fallback.json };
 }
 
 export const DictionarySchema = {
@@ -770,6 +808,54 @@ const normalizeDictionaryData = (parsed: any, fallbackWord: string) => ({
   },
 });
 
+async function buildDictionaryLookupResult(params: {
+  parsed: any;
+  englishWord: string;
+  normalizedQuery: string;
+  rawDictData: any;
+  model: string;
+}) {
+  const normalizedEnglishWord = normalizeDictionaryQuery(params.englishWord);
+  const normalizedDictionary = normalizeDictionaryData(
+    params.parsed,
+    params.englishWord
+  );
+
+  const imageKeywords = normalizedDictionary.imageKeywords.length > 0
+    ? normalizedDictionary.imageKeywords
+    : [params.englishWord];
+  const images = await fetchUnsplashImages(imageKeywords);
+  const dictionaryData = {
+    ...normalizedDictionary,
+    imageUrls: images.map((img: any) => img.url),
+  };
+
+  await DictionaryEntry.findOneAndUpdate(
+    { normalized_key: normalizedEnglishWord },
+    {
+      $set: {
+        english_word: dictionaryData.englishWord,
+        normalized_key: normalizedEnglishWord,
+        data: dictionaryData,
+        source_raw: params.rawDictData,
+        model_used: params.model,
+        last_lookup_at: new Date(),
+      },
+      $addToSet: {
+        query_aliases: { $each: [params.normalizedQuery, normalizedEnglishWord] },
+      },
+      $inc: { lookup_count: 1 },
+    },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+
+  return {
+    model: params.model,
+    cached: false,
+    json: dictionaryData,
+  };
+}
+
 export async function dictionaryLookup(query: string) {
   if (!query || !query.trim()) {
     throw new Error("Query tra từ điển không hợp lệ.");
@@ -794,17 +880,16 @@ export async function dictionaryLookup(query: string) {
     try {
       console.log(`🧠 Trying model: ${model}`);
 
-      // STEP 1: dịch query không phải tiếng Anh sang từ/cụm tiếng Anh gần nhất.
       let englishWord = query.trim();
 
       if (!isLikelyEnglishDictionaryQuery(query)) {
         const translatePrompt = `
-                Hãy dịch từ hoặc cụm sau sang tiếng Anh, chỉ trả về JSON có key "englishWord".
-                Không thêm giải thích nào khác.
+Translate the following word or phrase into English. Return JSON only with the key "englishWord".
+Do not add any explanation.
 
-                Input: "quả táo" → Output: {"englishWord":"apple"}
-                Từ cần dịch: "${query}"
-            `;
+Input: "quả táo" -> Output: {"englishWord":"apple"}
+Input to translate: "${query}"
+`;
 
         const translateResult = await ai.models.generateContent({
           model,
@@ -817,7 +902,7 @@ export async function dictionaryLookup(query: string) {
         });
 
         if (!translateResult.text) {
-          throw new Error("Không nhận được phản hồi dịch.");
+          throw new Error("Empty dictionary query translation response.");
         }
 
         englishWord =
@@ -837,10 +922,7 @@ export async function dictionaryLookup(query: string) {
         );
       }
 
-      // STEP 2: lấy toàn bộ dữ liệu gốc từ dictionaryapi.dev.
       const rawDictData = await fetchDictionaryRawData(englishWord);
-
-      // STEP 3: gửi sang Gemini để chuẩn hóa và bổ sung dữ liệu học tập.
       const prompt = promptTemplate.replace(
         "{{DICTIONARY_RAW_DATA}}",
         JSON.stringify(rawDictData, null, 2)
@@ -867,7 +949,6 @@ export async function dictionaryLookup(query: string) {
         englishWord
       );
 
-      // STEP 4: Gọi Unsplash lấy ảnh minh họa.
       const imageKeywords = normalizedDictionary.imageKeywords.length > 0
         ? normalizedDictionary.imageKeywords
         : [englishWord];
@@ -905,17 +986,61 @@ export async function dictionaryLookup(query: string) {
       const msg = err?.message || err?.error?.message || "";
       if (isRetryableDictionaryModelError(err)) {
         console.warn(
-          `🚧 ${model} không trả JSON hợp lệ hoặc tạm quá tải, thử model kế tiếp...`,
+          `🚧 ${model} did not return valid JSON or is temporarily unavailable, trying next model...`,
           msg
         );
         continue;
       }
-      console.error(`❌ Lỗi khi gọi ${model}:`, msg);
-      throw err;
+      console.error(`❌ Error while calling ${model}:`, msg);
+      continue;
     }
   }
 
-  throw new Error("Tất cả model đều quá tải hoặc lỗi xử lý.");
+  let englishWord = query.trim();
+  if (!isLikelyEnglishDictionaryQuery(query)) {
+    const translatePrompt = `
+Translate the following word or phrase into English. Return JSON only with the key "englishWord".
+Do not add any explanation.
+
+Input: "quả táo" -> Output: {"englishWord":"apple"}
+Input to translate: "${query}"
+`;
+    const translateFallback = await generateDeepSeekJsonFallback({
+      prompt: translatePrompt,
+      jsonSchema: TranslateSchema,
+      taskName: "dictionary_query_translation",
+      temperature: 0.2,
+      maxTokens: 1024,
+    });
+    englishWord = translateFallback.json?.englishWord?.trim() || query.trim();
+  }
+
+  const normalizedEnglishWord = normalizeDictionaryQuery(englishWord);
+  const cachedByEnglishWord = await findDictionaryCache(normalizedEnglishWord);
+  if (cachedByEnglishWord) {
+    return buildCachedDictionaryResult(cachedByEnglishWord, normalizedQuery);
+  }
+
+  const rawDictData = await fetchDictionaryRawData(englishWord);
+  const prompt = promptTemplate.replace(
+    "{{DICTIONARY_RAW_DATA}}",
+    JSON.stringify(rawDictData, null, 2)
+  );
+  const fallback = await generateDeepSeekJsonFallback({
+    prompt,
+    jsonSchema: DictionarySchema,
+    taskName: "dictionary_lookup",
+    temperature: 0.4,
+    maxTokens: 8192,
+  });
+
+  return buildDictionaryLookupResult({
+    parsed: fallback.json,
+    englishWord,
+    normalizedQuery,
+    rawDictData,
+    model: fallback.model,
+  });
 }
 
 export const TranslateSchema = {
@@ -1003,11 +1128,18 @@ export async function translateText(
         continue;
       }
       console.error(`❌ Lỗi khi gọi ${model}:`, msg);
-      throw err;
+      continue;
     }
   }
 
-  throw new Error("Tất cả model Gemini đều quá tải hoặc lỗi xử lý.");
+  const fallback = await generateDeepSeekJsonFallback({
+    prompt,
+    jsonSchema: TranslateSchema,
+    taskName: "translate_text",
+    temperature: 0.4,
+    maxTokens: 4096,
+  });
+  return { model: fallback.model, json: fallback.json };
 }
 
 export const DictationAnalysisSchema = {
@@ -1117,11 +1249,18 @@ export async function analyzeDictationWithAI(logs: any[], dictationMeta: any) {
         continue;
       }
       console.error(`❌ Lỗi khi gọi ${model}:`, msg);
-      throw err;
+      continue;
     }
   }
 
-  throw new Error("Tất cả model Gemini đều quá tải hoặc lỗi xử lý.");
+  const fallback = await generateDeepSeekJsonFallback({
+    prompt,
+    jsonSchema: DictationAnalysisSchema,
+    taskName: "dictation_analysis",
+    temperature: 0.4,
+    maxTokens: 4096,
+  });
+  return { model: fallback.model, json: fallback.json };
 }
 
 export const ShadowingFeedbackSchema = {
@@ -1261,7 +1400,14 @@ export async function analyzeShadowingByURL(userAudioUrl: string, meta: any) {
     }
   }
 
-  throw new Error("Tất cả model Gemini đều quá tải hoặc lỗi.");
+  const fallback = await generateDeepSeekJsonFallback({
+    prompt,
+    jsonSchema: ShadowingFeedbackSchema,
+    taskName: "shadowing_analysis",
+    temperature: 0.4,
+    maxTokens: 8192,
+  });
+  return { model: fallback.model, json: fallback.json };
 }
 
 export const DefinitionEvaluationSchema = {
@@ -1351,11 +1497,22 @@ export async function evaluateDefinitionWithAI(
         continue;
       }
       console.error(`❌ Lỗi khi gọi ${model}:`, msg);
-      throw err;
+      continue;
     }
   }
 
-  throw new Error("Tất cả model Gemini đều quá tải hoặc lỗi xử lý.");
+  const fallback = await generateDeepSeekJsonFallback({
+    prompt,
+    jsonSchema: DefinitionEvaluationSchema,
+    taskName: "definition_evaluation",
+    temperature: 0.3,
+    maxTokens: 1024,
+  });
+  const parsed = fallback.json;
+  if (parsed?.similarity !== undefined && parsed.is_correct === undefined) {
+    parsed.is_correct = parsed.similarity >= 0.65;
+  }
+  return { model: fallback.model, json: parsed };
 }
 
 export const IrtWeeklyPlannerSchema = {
@@ -1513,7 +1670,14 @@ export async function generateIRTWeeklyPlan(input: any) {
     }
   }
 
-  throw new Error("Tất cả model đều quá tải hoặc lỗi.");
+  const fallback = await generateDeepSeekJsonFallback({
+    prompt,
+    jsonSchema: IrtWeeklyPlannerSchema,
+    taskName: "irt_weekly_plan",
+    temperature: 0.1,
+    maxTokens: 62000,
+  });
+  return { model: fallback.model, json: fallback.json };
 }
 
 // ========== MIND MAP GENERATION ==========
@@ -1671,6 +1835,16 @@ Trả về JSON hợp lệ với đầy đủ tất cả nội dung.
     }
   }
 
-  throw new Error("Không thể tạo mind map. Vui lòng thử lại.");
+  const fallback = await generateDeepSeekJsonFallback({
+    prompt,
+    jsonSchema: MindMapNodeSchema,
+    taskName: "mind_map",
+    temperature: 0.2,
+    maxTokens: 16000,
+  });
+  if (!fallback.json?.name) {
+    throw new Error("Invalid mind map structure: missing root name");
+  }
+  return { model: fallback.model, data: fallback.json };
 }
 

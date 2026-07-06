@@ -3,7 +3,22 @@ import {
   ChatIntent,
 } from "../types/chat.types";
 
-export function buildActions(intent: ChatIntent, context: any): ChatAction[] {
+function normalizeActionText(text = "") {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\u0111/g, "d")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function buildActions(
+  intent: ChatIntent,
+  context: any,
+  options: { userText?: string } = {}
+): ChatAction[] {
   if (!context.ok) return [];
 
   if (
@@ -148,7 +163,7 @@ export function buildActions(intent: ChatIntent, context: any): ChatAction[] {
     return [
       {
         id: "open-created-flashcard-deck",
-        label: "Há»c ngay",
+        label: "Học ngay",
         type: "open_flashcard_deck",
         payload: {
           topicVocabularyId: context.data.topicVocabularyId,
@@ -158,6 +173,28 @@ export function buildActions(intent: ChatIntent, context: any): ChatAction[] {
   }
 
   if (intent === "app.navigation_support") {
+    const value = normalizeActionText(options.userText);
+    if (/\b(cau sai|loi sai|review|ket qua|bai lam|attempt|lich su)\b/.test(value)) {
+      return [
+        {
+          id: "open-attempt-review",
+          label: "Mo review cau sai",
+          type: "open_attempt_review",
+          payload: {
+            target: "mistake_review",
+          },
+        },
+        {
+          id: "open-test-result",
+          label: "Mo ket qua bai lam",
+          type: "open_test_result",
+          payload: {
+            target: "test_result",
+          },
+        },
+      ];
+    }
+
     return [
       {
         id: "show-roadmap",
