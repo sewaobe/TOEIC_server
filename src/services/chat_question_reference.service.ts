@@ -52,13 +52,22 @@ export function resolveQuestionReferenceFromRouteContext(
     return { matched: false, reason: "no_reference" };
   }
 
-  const refs = routeContext?.questionRefs;
+  const refs = routeContext?.visibleQuestionRefs?.length
+    ? routeContext.visibleQuestionRefs
+    : routeContext?.questionRefs;
   if (!refs?.length) {
-    if (wantsCurrent && routeContext?.questionId) {
+    const currentQuestionId =
+      routeContext?.questionId ??
+      routeContext?.currentVisibleQuestionId ??
+      routeContext?.selectedQuestionId;
+    if (wantsCurrent && currentQuestionId) {
       return {
         matched: true,
-        questionId: routeContext.questionId,
-        questionNumber: routeContext.currentQuestionNumber,
+        questionId: currentQuestionId,
+        questionNumber:
+          routeContext?.currentQuestionNumber ??
+          routeContext?.currentVisibleQuestionNumber ??
+          routeContext?.selectedQuestionNumber,
         reason: "current_question",
       };
     }
@@ -79,13 +88,24 @@ export function resolveQuestionReferenceFromRouteContext(
 
   const currentRef =
     findRefById(refs, routeContext?.questionId) ??
-    findRefByNumber(refs, routeContext?.currentQuestionNumber);
+    findRefById(refs, routeContext?.currentVisibleQuestionId) ??
+    findRefById(refs, routeContext?.selectedQuestionId) ??
+    findRefByNumber(refs, routeContext?.currentQuestionNumber) ??
+    findRefByNumber(refs, routeContext?.currentVisibleQuestionNumber) ??
+    findRefByNumber(refs, routeContext?.selectedQuestionNumber);
 
-  if (!currentRef && routeContext?.questionId) {
+  const fallbackCurrentQuestionId =
+    routeContext?.questionId ??
+    routeContext?.currentVisibleQuestionId ??
+    routeContext?.selectedQuestionId;
+  if (!currentRef && fallbackCurrentQuestionId) {
     return {
       matched: true,
-      questionId: routeContext.questionId,
-      questionNumber: routeContext.currentQuestionNumber,
+      questionId: fallbackCurrentQuestionId,
+      questionNumber:
+        routeContext?.currentQuestionNumber ??
+        routeContext?.currentVisibleQuestionNumber ??
+        routeContext?.selectedQuestionNumber,
       reason: "current_question",
     };
   }

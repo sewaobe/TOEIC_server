@@ -94,6 +94,10 @@ async function createSafeRoutingFallbackMessage(params: {
         "Mình chưa xác định được yêu cầu đủ rõ để xử lý an toàn. Bạn có thể hỏi cụ thể về câu sai, bài test, tiến độ hoặc kiến thức TOEIC.";
     const finalText =
         params.routing.decision.kind === "safe_fallback" &&
+        params.routing.decision.reason === "semantic_router_unavailable"
+            ? "Chatbot đang tạm thời gặp lỗi. Bạn vui lòng thử lại sau."
+            :
+        params.routing.decision.kind === "safe_fallback" &&
         params.routing.decision.reason === "outside_toeic_scope"
             ? "Mình chỉ hỗ trợ các câu hỏi liên quan TOEIC, tiếng Anh học TOEIC và việc học trong hệ thống này."
             : text;

@@ -19,12 +19,14 @@ export type ChatIntent =
   | "check_progress"
   | "general_toeic_question"
   | "smalltalk.greeting_feedback"
+  | "user_profile.identity"
   | "user_progress.summary"
   | "user_progress.ability_map"
   | "test_attempt.analysis"
   | "question.explain_specific"
   | "question.translate_context"
   | "question.similar_practice"
+  | "lesson.recommendation"
   | "vocabulary.contextual"
   | "grammar.contextual"
   | "toeic_knowledge.general"
@@ -37,6 +39,7 @@ export type ChatIntent =
   | "flashcard.create"
   | "listening_practice.analysis"
   | "app.navigation_support"
+  | "out_of_project.general"
   | "safe_fallback"
   | "unknown";
 
@@ -93,6 +96,7 @@ export type ChatResolverPolicy =
   | "UNAUTHORIZED"
   | "UNSUPPORTED_CAPABILITY"
   | "LOW_CONFIDENCE"
+  | "GEMINI_FALLBACK"
   | "SAFE_FALLBACK";
 
 export interface FollowUpContext {
@@ -115,8 +119,23 @@ export interface ChatConversationState {
 export type ChatRouteDecision =
   | { kind: "route"; intentId: ChatIntent; lane: "SYSTEM" | "CONTEXTUAL" }
   | { kind: "clarify"; intentId?: ChatIntent; reason: string }
+  | { kind: "clarify_with_options"; intentId?: ChatIntent; reason: string; options: ClarifyOption[] }
   | { kind: "general_ai"; intentId: "toeic_knowledge.general" }
+  | { kind: "gemini_fallback"; intentId?: ChatIntent; reason: string }
   | { kind: "safe_fallback"; reason: string };
+
+export interface ClarifyOption {
+  label: string;
+  value: {
+    questionId?: string;
+    attemptId?: string;
+    testId?: string;
+    questionNumber?: number;
+    textPreview?: string;
+  };
+  reason: string;
+  confidence: number;
+}
 
 export interface IntentCandidate {
   intentId: ChatIntent;
@@ -125,8 +144,25 @@ export interface IntentCandidate {
   score: number;
   distance?: number;
   matchedExamples: string[];
+  matchedProfileExamples?: string[];
+  negativeMatchedExamples?: string[];
   supportCount?: number;
   rerankScore?: number;
+  entities?: string[];
+  actions?: string[];
+  defaultAction?: string;
+  forbiddenActions?: string[];
+  evidenceBreakdown?: {
+    positiveScore?: number;
+    profileScore?: number;
+    negativeEvidenceScore?: number;
+    supportScore?: number;
+    priorityScore?: number;
+    signalScore?: number;
+    finalScore?: number;
+    bestPositiveDistance?: number;
+    bestProfileDistance?: number;
+  };
 }
 
 export interface RoutingDiagnosticCandidate {
@@ -137,6 +173,8 @@ export interface RoutingDiagnosticCandidate {
   distance?: number;
   supportCount?: number;
   rerankScore?: number;
+  negativeMatchedExamples?: string[];
+  evidenceBreakdown?: IntentCandidate["evidenceBreakdown"];
 }
 
 export interface RoutingDiagnostics {
@@ -174,6 +212,9 @@ export interface RoutingDiagnostics {
   ragErrorCode?: string;
   ragDistanceTooFar?: boolean;
   geminiFallbackUsed?: boolean;
+  geminiFallbackReason?: string;
+  clarifyOptions?: ClarifyOption[];
+  recoveredRouteContext?: ChatRouteContext;
 }
 
 export interface ChatRoutingResult {
@@ -191,13 +232,17 @@ export interface ChatRoutingResult {
 export type ChatActionType =
   | "open_question_review"
   | "review_mistakes"
+  | "open_test_result"
+  | "open_attempt_review"
   | "start_practice"
   | "recommend_similar_practice"
+  | "open_lesson"
   | "show_roadmap"
   | "open_flashcards"
   | "open_flashcard_deck"
   | "replay_audio"
-  | "request_roadmap_recompute";
+  | "request_roadmap_recompute"
+  | "select_clarify_option";
 
 export type ChatResponseMode = "template" | "ai" | "fallback";
 
@@ -223,17 +268,26 @@ export interface ChatRouteContext {
   testId?: string;
   attemptId?: string;
   questionId?: string;
+  questionNumber?: number;
+  currentVisibleQuestionId?: string;
+  currentVisibleQuestionNumber?: number;
+  selectedQuestionId?: string;
+  selectedQuestionNumber?: number;
   lessonId?: string;
   dictationAttemptId?: string;
   shadowingAttemptId?: string;
   currentQuestionNumber?: number;
   questionRefs?: ChatRouteQuestionRef[];
+  visibleQuestionRefs?: ChatRouteQuestionRef[];
+  currentQuestionIndex?: number;
 }
 
 export interface ChatRouteQuestionRef {
   questionNumber: number;
   questionId: string;
   textPreview?: string;
+  attemptId?: string;
+  testId?: string;
 }
 
 export interface ChatClientContext {
@@ -293,7 +347,7 @@ export type DbFirstContextFailure = {
   ok: false;
   errorType: ChatErrorType;
   fallback: string;
-  outcome?: "clarify" | "no_data" | "forbidden" | "safe_fallback" | "unauthorized" | "unsupported_capability";
+  outcome?: "clarify" | "no_data" | "forbidden" | "safe_fallback" | "gemini_fallback" | "unauthorized" | "unsupported_capability";
 };
 
 export type DbFirstContext = DbFirstContextSuccess | DbFirstContextFailure;
@@ -378,6 +432,13 @@ export interface IStructuredListItem {
 
 export type IChatStructuredView =
   | {
+      type: "user_profile_identity";
+      title: string;
+      subtitle?: string;
+      stats: IStructuredStatItem[];
+      highlights?: IStructuredListItem[];
+    }
+  | {
       type: "progress_summary";
       title: string;
       subtitle?: string;
@@ -444,6 +505,28 @@ export type IChatStructuredView =
       }>;
     }
   | {
+      type: "lesson_recommendations";
+      title: string;
+      subtitle?: string;
+      sourceTags: string[];
+      items: Array<{
+        lessonManagerId: string;
+        title: string;
+        part?: number;
+        targetTags: string[];
+        estimatedMinutes?: number;
+        fitScore?: number;
+        reason?: string;
+        activities: Array<{
+          id: string;
+          type: "lesson" | "vocabulary" | "dictation" | "shadowing" | "quiz";
+          title: string;
+          estimatedMinutes?: number;
+          action: ChatAction;
+        }>;
+      }>;
+    }
+  | {
       type: "flashcard_supply";
       title: string;
       subtitle?: string;
@@ -503,7 +586,7 @@ export interface IChatMessageMeta {
   quickQuestionView?: IQuickQuestionView;
   quickQuestionContext?: IQuickQuestionContext;
   structuredView?: IChatStructuredView;
-  resolverOutcome?: "resolved" | "clarify" | "no_data" | "forbidden" | "safe_fallback";
+  resolverOutcome?: "resolved" | "clarify" | "no_data" | "forbidden" | "safe_fallback" | "gemini_fallback";
   routing?: RoutingDiagnostics & {
     decision: ChatRouteDecision["kind"];
     scope?: ChatScope;

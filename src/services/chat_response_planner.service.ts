@@ -6,6 +6,9 @@ import {
 export function chooseResponseMode(intent: ChatIntent, context: any): ChatResponseMode {
   if (!context.ok) return "fallback";
   if (intent === "smalltalk" || intent === "smalltalk.greeting_feedback") return "template";
+  if (intent === "user_profile.identity") return "template";
+  if (intent === "lesson.recommendation") return "template";
+  if (intent === "out_of_project.general") return "template";
   if (intent === "identify_question") return "template";
   if (intent === "question.similar_practice") return "template";
   if (intent === "flashcard.create") return "template";

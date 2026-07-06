@@ -197,6 +197,65 @@ function buildAbilityMapView(context: DbFirstContext): IChatStructuredView | und
   };
 }
 
+function formatDateText(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toLocaleDateString("vi-VN") : "";
+}
+
+function buildUserProfileIdentityView(context: DbFirstContext): IChatStructuredView | undefined {
+  if (!context.ok) return undefined;
+  const profile = context.data.profile ?? {};
+  const statusText =
+    profile.accountStatus === "active"
+      ? "Đang hoạt động"
+      : profile.accountStatus === "locked"
+        ? "Bị khóa/chưa kích hoạt"
+        : "Chưa rõ";
+  const stats: IStructuredStatItem[] = [
+    {
+      label: "Tên",
+      value: profile.displayName || profile.username || "Chưa có",
+      tone: "info",
+    },
+    {
+      label: "Email",
+      value: profile.email || "Chưa có",
+      tone: "default",
+    },
+    {
+      label: "Trạng thái",
+      value: statusText,
+      tone: profile.accountStatus === "active" ? "success" : "warning",
+    },
+    {
+      label: "Streak",
+      value: Number.isFinite(Number(profile.streakDays)) ? `${numberText(profile.streakDays)} ngày` : "Chưa có",
+      tone: "warning",
+    },
+  ];
+  const highlights: IStructuredListItem[] = [
+    profile.username ? { label: "Username", value: profile.username, tone: "info" } : null,
+    profile.joinedAt ? { label: "Ngày tham gia", value: formatDateText(profile.joinedAt) } : null,
+    profile.lastActiveAt ? { label: "Hoạt động gần nhất", value: formatDateText(profile.lastActiveAt) } : null,
+    profile.targetScore ? { label: "Mục tiêu TOEIC", value: `${numberText(profile.targetScore)} điểm`, tone: "success" } : null,
+    Number.isFinite(Number(profile.latestTestScore))
+      ? { label: "Điểm test gần nhất", value: `${numberText(profile.latestTestScore)} điểm`, tone: "success" }
+      : null,
+    profile.hasLearningData === false
+      ? { label: "Dữ liệu học tập", value: "Chưa có dữ liệu tổng quan", tone: "warning" }
+      : null,
+  ].filter(Boolean) as IStructuredListItem[];
+
+  return {
+    type: "user_profile_identity",
+    title: "Thông tin tài khoản",
+    subtitle: "Dữ liệu được lấy từ hồ sơ đăng nhập hiện tại.",
+    stats,
+    highlights,
+  };
+}
+
 function buildTestAttemptView(context: DbFirstContext, reply: string): IChatStructuredView | undefined {
   if (!context.ok) return undefined;
   const attempt = context.data.attempt;
@@ -350,13 +409,42 @@ function buildSimilarPracticeView(context: DbFirstContext): IChatStructuredView 
   };
 }
 
+function buildLessonRecommendationsView(context: DbFirstContext): IChatStructuredView | undefined {
+  if (!context.ok) return undefined;
+  const recommendations = Array.isArray(context.data.recommendations)
+    ? context.data.recommendations
+    : [];
+  return {
+    type: "lesson_recommendations",
+    title: context.data.title || "Bai hoc goi y",
+    subtitle: context.data.subtitle,
+    sourceTags: Array.isArray(context.data.sourceTags) ? context.data.sourceTags : [],
+    items: recommendations.map((item: any) => ({
+      lessonManagerId: item.lessonManagerId,
+      title: item.title,
+      part: item.part,
+      targetTags: Array.isArray(item.targetTags) ? item.targetTags : [],
+      estimatedMinutes: item.estimatedMinutes,
+      fitScore: item.fitScore,
+      reason: item.reason,
+      activities: (item.activities ?? []).map((activity: any) => ({
+        id: activity.id,
+        type: activity.type,
+        title: activity.title,
+        estimatedMinutes: activity.estimatedMinutes,
+        action: activity.action,
+      })),
+    })),
+  };
+}
+
 function buildFlashcardSupplyView(context: DbFirstContext): IChatStructuredView | undefined {
   if (!context.ok) return undefined;
   const data = context.data;
   return {
     type: "flashcard_supply",
-    title: data.title || "Bá»™ flashcard má»›i",
-    subtitle: `${data.returnedCount}/${data.requestedCount} tá»« Ä‘Ã£ sáºµn sÃ ng`,
+    title: data.title || "Bộ flashcard mới",
+    subtitle: `${data.returnedCount}/${data.requestedCount} từ đã sẵn sàng`,
     requestedCount: data.requestedCount,
     returnedCount: data.returnedCount,
     suppliedBy: data.suppliedBy,
@@ -364,7 +452,7 @@ function buildFlashcardSupplyView(context: DbFirstContext): IChatStructuredView 
     words: Array.isArray(data.words) ? data.words : [],
     action: {
       id: "open-created-flashcard-deck",
-      label: "Há»c ngay",
+      label: "Học ngay",
       type: "open_flashcard_deck",
       payload: {
         topicVocabularyId: data.topicVocabularyId,
@@ -415,6 +503,10 @@ export function buildChatStructuredView(input: BuildStructuredViewInput): IChatS
     return buildProgressView(input.context);
   }
 
+  if (input.intent === "user_profile.identity") {
+    return buildUserProfileIdentityView(input.context);
+  }
+
   if (input.intent === "user_progress.ability_map") {
     return buildAbilityMapView(input.context);
   }
@@ -435,6 +527,10 @@ export function buildChatStructuredView(input: BuildStructuredViewInput): IChatS
 
   if (input.intent === "question.similar_practice") {
     return buildSimilarPracticeView(input.context);
+  }
+
+  if (input.intent === "lesson.recommendation") {
+    return buildLessonRecommendationsView(input.context);
   }
 
   if (input.intent === "flashcard.create") {

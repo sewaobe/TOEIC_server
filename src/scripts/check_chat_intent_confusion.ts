@@ -79,6 +79,16 @@ function actualLabel(result: Awaited<ReturnType<typeof routeChatMessage>>) {
   return result.decision.kind;
 }
 
+function matchesExpected(
+  expected: IntentCheck["expected"],
+  actual: ReturnType<typeof actualLabel>
+) {
+  if (expected === "clarify") {
+    return actual === "clarify" || actual === "clarify_with_options";
+  }
+  return actual === expected;
+}
+
 async function run() {
   const rows = [];
   let failed = 0;
@@ -90,7 +100,7 @@ async function run() {
       routeContext: check.routeContext,
     });
     const actual = actualLabel(result);
-    const pass = actual === check.expected;
+    const pass = matchesExpected(check.expected, actual);
     if (!pass) failed += 1;
     decisionCounts.set(
       result.decision.kind,
