@@ -692,7 +692,7 @@ export const runLearningPathV2AbilityPipeline = async (
     });
 
     // Layer 3 quyết scenario dựa trên trigger, deadline, pace và focus skill delta.
-    const scenarioDecision = await evaluateLearningPathScenario({
+    let scenarioDecision = await evaluateLearningPathScenario({
       trigger_type: normalizedResult.trigger_type,
       user_id: input.user_id,
       learning_path_id: input.learning_path_id,
@@ -704,6 +704,16 @@ export const runLearningPathV2AbilityPipeline = async (
       source_user_test_id: String(userTest._id),
       actual_submit_at: userTest.submit_at,
     });
+
+    if (
+      input.trigger_type === "mini_test_completion" &&
+      input.debug_scenario_override === "PLATEAU"
+    ) {
+      scenarioDecision = {
+        ...scenarioDecision,
+        scenario: "PLATEAU",
+      };
+    }
 
     logLearningPathV2DebugSafe("pipeline.scenario_decision", {
       stage: "layer3",

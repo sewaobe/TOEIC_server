@@ -35,6 +35,7 @@ export interface BuildMiniTestNextWeekPlanInput
   extends LearningPathV2BaseInput {
   trigger_type: "mini_test_completion";
   week_study_id: LearningPathV2Id;
+  debug_scenario_override?: "PLATEAU";
   active_strategy?: SchedulerStrategy;
   active_week_id?: LearningPathV2Id;
 }
