@@ -500,9 +500,11 @@ export const DictionarySchema = {
                 en: { type: Type.STRING },
                 vi: { type: Type.STRING },
               },
+              required: ["en", "vi"],
             },
           },
         },
+        required: ["partOfSpeech", "meanings"],
       },
     },
     examples: {
@@ -513,6 +515,7 @@ export const DictionarySchema = {
           en: { type: Type.STRING },
           vi: { type: Type.STRING },
         },
+        required: ["en", "vi"],
       },
     },
     synonyms: {
@@ -523,6 +526,7 @@ export const DictionarySchema = {
           word: { type: Type.STRING },
           meaning: { type: Type.STRING },
         },
+        required: ["word", "meaning"],
       },
     },
     antonyms: {
@@ -533,6 +537,7 @@ export const DictionarySchema = {
           word: { type: Type.STRING },
           meaning: { type: Type.STRING },
         },
+        required: ["word", "meaning"],
       },
     },
     word_family: {
@@ -543,6 +548,7 @@ export const DictionarySchema = {
           word: { type: Type.STRING },
           partOfSpeech: { type: Type.STRING },
         },
+        required: ["word", "partOfSpeech"],
       },
     },
     collocations: {
@@ -553,6 +559,7 @@ export const DictionarySchema = {
           phrase: { type: Type.STRING },
           meaning: { type: Type.STRING },
         },
+        required: ["phrase", "meaning"],
       },
     },
     metadata: {
@@ -565,9 +572,25 @@ export const DictionarySchema = {
           items: { type: Type.STRING },
         },
       },
+      required: ["source", "enrichedByAI", "missingFieldsFilledByAI"],
     },
     imageKeywords: { type: Type.ARRAY, items: { type: Type.STRING } },
   },
+  required: [
+    "englishWord",
+    "phonetic_uk",
+    "phonetic_us",
+    "audio_uk",
+    "audio_us",
+    "translations",
+    "examples",
+    "synonyms",
+    "antonyms",
+    "word_family",
+    "collocations",
+    "imageKeywords",
+    "metadata",
+  ],
   propertyOrdering: [
     "englishWord",
     "phonetic_uk",
