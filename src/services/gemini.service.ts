@@ -585,15 +585,74 @@ export const DictionarySchema = {
   ],
 };
 
-// Fetch data from dictionary API
-async function fetchDictionaryRawData(word: string) {
-  const res = await fetch(
-    `https://api.dictionaryapi.dev/api/v2/entries/en/${word}`
-  );
-  const data = await res.json();
-  if (!Array.isArray(data) || data.length === 0)
-    throw new Error("No data found for the given word.");
-  return data;
+const FREE_DICTIONARY_SOURCE = "freedictionaryapi.com";
+const AI_GENERATED_DICTIONARY_SOURCE = "ai_generated";
+
+type DictionaryLookupKind = "dictionary_entry" | "contextual_query";
+
+type DictionaryRawLookupResult = {
+  provider: string;
+  language: string;
+  query: string;
+  lookupKind: DictionaryLookupKind;
+  providerHadData: boolean;
+  rawData: any | null;
+  providerError?: string;
+};
+
+// Fetch data from the dictionary provider without failing the AI fallback path.
+async function fetchDictionaryRawData(
+  word: string,
+  lookupKind: DictionaryLookupKind
+): Promise<DictionaryRawLookupResult> {
+  if (lookupKind === "contextual_query") {
+    return {
+      provider: FREE_DICTIONARY_SOURCE,
+      language: "en",
+      query: word,
+      lookupKind,
+      providerHadData: false,
+      rawData: null,
+      providerError: "Skipped provider lookup for contextual query.",
+    };
+  }
+
+  const url = `https://freedictionaryapi.com/api/v1/entries/en/${encodeURIComponent(
+    word
+  )}?translations=true`;
+
+  try {
+    const res = await fetch(url);
+    const data = await res.json().catch(() => null);
+    const providerHadData =
+      res.ok &&
+      data &&
+      typeof data === "object" &&
+      Array.isArray(data.entries) &&
+      data.entries.length > 0;
+
+    return {
+      provider: FREE_DICTIONARY_SOURCE,
+      language: "en",
+      query: word,
+      lookupKind,
+      providerHadData,
+      rawData: providerHadData ? data : null,
+      providerError: providerHadData
+        ? undefined
+        : `Provider returned no entries${res.ok ? "" : ` (${res.status})`}.`,
+    };
+  } catch (error: any) {
+    return {
+      provider: FREE_DICTIONARY_SOURCE,
+      language: "en",
+      query: word,
+      lookupKind,
+      providerHadData: false,
+      rawData: null,
+      providerError: error?.message || "Provider request failed.",
+    };
+  }
 }
 
 export async function fetchUnsplashImages(keywords: string[], limit = 2) {
@@ -630,6 +689,16 @@ export async function fetchUnsplashImages(keywords: string[], limit = 2) {
 
 const normalizeDictionaryQuery = (value: string): string =>
   value.trim().toLowerCase().replace(/\s+/g, " ");
+
+const countDictionaryQueryWords = (value: string): number =>
+  normalizeDictionaryQuery(value)
+    .split(" ")
+    .filter(Boolean).length;
+
+const classifyDictionaryLookupKind = (
+  wordCount: number
+): DictionaryLookupKind =>
+  wordCount === 1 ? "dictionary_entry" : "contextual_query";
 
 const isLikelyEnglishDictionaryQuery = (value: string): boolean =>
   /^[a-zA-Z][a-zA-Z\s'-]*$/.test(value.trim());
@@ -688,6 +757,33 @@ const isRetryableDictionaryModelError = (err: any): boolean => {
 const toStringValue = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
 
+const normalizeDictionaryPartOfSpeech = (value: unknown): string => {
+  const raw = toStringValue(value);
+  const compact = raw.toLowerCase().replace(/[\s_-]+/g, " ");
+
+  if (!raw) return "Other";
+  if (["n", "noun"].includes(compact)) return "N";
+  if (["v", "verb"].includes(compact)) return "V";
+  if (["adj", "adjective"].includes(compact)) return "Adj";
+  if (["adv", "adverb"].includes(compact)) return "Adv";
+  if (["prep", "preposition"].includes(compact)) return "Prep";
+  if (["conj", "conjunction"].includes(compact)) return "Conj";
+  if (["pron", "pronoun"].includes(compact)) return "Pron";
+  if (["det", "determiner", "article"].includes(compact)) return "Det";
+  if (["interj", "interjection"].includes(compact)) return "Interj";
+
+  if (
+    compact.includes("phrase") ||
+    compact.includes("idiom") ||
+    compact.includes("collocation") ||
+    compact.includes("phrasal")
+  ) {
+    return "Phrase";
+  }
+
+  return raw.length > 12 ? "Other" : raw;
+};
+
 const normalizeDictionaryPairs = (
   items: any[] | undefined,
   leftKey: string,
@@ -742,7 +838,7 @@ const normalizeDictionaryTranslations = (items: any[] | undefined) => {
   for (const item of items) {
     if (!item || typeof item !== "object") continue;
 
-    const partOfSpeech = toStringValue(item.partOfSpeech);
+    const partOfSpeech = normalizeDictionaryPartOfSpeech(item.partOfSpeech);
     const meanings = Array.isArray(item.meanings)
       ? item.meanings
         .map((meaning: any) => ({
@@ -775,56 +871,209 @@ const normalizeDictionaryTranslations = (items: any[] | undefined) => {
   return normalized;
 };
 
-const normalizeDictionaryData = (parsed: any, fallbackWord: string) => ({
-  ...parsed,
-  englishWord: toStringValue(parsed?.englishWord) || fallbackWord,
-  phonetic_uk: toStringValue(parsed?.phonetic_uk),
-  phonetic_us: toStringValue(parsed?.phonetic_us),
-  audio_uk: toStringValue(parsed?.audio_uk),
-  audio_us: toStringValue(parsed?.audio_us),
-  translations: normalizeDictionaryTranslations(parsed?.translations),
-  examples: normalizeDictionaryPairs(parsed?.examples, "en", "vi"),
-  synonyms: normalizeDictionaryPairs(parsed?.synonyms, "word", "meaning"),
-  antonyms: normalizeDictionaryPairs(parsed?.antonyms, "word", "meaning"),
-  word_family: normalizeDictionaryPairs(
-    parsed?.word_family,
-    "word",
-    "partOfSpeech"
-  ),
-  collocations: normalizeDictionaryPairs(
-    parsed?.collocations,
-    "phrase",
-    "meaning"
-  ),
-  imageKeywords: Array.isArray(parsed?.imageKeywords)
-    ? parsed.imageKeywords.map(toStringValue).filter(Boolean)
-    : [],
-  metadata: {
-    source: "dictionaryapi.dev",
-    enrichedByAI: true,
-    ...(parsed?.metadata && typeof parsed.metadata === "object"
+const normalizeDictionaryData = (
+  parsed: any,
+  fallbackWord: string,
+  defaultSource: string
+) => {
+  const parsedMetadata =
+    parsed?.metadata && typeof parsed.metadata === "object"
       ? parsed.metadata
-      : {}),
-  },
+      : {};
+  const parsedSource = toStringValue(parsedMetadata.source);
+  const source =
+    parsedSource && parsedSource !== "dictionaryapi.dev"
+      ? parsedSource
+      : defaultSource;
+  const missingFieldsFilledByAI = Array.isArray(
+    parsedMetadata.missingFieldsFilledByAI
+  )
+    ? parsedMetadata.missingFieldsFilledByAI.map(toStringValue).filter(Boolean)
+    : [];
+  if (
+    defaultSource === AI_GENERATED_DICTIONARY_SOURCE &&
+    !missingFieldsFilledByAI.includes("provider_no_entry")
+  ) {
+    missingFieldsFilledByAI.push("provider_no_entry");
+  }
+
+  return {
+    ...parsed,
+    englishWord: toStringValue(parsed?.englishWord) || fallbackWord,
+    phonetic_uk: toStringValue(parsed?.phonetic_uk),
+    phonetic_us: toStringValue(parsed?.phonetic_us),
+    audio_uk: toStringValue(parsed?.audio_uk),
+    audio_us: toStringValue(parsed?.audio_us),
+    translations: normalizeDictionaryTranslations(parsed?.translations),
+    examples: normalizeDictionaryPairs(parsed?.examples, "en", "vi"),
+    synonyms: normalizeDictionaryPairs(parsed?.synonyms, "word", "meaning"),
+    antonyms: normalizeDictionaryPairs(parsed?.antonyms, "word", "meaning"),
+    word_family: normalizeDictionaryPairs(
+      parsed?.word_family,
+      "word",
+      "partOfSpeech"
+    ),
+    collocations: normalizeDictionaryPairs(
+      parsed?.collocations,
+      "phrase",
+      "meaning"
+    ),
+    imageKeywords: Array.isArray(parsed?.imageKeywords)
+      ? parsed.imageKeywords.map(toStringValue).filter(Boolean)
+      : [],
+    metadata: {
+      ...parsedMetadata,
+      source,
+      enrichedByAI: true,
+      missingFieldsFilledByAI,
+    },
+  };
+};
+
+const buildDictionaryPromptPayload = (
+  rawLookup: DictionaryRawLookupResult
+) => ({
+  provider: rawLookup.provider,
+  language: rawLookup.language,
+  query: rawLookup.query,
+  lookupKind: rawLookup.lookupKind,
+  providerHadData: rawLookup.providerHadData,
+  providerError: rawLookup.providerError || "",
+  rawData: rawLookup.rawData,
 });
+
+const buildDictionaryPrompt = (
+  promptTemplate: string,
+  rawLookup: DictionaryRawLookupResult
+) =>
+  promptTemplate.replace(
+    "{{DICTIONARY_RAW_DATA}}",
+    JSON.stringify(buildDictionaryPromptPayload(rawLookup), null, 2)
+  );
+
+const shouldFetchDictionaryImages = (
+  normalizedDictionary: ReturnType<typeof normalizeDictionaryData>,
+  lookupKind: DictionaryLookupKind
+) =>
+  lookupKind === "dictionary_entry" &&
+  Array.isArray(normalizedDictionary.imageKeywords) &&
+  normalizedDictionary.imageKeywords.length > 0;
+
+const fetchDictionaryImagesSafely = async (
+  keywords: string[],
+  lookupKind: DictionaryLookupKind
+) => {
+  if (lookupKind !== "dictionary_entry" || keywords.length === 0) return [];
+
+  try {
+    return await fetchUnsplashImages(keywords);
+  } catch (error: any) {
+    console.warn("Dictionary image lookup skipped:", error?.message || error);
+    return [];
+  }
+};
+
+const extractJsonErrorPosition = (message: string): number | null => {
+  const match = message.match(/position\s+(\d+)/i);
+  if (!match) return null;
+
+  const position = Number(match[1]);
+  return Number.isFinite(position) ? position : null;
+};
+
+const getTextWindow = (text: string, position: number, radius = 500) => {
+  const start = Math.max(0, position - radius);
+  const end = Math.min(text.length, position + radius);
+
+  return {
+    start,
+    end,
+    excerpt: text.slice(start, end),
+  };
+};
+
+const parseDictionaryJsonOrThrow = (params: {
+  text: string;
+  model: string;
+  query: string;
+  englishWord: string;
+  lookupKind: DictionaryLookupKind;
+}) => {
+  try {
+    return JSON.parse(params.text);
+  } catch (error: any) {
+    const message = error?.message || "Unknown JSON parse error";
+    const position = extractJsonErrorPosition(message);
+    const aroundError =
+      position !== null ? getTextWindow(params.text, position) : null;
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const filename = `dictionary-invalid-json-${timestamp}-${params.model}.json`;
+
+    const debugPayload = {
+      model: params.model,
+      query: params.query,
+      englishWord: params.englishWord,
+      lookupKind: params.lookupKind,
+      error: message,
+      textLength: params.text.length,
+      errorPosition: position,
+      aroundError,
+      rawText: params.text,
+    };
+
+    console.error("[Dictionary JSON parse failed]", {
+      model: params.model,
+      query: params.query,
+      englishWord: params.englishWord,
+      lookupKind: params.lookupKind,
+      error: message,
+      textLength: params.text.length,
+      errorPosition: position,
+      excerptStart: aroundError?.start,
+      excerptEnd: aroundError?.end,
+      excerpt: aroundError?.excerpt,
+    });
+
+    try {
+      saveDebugFile(filename, debugPayload);
+    } catch (saveError: any) {
+      console.warn(
+        "Could not save dictionary invalid JSON debug file:",
+        saveError?.message || saveError
+      );
+    }
+
+    throw error;
+  }
+};
 
 async function buildDictionaryLookupResult(params: {
   parsed: any;
   englishWord: string;
   normalizedQuery: string;
-  rawDictData: any;
+  rawLookup: DictionaryRawLookupResult;
   model: string;
 }) {
   const normalizedEnglishWord = normalizeDictionaryQuery(params.englishWord);
+  const defaultSource = params.rawLookup.providerHadData
+    ? params.rawLookup.provider
+    : AI_GENERATED_DICTIONARY_SOURCE;
   const normalizedDictionary = normalizeDictionaryData(
     params.parsed,
-    params.englishWord
+    params.englishWord,
+    defaultSource
   );
 
-  const imageKeywords = normalizedDictionary.imageKeywords.length > 0
+  const imageKeywords = shouldFetchDictionaryImages(
+    normalizedDictionary,
+    params.rawLookup.lookupKind
+  )
     ? normalizedDictionary.imageKeywords
-    : [params.englishWord];
-  const images = await fetchUnsplashImages(imageKeywords);
+    : [];
+  const images = await fetchDictionaryImagesSafely(
+    imageKeywords,
+    params.rawLookup.lookupKind
+  );
   const dictionaryData = {
     ...normalizedDictionary,
     imageUrls: images.map((img: any) => img.url),
@@ -837,7 +1086,7 @@ async function buildDictionaryLookupResult(params: {
         english_word: dictionaryData.englishWord,
         normalized_key: normalizedEnglishWord,
         data: dictionaryData,
-        source_raw: params.rawDictData,
+        source_raw: params.rawLookup,
         model_used: params.model,
         last_lookup_at: new Date(),
       },
@@ -862,6 +1111,12 @@ export async function dictionaryLookup(query: string) {
   }
 
   const normalizedQuery = normalizeDictionaryQuery(query);
+  const queryWordCount = countDictionaryQueryWords(normalizedQuery);
+  if (queryWordCount > 10) {
+    throw new Error("Vui lòng chọn tối đa 10 từ để tra từ điển.");
+  }
+
+  const lookupKind = classifyDictionaryLookupKind(queryWordCount);
   const cachedByQuery = await findDictionaryCache(normalizedQuery);
   if (cachedByQuery) {
     return buildCachedDictionaryResult(cachedByQuery, normalizedQuery);
@@ -876,20 +1131,22 @@ export async function dictionaryLookup(query: string) {
     propertyOrdering: ["englishWord"],
   };
 
-  for (const model of MODELS) {
-    try {
-      console.log(`🧠 Trying model: ${model}`);
-
-      let englishWord = query.trim();
-
-      if (!isLikelyEnglishDictionaryQuery(query)) {
-        const translatePrompt = `
+  const buildTranslatePrompt = (input: string) => `
 Translate the following word or phrase into English. Return JSON only with the key "englishWord".
 Do not add any explanation.
 
 Input: "quả táo" -> Output: {"englishWord":"apple"}
-Input to translate: "${query}"
+Input to translate: "${input}"
 `;
+
+  for (const model of MODELS) {
+    try {
+      console.log(`🧠 Trying model: ${model}`);
+
+      let englishWord = normalizedQuery;
+
+      if (!isLikelyEnglishDictionaryQuery(query)) {
+        const translatePrompt = buildTranslatePrompt(normalizedQuery);
 
         const translateResult = await ai.models.generateContent({
           model,
@@ -906,7 +1163,7 @@ Input to translate: "${query}"
         }
 
         englishWord =
-          JSON.parse(translateResult.text).englishWord?.trim() || query;
+          JSON.parse(translateResult.text).englishWord?.trim() || normalizedQuery;
       }
 
       console.log("🔤 Detected English word:", englishWord);
@@ -922,11 +1179,8 @@ Input to translate: "${query}"
         );
       }
 
-      const rawDictData = await fetchDictionaryRawData(englishWord);
-      const prompt = promptTemplate.replace(
-        "{{DICTIONARY_RAW_DATA}}",
-        JSON.stringify(rawDictData, null, 2)
-      );
+      const rawLookup = await fetchDictionaryRawData(englishWord, lookupKind);
+      const prompt = buildDictionaryPrompt(promptTemplate, rawLookup);
 
       const result = await ai.models.generateContent({
         model,
@@ -942,46 +1196,21 @@ Input to translate: "${query}"
       const text = result.text?.trim();
       if (!text) throw new Error("Empty structured response from Gemini.");
 
-      const parsed = JSON.parse(text);
-      console.log("📦 Gemini dictionary result:", parsed);
-      const normalizedDictionary = normalizeDictionaryData(
-        parsed,
-        englishWord
-      );
-
-      const imageKeywords = normalizedDictionary.imageKeywords.length > 0
-        ? normalizedDictionary.imageKeywords
-        : [englishWord];
-      const images = await fetchUnsplashImages(imageKeywords);
-      const dictionaryData = {
-        ...normalizedDictionary,
-        imageUrls: images.map((img: any) => img.url),
-      };
-
-      await DictionaryEntry.findOneAndUpdate(
-        { normalized_key: normalizedEnglishWord },
-        {
-          $set: {
-            english_word: dictionaryData.englishWord,
-            normalized_key: normalizedEnglishWord,
-            data: dictionaryData,
-            source_raw: rawDictData,
-            model_used: model,
-            last_lookup_at: new Date(),
-          },
-          $addToSet: {
-            query_aliases: { $each: [normalizedQuery, normalizedEnglishWord] },
-          },
-          $inc: { lookup_count: 1 },
-        },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-      );
-
-      return {
+      const parsed = parseDictionaryJsonOrThrow({
+        text,
         model,
-        cached: false,
-        json: dictionaryData,
-      };
+        query: normalizedQuery,
+        englishWord,
+        lookupKind,
+      });
+      console.log("📦 Gemini dictionary result:", parsed);
+      return buildDictionaryLookupResult({
+        parsed,
+        englishWord,
+        normalizedQuery,
+        rawLookup,
+        model,
+      });
     } catch (err: any) {
       const msg = err?.message || err?.error?.message || "";
       if (isRetryableDictionaryModelError(err)) {
@@ -996,15 +1225,9 @@ Input to translate: "${query}"
     }
   }
 
-  let englishWord = query.trim();
+  let englishWord = normalizedQuery;
   if (!isLikelyEnglishDictionaryQuery(query)) {
-    const translatePrompt = `
-Translate the following word or phrase into English. Return JSON only with the key "englishWord".
-Do not add any explanation.
-
-Input: "quả táo" -> Output: {"englishWord":"apple"}
-Input to translate: "${query}"
-`;
+    const translatePrompt = buildTranslatePrompt(normalizedQuery);
     const translateFallback = await generateDeepSeekJsonFallback({
       prompt: translatePrompt,
       jsonSchema: TranslateSchema,
@@ -1012,7 +1235,7 @@ Input to translate: "${query}"
       temperature: 0.2,
       maxTokens: 1024,
     });
-    englishWord = translateFallback.json?.englishWord?.trim() || query.trim();
+    englishWord = translateFallback.json?.englishWord?.trim() || normalizedQuery;
   }
 
   const normalizedEnglishWord = normalizeDictionaryQuery(englishWord);
@@ -1021,11 +1244,8 @@ Input to translate: "${query}"
     return buildCachedDictionaryResult(cachedByEnglishWord, normalizedQuery);
   }
 
-  const rawDictData = await fetchDictionaryRawData(englishWord);
-  const prompt = promptTemplate.replace(
-    "{{DICTIONARY_RAW_DATA}}",
-    JSON.stringify(rawDictData, null, 2)
-  );
+  const rawLookup = await fetchDictionaryRawData(englishWord, lookupKind);
+  const prompt = buildDictionaryPrompt(promptTemplate, rawLookup);
   const fallback = await generateDeepSeekJsonFallback({
     prompt,
     jsonSchema: DictionarySchema,
@@ -1038,7 +1258,7 @@ Input to translate: "${query}"
     parsed: fallback.json,
     englishWord,
     normalizedQuery,
-    rawDictData,
+    rawLookup,
     model: fallback.model,
   });
 }
