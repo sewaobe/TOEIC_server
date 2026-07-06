@@ -14,12 +14,19 @@ IMPORTANT OVERRIDE:
   long descriptions inside `partOfSpeech`.
 - For phrasal verbs, idioms, collocations, and other multi-word expressions,
   use `"Phrase"`.
-- This AI call must produce the final usable dictionary response. If provider
-  data is missing or incomplete, fill the missing meaning/example fields yourself.
+- This AI call must produce the final usable dictionary response. The provider
+  raw data is only a reference source. Do not copy its missing or incomplete
+  shape into the final JSON.
+- If provider data is missing or incomplete, you MUST create the missing
+  meanings/examples/synonyms/collocations yourself based on the query and TOEIC
+  usage.
+- REQUIRED FINAL SHAPE: every object in `translations` MUST contain both
+  `partOfSpeech` and a non-empty `meanings` array.
+- REQUIRED FINAL SHAPE: every `meanings` item MUST contain a useful Vietnamese
+  meaning in `vi`. Add a concise English meaning in `en` when possible.
+- Never output `{ "partOfSpeech": "..." }` without `meanings`.
 - For contextual phrase/sentence queries, behave like a smart translator first:
   translate the selected text naturally into Vietnamese, then add short examples.
-- Every item in `translations` should include a useful `meanings` array.
-- Never return a translation item with only `partOfSpeech`.
 - For a phrase or sentence fragment, `meanings[0].vi` should be the natural
   Vietnamese meaning/translation of the selected text. Do not replace it with a
   dictionary-style description of the grammar.
@@ -64,7 +71,9 @@ Hãy xử lý theo yêu cầu sau:
 
 5. **Gộp và rút gọn nghĩa theo hướng học TOEIC:**
    - Mỗi `translation` tương ứng với một `partOfSpeech`.
-   - Mỗi `translation` nên có `meanings` không rỗng do AI tự bổ sung nếu dữ liệu gốc thiếu.
+   - Mỗi `translation` bắt buộc phải có `meanings` không rỗng do AI tự bổ sung nếu dữ liệu gốc thiếu.
+   - Dữ liệu gốc từ API chỉ là nguồn tham khảo; output cuối cùng phải là dữ liệu đã được AI hoàn thiện.
+   - `meanings[].vi` bắt buộc phải có nghĩa tiếng Việt hữu ích. Không được để trống.
    - Không được trả về object chỉ có `partOfSpeech` mà thiếu `meanings`.
    - Nếu query là cụm/câu ngắn, hãy dịch nghĩa trực tiếp của toàn bộ cụm/câu đó sang tiếng Việt tự nhiên.
    - Với cụm/câu ngắn, ưu tiên nghĩa kiểu dịch thuật trong `meanings[].vi`; không viết định nghĩa vòng vo kiểu từ điển.
