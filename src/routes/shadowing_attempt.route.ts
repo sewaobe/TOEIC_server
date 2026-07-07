@@ -3,6 +3,7 @@ import multer from "multer";
 import {
   completeShadowingAttemptController,
   deleteShadowingAttemptBySessionController,
+  fastCompleteShadowingAttemptController,
   getShadowingAttemptBySessionController,
   saveShadowingAttemptDraftController,
 } from "../controllers/shadowing_attempt.controller";
@@ -18,6 +19,7 @@ const upload = multer({
 
 router.get("/session/:sessionId", getShadowingAttemptBySessionController);
 router.post("/session/:sessionId/save-draft", saveShadowingAttemptDraftController);
+router.post("/session/:sessionId/fast-complete", fastCompleteShadowingAttemptController);
 router.post(
   "/session/:sessionId/complete",
   upload.single("audio"),

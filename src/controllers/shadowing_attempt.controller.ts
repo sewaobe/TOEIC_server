@@ -3,6 +3,7 @@ import { ApiResponse } from "../utils/ApiResponse";
 import {
   completeShadowingAttemptService,
   deleteShadowingAttemptBySessionService,
+  fastCompleteShadowingAttemptService,
   getShadowingAttemptBySessionService,
   saveShadowingAttemptDraftService,
 } from "../services/shadowing_attempt.service";
@@ -88,6 +89,29 @@ export const completeShadowingAttemptController = async (
     );
 
     res.status(200).json(ApiResponse.success(attempt, "Hoàn thành shadowing attempt thành công."));
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const fastCompleteShadowingAttemptController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    if (!req.user?._id) {
+      return res.status(401).json(ApiResponse.fail("NgÆ°á»i dÃ¹ng chÆ°a Ä‘Äƒng nháº­p!"));
+    }
+
+    const payload = parsePayload(req.body.payload);
+    const attempt = await fastCompleteShadowingAttemptService(
+      req.params.sessionId,
+      req.user._id,
+      payload,
+    );
+
+    res.status(200).json(ApiResponse.success(attempt, "HoÃ n thÃ nh nhanh shadowing attempt thÃ nh cÃ´ng."));
   } catch (err) {
     next(err);
   }
