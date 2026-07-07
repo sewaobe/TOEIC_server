@@ -500,9 +500,11 @@ export const DictionarySchema = {
                 en: { type: Type.STRING },
                 vi: { type: Type.STRING },
               },
+              required: ["en", "vi"],
             },
           },
         },
+        required: ["partOfSpeech", "meanings"],
       },
     },
     examples: {
@@ -513,6 +515,7 @@ export const DictionarySchema = {
           en: { type: Type.STRING },
           vi: { type: Type.STRING },
         },
+        required: ["en", "vi"],
       },
     },
     synonyms: {
@@ -523,6 +526,7 @@ export const DictionarySchema = {
           word: { type: Type.STRING },
           meaning: { type: Type.STRING },
         },
+        required: ["word", "meaning"],
       },
     },
     antonyms: {
@@ -533,6 +537,7 @@ export const DictionarySchema = {
           word: { type: Type.STRING },
           meaning: { type: Type.STRING },
         },
+        required: ["word", "meaning"],
       },
     },
     word_family: {
@@ -543,6 +548,7 @@ export const DictionarySchema = {
           word: { type: Type.STRING },
           partOfSpeech: { type: Type.STRING },
         },
+        required: ["word", "partOfSpeech"],
       },
     },
     collocations: {
@@ -553,6 +559,7 @@ export const DictionarySchema = {
           phrase: { type: Type.STRING },
           meaning: { type: Type.STRING },
         },
+        required: ["phrase", "meaning"],
       },
     },
     metadata: {
@@ -565,9 +572,25 @@ export const DictionarySchema = {
           items: { type: Type.STRING },
         },
       },
+      required: ["source", "enrichedByAI", "missingFieldsFilledByAI"],
     },
     imageKeywords: { type: Type.ARRAY, items: { type: Type.STRING } },
   },
+  required: [
+    "englishWord",
+    "phonetic_uk",
+    "phonetic_us",
+    "audio_uk",
+    "audio_us",
+    "translations",
+    "examples",
+    "synonyms",
+    "antonyms",
+    "word_family",
+    "collocations",
+    "imageKeywords",
+    "metadata",
+  ],
   propertyOrdering: [
     "englishWord",
     "phonetic_uk",
@@ -1186,7 +1209,7 @@ Input to translate: "${input}"
         model,
         contents: prompt,
         config: {
-          temperature: 0.4,
+          temperature: 0.2,
           maxOutputTokens: 8192,
           responseMimeType: "application/json",
           responseSchema: DictionarySchema,
@@ -1272,6 +1295,13 @@ export const TranslateSchema = {
     translatedText: { type: Type.STRING },
     translationNotes: { type: Type.STRING },
   },
+  required: [
+    "sourceLang",
+    "targetLang",
+    "originalText",
+    "translatedText",
+    "translationNotes",
+  ],
   propertyOrdering: [
     "sourceLang",
     "targetLang",
@@ -1280,6 +1310,35 @@ export const TranslateSchema = {
     "translationNotes",
   ],
 };
+
+const replaceAllTemplateVars = (
+  template: string,
+  values: Record<string, string>
+) =>
+  Object.entries(values).reduce(
+    (result, [key, value]) => result.split(`{{${key}}}`).join(value),
+    template
+  );
+
+const normalizeTranslationInput = (value: string): string =>
+  value.trim().replace(/\s+/g, " ");
+
+const normalizeTranslationResult = (
+  parsed: any,
+  text: string,
+  sourceLang: string,
+  targetLang: string
+) => ({
+  sourceLang,
+  targetLang,
+  originalText: text,
+  translatedText:
+    typeof parsed?.translatedText === "string" ? parsed.translatedText.trim() : "",
+  translationNotes:
+    typeof parsed?.translationNotes === "string"
+      ? parsed.translationNotes.trim()
+      : "",
+});
 
 /**
  * Dịch văn bản giữa hai ngôn ngữ bằng Gemini (chuẩn style backend)
@@ -1293,6 +1352,9 @@ export async function translateText(
   targetLang: string
 ) {
   if (!text?.trim()) throw new Error("Missing text for translation.");
+  const normalizedText = text.trim();
+  const normalizedSourceLang = sourceLang?.trim() || "auto";
+  const normalizedTargetLang = targetLang?.trim() || "vi";
 
   // Đọc prompt từ file cấu hình
   const promptPath = path.resolve(__dirname, "../configs/translate.txt");
@@ -1301,11 +1363,12 @@ export async function translateText(
 
   const promptTemplate = fs.readFileSync(promptPath, "utf8");
 
-  // Thay placeholder
-  const prompt = promptTemplate
-    .replace("{{SOURCE_LANG}}", sourceLang)
-    .replace("{{TARGET_LANG}}", targetLang)
-    .replace("{{TEXT}}", text);
+  // Replace all placeholders. String.replace only replaces the first match.
+  const prompt = replaceAllTemplateVars(promptTemplate, {
+    SOURCE_LANG: normalizedSourceLang,
+    TARGET_LANG: normalizedTargetLang,
+    TEXT: normalizedText,
+  });
 
   // thu lần lượt qua các model
   for (const model of MODELS) {
@@ -1316,7 +1379,7 @@ export async function translateText(
         model,
         contents: prompt,
         config: {
-          temperature: 0.4,
+          temperature: 0.2,
           maxOutputTokens: 4096,
           responseMimeType: "application/json",
           responseSchema: TranslateSchema,
@@ -1336,7 +1399,25 @@ export async function translateText(
       }
 
       console.log("📦 Translation result:", parsed);
-      return { model, json: parsed };
+      if (
+        parsed?.originalText &&
+        normalizeTranslationInput(parsed.originalText) !==
+        normalizeTranslationInput(normalizedText)
+      ) {
+        throw new Error("Translation response originalText does not match input.");
+      }
+
+      const normalizedResult = normalizeTranslationResult(
+        parsed,
+        normalizedText,
+        normalizedSourceLang,
+        normalizedTargetLang
+      );
+      if (!normalizedResult.translatedText) {
+        throw new Error("Translation response missing translatedText.");
+      }
+
+      return { model, json: normalizedResult };
     } catch (err: any) {
       const msg = err?.message || err?.error?.message || "";
       if (
@@ -1356,10 +1437,18 @@ export async function translateText(
     prompt,
     jsonSchema: TranslateSchema,
     taskName: "translate_text",
-    temperature: 0.4,
+    temperature: 0.2,
     maxTokens: 4096,
   });
-  return { model: fallback.model, json: fallback.json };
+  return {
+    model: fallback.model,
+    json: normalizeTranslationResult(
+      fallback.json,
+      normalizedText,
+      normalizedSourceLang,
+      normalizedTargetLang
+    ),
+  };
 }
 
 export const DictationAnalysisSchema = {
