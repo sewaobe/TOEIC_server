@@ -102,7 +102,7 @@ const AI_FALLBACK_REPLY =
   "Mình đã lấy dữ liệu từ bài làm của bạn, nhưng AI đang quá tải hoặc phản hồi chậm. Bạn thử lại sau ít phút nhé.";
 
 const GEMINI_UNKNOWN_FALLBACK_REPLY =
-  "Minh chua xac dinh duoc doi tuong ban dang hoi. Ban muon minh dung cau dang chon tren man hinh, bai lam gan nhat, hay ban se gui them noi dung cu the?";
+  "Mình chưa xác định được đối tượng bạn đang hỏi. Bạn muốn mình dùng câu đang chọn trên màn hình, bài làm gần nhất, hay bạn sẽ gửi thêm nội dung cụ thể?";
 
 async function loadRecentChatHistoryForFallback(sessionId: string, limit = 40) {
   const messages = await ChatMessage.find({ session_id: sessionId })
@@ -807,7 +807,7 @@ async function buildDbFirstProcessingState({
     context = {
       ...context,
       fallback:
-        "Minh chua co du du lieu de danh gia nang luc hien tai. Ban hay lam mot bai test hoac hoan thanh mot hoat dong hoc truoc nhe.",
+        "Mình chưa có đủ dữ liệu để đánh giá năng lực hiện tại. Bạn hãy làm một bài test hoặc hoàn thành một hoạt động học trước nhé.",
     };
   }
   const responseMode =
@@ -1174,7 +1174,7 @@ async function resolveDbFirstReply(
     reply = isQuestionTarget
       ? "Mình hiểu bạn muốn hỏi về một câu hỏi, nhưng chưa xác định chắc câu nào. Bạn chọn câu phù hợp bên dưới để mình xử lý tiếp nhé."
       : isFlashcardQuestionTarget
-        ? "Minh hieu ban muon tao flashcard tu mot cau hoi, nhung chua xac dinh chac cau nao. Ban chon cau phu hop ben duoi de minh tao bo flashcard nhe."
+        ? "Mình hiểu bạn muốn tạo flashcard từ một câu hỏi, nhưng chưa xác định chắc câu nào. Bạn chọn câu phù hợp bên dưới để mình tạo bộ flashcard nhé."
       : clarifyIntentId === "test_attempt.analysis"
         ? "Mình hiểu bạn muốn xem thông tin bài làm, nhưng chưa xác định chắc bài nào. Bạn chọn bài phù hợp bên dưới để mình xử lý tiếp nhé."
         : "Mình hiểu bạn muốn xem thông tin liên quan, nhưng chưa xác định chắc đối tượng nào. Bạn chọn mục phù hợp bên dưới để mình xử lý tiếp nhé.";

@@ -416,7 +416,7 @@ function buildLessonRecommendationsView(context: DbFirstContext): IChatStructure
     : [];
   return {
     type: "lesson_recommendations",
-    title: context.data.title || "Bai hoc goi y",
+    title: context.data.title || "Bài học gợi ý",
     subtitle: context.data.subtitle,
     sourceTags: Array.isArray(context.data.sourceTags) ? context.data.sourceTags : [],
     items: recommendations.map((item: any) => ({

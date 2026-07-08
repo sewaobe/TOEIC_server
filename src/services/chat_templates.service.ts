@@ -208,16 +208,16 @@ function buildLessonRecommendationTemplate(context: any) {
   const data = context.data ?? {};
   const items = Array.isArray(data.recommendations) ? data.recommendations : [];
   if (!items.length) {
-    return "Minh chua tim thay bai hoc phu hop voi yeu cau nay.";
+    return "Mình chưa tìm thấy bài học phù hợp với yêu cầu này.";
   }
   const subtitle = data.subtitle ? ` theo ${data.subtitle}` : "";
   const matchMode = data.request?.matchMode;
   const fallbackNote =
     matchMode && matchMode !== "exact"
-      ? " Chua co bai khop ca Part va chu de, nen minh dang goi y phuong an gan dung nhat."
+      ? " Chưa có bài khớp cả Part và chủ đề, nên mình đang gợi ý phương án gần đúng nhất."
       : "";
   return [
-    `Minh tim duoc ${items.length} bai hoc${subtitle}.${fallbackNote}`,
+    `Mình tìm được ${items.length} bài học${subtitle}.${fallbackNote}`,
     ...items.slice(0, 5).map((item: any, index: number) => {
       const part = item.part ? `Part ${item.part}` : "";
       const reason = item.reason ? ` - ${item.reason}` : "";
@@ -241,7 +241,7 @@ export function buildTemplateReply(intent: ChatIntent, context: any, options: Te
 
   if (intent === "out_of_project.general") {
     return context?.data?.refusal ??
-      "Minh chi ho tro cac cau hoi lien quan TOEIC, tieng Anh hoc TOEIC va viec hoc trong he thong nay.";
+      "Mình chỉ hỗ trợ các câu hỏi liên quan TOEIC, tiếng Anh học TOEIC và việc học trong hệ thống này.";
   }
 
   if (
@@ -276,17 +276,17 @@ export function buildTemplateReply(intent: ChatIntent, context: any, options: Te
   if (intent === "flashcard.create") {
     const data = context.data;
     const sourceText = [
-      data.suppliedBy?.systemCatalog ? `${data.suppliedBy.systemCatalog} tu tu kho he thong` : "",
-      data.suppliedBy?.gemini ? `${data.suppliedBy.gemini} tu AI bo sung` : "",
+      data.suppliedBy?.systemCatalog ? `${data.suppliedBy.systemCatalog} từ từ kho hệ thống` : "",
+      data.suppliedBy?.gemini ? `${data.suppliedBy.gemini} từ AI bổ sung` : "",
     ].filter(Boolean).join(", ");
     const partial =
       data.policyReason === "STRICT_SOURCE_LIMIT" ||
       data.policyReason === "PARTIAL_DB_ONLY" ||
       data.policyReason === "PARTIAL_AFTER_GENERATION";
     return [
-      `Minh da tao bo flashcard "${data.title}" voi ${data.returnedCount}/${data.requestedCount} tu.`,
-      sourceText ? `Nguon: ${sourceText}.` : "",
-      partial ? "So luong thap hon yeu cau vi minh chi giu cac tu hop le." : "",
+      `Mình đã tạo bộ flashcard "${data.title}" với ${data.returnedCount}/${data.requestedCount} từ.`,
+      sourceText ? `Nguồn: ${sourceText}.` : "",
+      partial ? "Số lượng thấp hơn yêu cầu vì mình chỉ giữ các từ hợp lệ." : "",
     ].filter(Boolean).join("\n");
   }
 

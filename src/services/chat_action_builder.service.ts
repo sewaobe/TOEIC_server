@@ -178,7 +178,7 @@ export function buildActions(
       return [
         {
           id: "open-attempt-review",
-          label: "Mo review cau sai",
+          label: "Mở review câu sai",
           type: "open_attempt_review",
           payload: {
             target: "mistake_review",
@@ -186,7 +186,7 @@ export function buildActions(
         },
         {
           id: "open-test-result",
-          label: "Mo ket qua bai lam",
+          label: "Mở kết quả bài làm",
           type: "open_test_result",
           payload: {
             target: "test_result",

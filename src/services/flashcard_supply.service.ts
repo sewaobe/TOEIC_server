@@ -959,7 +959,7 @@ export async function createFlashcardSupplyDeck(params: {
   }
 
   if (request.source.kind === "topic" && !request.source.topic?.trim()) {
-    return softFailure("Minh can biet chu de de tao flashcard.");
+    return softFailure("Mình cần biết chủ đề để tạo flashcard.");
   }
 
   const resolvedQuestionId =
@@ -971,7 +971,7 @@ export async function createFlashcardSupplyDeck(params: {
       ? await loadQuestionContext(params.userId, resolvedQuestionId, params.routeContext)
       : null;
   if (request.source.kind === "question_error" && !questionContext) {
-    return softFailure("Minh chua xac thuc duoc cau hoi trong ngu canh hien tai de tao flashcard.");
+    return softFailure("Mình chưa xác thực được câu hỏi trong ngữ cảnh hiện tại để tạo flashcard.");
   }
 
   const allowedTerms = questionContext?.allowedTerms ?? new Set<string>();
@@ -1003,7 +1003,7 @@ export async function createFlashcardSupplyDeck(params: {
 
   if (request.expansion === "strict") {
     if (!finalCandidates.length) {
-      return softFailure("Minh chua tim thay tu hop le nam trong cau hoi nay de tao flashcard.");
+      return softFailure("Mình chưa tìm thấy từ hợp lệ nằm trong câu hỏi này để tạo flashcard.");
     }
     policyReason = "STRICT_SOURCE_LIMIT";
   } else if (finalCandidates.length < request.count) {
@@ -1027,7 +1027,7 @@ export async function createFlashcardSupplyDeck(params: {
   }
 
   if (finalCandidates.length < MIN_COUNT) {
-    return softFailure("Minh chua co du tu hop le de tao bo flashcard huu ich.");
+    return softFailure("Mình chưa có đủ từ hợp lệ để tạo bộ flashcard hữu ích.");
   }
 
   const tags = Array.from(

@@ -19,6 +19,7 @@
     "chatbot:check-output": "ts-node scripts/check-chatbot-output-regression.ts",
     "chatbot:check-output:gemma": "set CHAT_LLM_PREFER_GEMMA=1&& set CHATBOT_OUTPUT_INCLUDE_AI=1&& ts-node scripts/check-chatbot-output-regression.ts",
     "chatbot:check-output:full": "set CHAT_LLM_PREFER_GEMMA=1&& set CHATBOT_OUTPUT_FULL=1&& set CHATBOT_OUTPUT_INCLUDE_AI=1&& ts-node scripts/check-chatbot-output-regression.ts",
+    "dictation:check-ai-runtime": "set DICTATION_AI_SKIP_GEMINI=true&& ts-node src/scripts/check-dictation-ai-runtime.ts",
     "start:swagger": "npm run swagger:gen && nodemon --exec ts-node src/server.ts"
   },
   "keywords": [],

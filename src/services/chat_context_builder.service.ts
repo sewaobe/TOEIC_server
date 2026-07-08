@@ -1059,7 +1059,7 @@ function getAbilityForSimilarPractice(userSkill: any, skillKeys: string[], partT
 }
 
 function activityTitle(activityType: string) {
-  if (activityType === "lesson") return "Hoc bai";
+  if (activityType === "lesson") return "Học bài";
   if (activityType === "vocabulary") return "Ôn flashcard";
   if (activityType === "dictation") return "Luyện nghe chép chính tả";
   if (activityType === "shadowing") return "Luyện shadowing";
@@ -1076,6 +1076,49 @@ function normalizePlainText(text = "") {
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+const GENERIC_LESSON_TOPIC_WORDS = new Set([
+  "cac",
+  "cho",
+  "phan",
+  "muc",
+  "noi",
+  "dung",
+  "nay",
+  "do",
+  "nao",
+  "can",
+  "hoc",
+  "luyen",
+  "them",
+]);
+
+function cleanLessonRecommendationTopic(topic = "") {
+  const trimmed = topic.trim();
+  const normalized = normalizePlainText(trimmed);
+  if (!normalized) return "";
+
+  const genericPhrases = [
+    "cac cho",
+    "cho nao",
+    "cac phan",
+    "phan nao",
+    "cac muc",
+    "noi dung nay",
+    "bai nay",
+    "bai hoc nay",
+    "hoc them",
+    "luyen them",
+  ];
+  if (genericPhrases.includes(normalized)) return "";
+
+  const tokens = normalized.split(/\s+/).filter(Boolean);
+  if (tokens.length > 0 && tokens.every((token) => GENERIC_LESSON_TOPIC_WORDS.has(token))) {
+    return "";
+  }
+
+  return trimmed;
 }
 
 function parseFlashcardCount(userText = "", payload: any = {}) {
@@ -1210,6 +1253,7 @@ function parseLessonRecommendationRequest(userText = "", clientContext?: ChatCli
     .replace(/\b(cho toi|cho minh|nhe|di|duoc khong|voi|phu hop|dung trinh do|theo muc diem cua toi)\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+  topic = cleanLessonRecommendationTopic(topic);
 
   const matchedSkills = resolveLessonTopicSkills(topic, partType);
   return {
@@ -1338,7 +1382,7 @@ function buildLessonActivities(lesson: any) {
         estimatedMinutes: activity.estimated_minutes,
         action: {
           id: `${actionType}-${activityType}-${activity.activity_id}`,
-          label: activityType === "lesson" ? "Hoc ngay" : "Luyen ngay",
+          label: activityType === "lesson" ? "Học ngay" : "Luyện ngay",
           type: actionType,
           payload: {
             activityType,
@@ -1358,8 +1402,8 @@ function lessonRecommendationSubtitle(filter: LessonRecommendationFilter, matchM
     filter.partType ? `Part ${filter.partType}` : "",
     filter.topic || filter.topicLabels[0] || "",
   ].filter(Boolean);
-  const label = parts.length ? parts.join(" - ") : "Theo yeu cau cua ban";
-  return matchMode && matchMode !== "exact" ? `${label} (goi y gan dung)` : label;
+  const label = parts.length ? parts.join(" - ") : "Theo yêu cầu của bạn";
+  return matchMode && matchMode !== "exact" ? `${label} (gợi ý gần đúng)` : label;
 }
 
 export async function buildLessonRecommendationContext(
@@ -1373,7 +1417,7 @@ export async function buildLessonRecommendationContext(
       ok: false,
       errorType: "AUTH_REQUIRED",
       outcome: "safe_fallback",
-      fallback: "Minh can ban dang nhap de goi y bai hoc ca nhan hoa.",
+      fallback: "Mình cần bạn đăng nhập để gợi ý bài học cá nhân hóa.",
     };
   }
 
@@ -1384,7 +1428,7 @@ export async function buildLessonRecommendationContext(
       errorType: "MISSING_REQUIRED_CONTEXT",
       outcome: "clarify",
       fallback:
-        "Minh hieu ban muon goi y bai hoc, nhung chua ro Part hoac chu de. Ban muon hoc Part nao, dang bai nao, hay theo roadmap hom nay?",
+        "Mình hiểu bạn muốn gợi ý bài học, nhưng chưa rõ Part hoặc chủ đề. Bạn muốn học Part nào, dạng bài nào, hay theo roadmap hôm nay?",
     };
   }
 
@@ -1393,41 +1437,30 @@ export async function buildLessonRecommendationContext(
     ...filter.topicSkillKeys,
     ...filter.topicLabels,
   ].filter(Boolean);
-  const topicRegex = filter.topic ? new RegExp(escapeRegex(filter.topic), "i") : null;
+  const inferredPartTypes = Array.from(
+    new Set(filter.matchedSkills.map((skill) => Number(skill.part_type)).filter(Boolean))
+  );
   const baseQuery: Record<string, any> = {
     status: "approved",
-    ...(filter.partType ? { part_type: filter.partType } : {}),
+    ...(filter.partType
+      ? { part_type: filter.partType }
+      : inferredPartTypes.length
+        ? { part_type: { $in: inferredPartTypes } }
+        : {}),
   };
-  const topicOr = filter.topic
-    ? [
-        { target_tags: { $in: topicQuery } },
-        ...(topicRegex ? [{ title: topicRegex }, { description: topicRegex }] : []),
-      ]
-    : [];
 
   let matchMode = "exact";
-  let lessons = await LessonManager.find({
-    ...baseQuery,
-    ...(topicOr.length ? { $or: topicOr } : {}),
-  })
+  const lessons = await LessonManager.find(baseQuery)
     .select("title description part_type target_tags weight planned_completion_time recommended_activity_order rating student_count score_band")
-    .limit(40)
+    .limit(filter.partType ? 80 : 160)
     .lean();
-
-  if (!lessons.length && filter.partType && filter.topic) {
-    matchMode = "part_only_fallback";
-    lessons = await LessonManager.find(baseQuery)
-      .select("title description part_type target_tags weight planned_completion_time recommended_activity_order rating student_count score_band")
-      .limit(40)
-      .lean();
-  }
 
   if (!lessons.length && filter.topic && !filter.partType) {
     return {
       ok: false,
       errorType: "NO_DATA",
       outcome: "no_data",
-      fallback: `Minh chua tim thay bai hoc phu hop voi chu de "${filter.topic}". Ban co the thu neu ro Part hoac doi sang chu de gan hon.`,
+      fallback: `Mình chưa tìm thấy bài học phù hợp với chủ đề "${filter.topic}". Bạn có thể thử nêu rõ Part hoặc đổi sang chủ đề gần hơn.`,
     };
   }
 
@@ -1445,13 +1478,18 @@ export async function buildLessonRecommendationContext(
   });
   const normalizedTopic = normalizePlainText(filter.topic);
 
-  const recommendations = lessons
+  const scoredRecommendations = lessons
     .map((lesson: any) => {
       const target = lessonTargetInfo(lesson, filter.partType);
       const tagHits = topicQuery.filter((tag) => target.searchable.includes(normalizePlainText(tag))).length;
       const textHit = normalizedTopic && target.searchable.includes(normalizedTopic) ? 1 : 0;
       const topicMatched = !filter.topic || tagHits > 0 || textHit > 0;
-      const partScore = filter.partType && Number(lesson.part_type) === filter.partType ? 1 : 0;
+      const partScore =
+        filter.partType && Number(lesson.part_type) === filter.partType
+          ? 1
+          : inferredPartTypes.includes(Number(lesson.part_type))
+            ? 0.6
+            : 0;
       const fitDistance =
         typeof ability === "number" && typeof lesson.weight === "number"
           ? Math.abs(lesson.weight - ability)
@@ -1466,14 +1504,13 @@ export async function buildLessonRecommendationContext(
         Math.min(Number(lesson.student_count ?? 0), 100) * 0.005;
       const activities = buildLessonActivities(lesson);
       const reasonParts = [
-        filter.partType && Number(lesson.part_type) === filter.partType ? `khop Part ${filter.partType}` : "",
-        filter.topic && topicMatched ? `khop chu de ${filter.topic}` : "",
-        typeof ability === "number" ? "gan muc hien tai cua ban" : "",
-        matchMode !== "exact" ? "chua co bai khop ca Part va chu de nen goi y gan dung" : "",
+        filter.partType && Number(lesson.part_type) === filter.partType ? `khớp Part ${filter.partType}` : "",
+        filter.topic && topicMatched ? `khớp chủ đề ${filter.topic}` : "",
+        typeof ability === "number" ? "gần mức hiện tại của bạn" : "",
       ].filter(Boolean);
       return {
         lessonManagerId: String(lesson._id),
-        title: String(lesson.title ?? "Bai hoc"),
+        title: String(lesson.title ?? "Bài học"),
         part: Number(lesson.part_type) || undefined,
         targetTags: target.rawTags,
         estimatedMinutes: lesson.planned_completion_time,
@@ -1485,15 +1522,32 @@ export async function buildLessonRecommendationContext(
       };
     })
     .filter((item: any) => item.activities.length > 0)
-    .filter((item: any) => {
-      if (filter.topic && matchMode === "exact") return item.topicMatched;
-      return true;
-    })
     .sort((a: any, b: any) =>
       b.matchScore - a.matchScore ||
       b.fitScore - a.fitScore ||
       (a.estimatedMinutes ?? 999) - (b.estimatedMinutes ?? 999)
-    )
+    );
+
+  let selectedRecommendations = scoredRecommendations;
+  if (filter.topic) {
+    const exactRecommendations = scoredRecommendations.filter((item: any) => item.topicMatched);
+    if (exactRecommendations.length > 0) {
+      selectedRecommendations = exactRecommendations;
+    } else if (filter.partType) {
+      matchMode = "part_only_fallback";
+      selectedRecommendations = scoredRecommendations.map((item: any) => ({
+        ...item,
+        reason: [
+          item.reason,
+          "chưa có bài khớp cả Part và chủ đề nên gợi ý gần đúng",
+        ].filter(Boolean).join(", "),
+      }));
+    } else {
+      selectedRecommendations = [];
+    }
+  }
+
+  const recommendations = selectedRecommendations
     .slice(0, filter.count)
     .map(({ matchScore, topicMatched, ...item }: any) => item);
 
@@ -1503,8 +1557,8 @@ export async function buildLessonRecommendationContext(
       errorType: "NO_DATA",
       outcome: "no_data",
       fallback: filter.topic
-        ? `Minh chua tim thay bai hoc dung voi "${filter.topic}"${filter.partType ? ` trong Part ${filter.partType}` : ""}.`
-        : `Minh chua tim thay bai hoc Part ${filter.partType} phu hop.`,
+        ? `Mình chưa tìm thấy bài học đúng với "${filter.topic}"${filter.partType ? ` trong Part ${filter.partType}` : ""}.`
+        : `Mình chưa tìm thấy bài học Part ${filter.partType} phù hợp.`,
     };
   }
 
@@ -1512,7 +1566,7 @@ export async function buildLessonRecommendationContext(
     ok: true,
     contextType: "lesson_recommendation",
     data: {
-      title: "Bai hoc goi y",
+      title: "Bài học gợi ý",
       subtitle: lessonRecommendationSubtitle(filter, matchMode),
       sourceTags: Array.from(new Set([filter.topic, ...filter.topicLabels, ...filter.topicSkillKeys].filter(Boolean))),
       request: {
@@ -1730,7 +1784,7 @@ export async function buildDbFirstContext(
         allowedScope:
           "TOEIC exam knowledge, English for TOEIC, TOEIC study strategy, and guidance for this learning app.",
         refusal:
-          "Minh chi ho tro cac cau hoi lien quan TOEIC, tieng Anh hoc TOEIC va viec hoc trong he thong nay.",
+          "Mình chỉ hỗ trợ các câu hỏi liên quan TOEIC, tiếng Anh học TOEIC và việc học trong hệ thống này.",
         routeContext,
       },
     };

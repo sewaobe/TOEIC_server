@@ -24,12 +24,38 @@ const MODELS: string[] = [
   "gemini-2.5-flash-lite",
 ];
 
+const DICTATION_RULE_GEMINI_TIMEOUT_MS = Number(
+  process.env.DICTATION_AI_GEMINI_TIMEOUT_MS || 7000,
+);
+const DICTATION_RULE_DEEPSEEK_TIMEOUT_MS = Number(
+  process.env.DICTATION_AI_DEEPSEEK_TIMEOUT_MS || 8000,
+);
+const DICTATION_RULE_GEMINI_MODEL =
+  process.env.DICTATION_AI_GEMINI_MODEL || MODELS[0];
+
+function withAiTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    promise.finally(() => {
+      if (timer) clearTimeout(timer);
+    }),
+    new Promise<T>((_, reject) => {
+      timer = setTimeout(() => {
+        const err = new Error(`${label} timed out after ${timeoutMs}ms`);
+        (err as any).code = "AI_TIMEOUT";
+        reject(err);
+      }, timeoutMs);
+    }),
+  ]);
+}
+
 async function generateDeepSeekJsonFallback(params: {
   prompt: string;
   jsonSchema: unknown;
   taskName: string;
   temperature?: number;
   maxTokens?: number;
+  timeoutMs?: number;
 }) {
   console.warn(`[DeepSeek fallback] Gemini chain failed for ${params.taskName}; trying DeepSeek.`);
   const result = await generateDeepSeekJson({
@@ -38,6 +64,7 @@ async function generateDeepSeekJsonFallback(params: {
     taskName: params.taskName,
     temperature: params.temperature,
     maxTokens: params.maxTokens,
+    timeoutMs: params.timeoutMs,
   });
   console.log(`[DeepSeek fallback] ${params.taskName} succeeded with model: ${result.model}`);
   return result;
@@ -1480,6 +1507,97 @@ export const DictationAnalysisSchema = {
     "chart_insights",
   ],
 };
+
+export const DictationRuleFeedbackSchema = {
+  type: Type.OBJECT,
+  properties: {
+    overall: { type: Type.STRING },
+    strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
+    weaknesses: { type: Type.ARRAY, items: { type: Type.STRING } },
+    tips: { type: Type.ARRAY, items: { type: Type.STRING } },
+    sentenceAccuracyInsights: { type: Type.ARRAY, items: { type: Type.STRING } },
+    commonMistakeInsights: { type: Type.ARRAY, items: { type: Type.STRING } },
+  },
+  propertyOrdering: [
+    "overall",
+    "strengths",
+    "weaknesses",
+    "tips",
+    "sentenceAccuracyInsights",
+    "commonMistakeInsights",
+  ],
+};
+
+export async function generateDictationRuleFeedbackWithAI(ruleResult: any) {
+  const prompt = `
+You are a feedback writer for a Dictation practice feature.
+
+Use only the ruleResult data below.
+Do not create new lessons.
+Do not choose recommendations.
+Do not infer general TOEIC ability.
+Do not mention IRT, mini tests, full tests, or learning paths.
+Do not conclude the learner's CEFR level.
+Do not say the learner is weak at a tag unless ruleResult explicitly says so.
+Do not analyze pronunciation or phonemes when the data only contains word mistakes.
+
+Task:
+- Rewrite feedback naturally in Vietnamese.
+- Preserve the meaning of templateFeedback and signals.
+- Be encouraging but do not overpraise.
+- Return JSON that matches the schema.
+
+ruleResult:
+${JSON.stringify(ruleResult, null, 2)}
+`;
+
+  try {
+    console.info("[DictationAI] Gemini writer model call start", {
+      model: DICTATION_RULE_GEMINI_MODEL,
+      timeoutMs: DICTATION_RULE_GEMINI_TIMEOUT_MS,
+    });
+    const result = await withAiTimeout(
+      ai.models.generateContent({
+        model: DICTATION_RULE_GEMINI_MODEL,
+        contents: prompt,
+        config: {
+          temperature: 0.25,
+          maxOutputTokens: 2048,
+          responseMimeType: "application/json",
+          responseSchema: DictationRuleFeedbackSchema,
+        },
+      }),
+      DICTATION_RULE_GEMINI_TIMEOUT_MS,
+      `Dictation Gemini writer ${DICTATION_RULE_GEMINI_MODEL}`,
+    );
+
+    const text = result.text?.trim();
+    if (!text) throw new Error("Empty structured response from Gemini.");
+    return {
+      provider: "gemini" as const,
+      feedback: JSON.parse(text),
+    };
+  } catch (err: any) {
+    const msg = err?.message || err?.error?.message || String(err);
+    console.warn(
+      `[DictationAI] Gemini writer failed or timed out; switching to DeepSeek. model=${DICTATION_RULE_GEMINI_MODEL} error=${msg}`,
+    );
+  }
+
+  const fallback = await generateDeepSeekJsonFallback({
+    prompt,
+    jsonSchema: DictationRuleFeedbackSchema,
+    taskName: "dictation_rule_feedback",
+    temperature: 0.25,
+    maxTokens: 2048,
+    timeoutMs: DICTATION_RULE_DEEPSEEK_TIMEOUT_MS,
+  });
+
+  return {
+    provider: "deepseek" as const,
+    feedback: fallback.json,
+  };
+}
 
 /**
  * 🧠 Phân tích bài luyện Dictation bằng Gemini

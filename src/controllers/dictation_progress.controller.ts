@@ -6,6 +6,7 @@ import {
   startDictationProgressService,
   updateDictationProgressService,
 } from "../services/dictation_progress.service";
+import { getDictationAIFeedbackService } from "../services/dictation_ai_feedback.service";
 import { ApiResponse } from "../utils/ApiResponse";
 
 const getUserId = (req: Request, res: Response) => {
@@ -130,6 +131,50 @@ export const cancelDictationProgressController = async (
       .status(200)
       .json(ApiResponse.success(progress, "Hủy tiến trình dictation thành công."));
   } catch (err) {
+    next(err);
+  }
+};
+
+export const getDictationAIFeedbackController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  const startedAt = Date.now();
+  const requestId = `dictation-ai-${startedAt}-${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    const userId = getUserId(req, res);
+    if (!userId) return;
+
+    console.info("[DictationAI] request start", {
+      requestId,
+      progressId: req.params.progressId,
+      userId,
+    });
+
+    const result = await getDictationAIFeedbackService(
+      req.params.progressId,
+      userId,
+    );
+
+    console.info("[DictationAI] request success", {
+      requestId,
+      elapsedMs: Date.now() - startedAt,
+      source: result.source,
+      recommendations: result.recommendations.length,
+      warnings: result.warnings ?? [],
+    });
+
+    res
+      .status(200)
+      .json(ApiResponse.success(result, "Phan tich dictation thanh cong."));
+  } catch (err) {
+    console.error("[DictationAI] request failed", {
+      requestId,
+      elapsedMs: Date.now() - startedAt,
+      progressId: req.params.progressId,
+      error: err instanceof Error ? err.message : err,
+    });
     next(err);
   }
 };
