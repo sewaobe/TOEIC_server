@@ -873,9 +873,26 @@ type LearningPathV2DayStudyView = Record<string, unknown> & {
   activity_summary: string;
 };
 
+type LearningPathV2ScoreSummary = {
+  current_total: number | null;
+  current_listening: number | null;
+  current_reading: number | null;
+  anchor_total: number | null;
+  anchor_listening: number | null;
+  anchor_reading: number | null;
+  anchor_projection_total: number | null;
+  current_projection_total: number | null;
+  listening_ability: number | null;
+  reading_ability: number | null;
+  last_evaluated_at: Date | null;
+  anchor_trigger_type: "initial_generation" | "full_test_review" | null;
+  source: "calibrated_user_skill_projection" | "not_available";
+};
+
 type LearningPathV2OverviewResult = CurrentLearningPathCycleV2Result & {
   pending_strategy_options: ILearningPathStrategyOption[];
   week_studies: LearningPathV2OverviewWeek[];
+  score_summary: LearningPathV2ScoreSummary;
   roadmap_canvas: {
     requires_strategy_selection: boolean;
     strategy_selection_reason: "full_test_review_pending" | null;
@@ -1008,6 +1025,157 @@ const buildDayStudyDisplayViews = (
   dayStudies: IDayStudy[]
 ): LearningPathV2DayStudyView[] =>
   dayStudies.map((dayStudy, index) => buildDayStudyDisplayView(dayStudy, index));
+
+const emptyLearningPathV2ScoreSummary = (): LearningPathV2ScoreSummary => ({
+  current_total: null,
+  current_listening: null,
+  current_reading: null,
+  anchor_total: null,
+  anchor_listening: null,
+  anchor_reading: null,
+  anchor_projection_total: null,
+  current_projection_total: null,
+  listening_ability: null,
+  reading_ability: null,
+  last_evaluated_at: null,
+  anchor_trigger_type: null,
+  source: "not_available",
+});
+
+const roundScoreValue = (value: number): number => Math.round(value);
+
+const clampScoreValue = (value: number, max: number): number =>
+  Math.min(max, Math.max(0, roundScoreValue(value)));
+
+const buildPartAbilityMap = (
+  parts: Array<{ part_type: number; ability: number }>
+): Record<number, number> =>
+  parts.reduce<Record<number, number>>((acc, part) => {
+    acc[part.part_type] = part.ability;
+    return acc;
+  }, {});
+
+const calculateAnchorSectionScoreFromHistory = (
+  parts: Array<{ part_type: number; correct_count?: number }>,
+  section: "listening" | "reading"
+): number | null => {
+  const sectionParts = parts.filter((part) =>
+    section === "listening"
+      ? part.part_type >= 1 && part.part_type <= 4
+      : part.part_type >= 5 && part.part_type <= 7
+  );
+
+  if (sectionParts.length === 0) {
+    return null;
+  }
+
+  return sectionParts.reduce(
+    (total, part) => total + (Number(part.correct_count ?? 0) * 5),
+    0
+  );
+};
+
+const buildLearningPathV2ScoreSummary = async (
+  input: LearningPathV2ReadInput
+): Promise<LearningPathV2ScoreSummary> => {
+  const baseQuery = {
+    user_id: input.user_id,
+    context_type: "learning_path" as const,
+    learning_path_id: input.learning_path_id,
+  };
+
+  const [userSkill, fullTestAnchor, entryAnchor] = await Promise.all([
+    UserSkill.findOne(baseQuery).lean<IUserSkill | null>(),
+    UserSkillHistory.findOne({
+      ...baseQuery,
+      trigger_type: "full_test_review",
+      source_user_test_id: { $ne: null },
+    })
+      .sort({ submitted_at: -1, created_at: -1 })
+      .lean<IUserSkillHistory | null>(),
+    UserSkillHistory.findOne({
+      ...baseQuery,
+      trigger_type: "initial_generation",
+      source_user_test_id: { $ne: null },
+    })
+      .sort({ submitted_at: -1, created_at: -1 })
+      .lean<IUserSkillHistory | null>(),
+  ]);
+
+  if (!userSkill || (userSkill.parts ?? []).length === 0) {
+    return emptyLearningPathV2ScoreSummary();
+  }
+
+  const anchorHistory = fullTestAnchor ?? entryAnchor;
+
+  if (
+    !anchorHistory ||
+    !anchorHistory.source_user_test_id ||
+    (anchorHistory.parts ?? []).length === 0
+  ) {
+    return emptyLearningPathV2ScoreSummary();
+  }
+
+  const anchorTest = await UserTest.findById(anchorHistory.source_user_test_id)
+    .select("score submit_at")
+    .lean<IUserTest | null>();
+
+  if (!anchorTest || !Number.isFinite(anchorTest.score)) {
+    return emptyLearningPathV2ScoreSummary();
+  }
+
+  const currentProjection = calculateProjectedToeicScore(
+    buildPartAbilityMap(userSkill.parts ?? [])
+  );
+  const anchorProjection = calculateProjectedToeicScore(
+    buildPartAbilityMap(anchorHistory.parts ?? [])
+  );
+  const anchorTotal = Number(anchorTest.score);
+  const anchorListening =
+    calculateAnchorSectionScoreFromHistory(anchorHistory.parts ?? [], "listening");
+  const anchorReading =
+    calculateAnchorSectionScoreFromHistory(anchorHistory.parts ?? [], "reading");
+  const currentTotal = clampScoreValue(
+    anchorTotal +
+    (currentProjection.projected_total_score -
+      anchorProjection.projected_total_score),
+    990
+  );
+
+  return {
+    current_total: currentTotal,
+    current_listening:
+      anchorListening === null
+        ? null
+        : clampScoreValue(
+          anchorListening +
+          (currentProjection.projected_listening_score -
+            anchorProjection.projected_listening_score),
+          495
+        ),
+    current_reading:
+      anchorReading === null
+        ? null
+        : clampScoreValue(
+          anchorReading +
+          (currentProjection.projected_reading_score -
+            anchorProjection.projected_reading_score),
+          495
+        ),
+    anchor_total: anchorTotal,
+    anchor_listening: anchorListening,
+    anchor_reading: anchorReading,
+    anchor_projection_total: anchorProjection.projected_total_score,
+    current_projection_total: currentProjection.projected_total_score,
+    listening_ability: currentProjection.listening_ability,
+    reading_ability: currentProjection.reading_ability,
+    last_evaluated_at: userSkill.last_evaluated_at ?? null,
+    anchor_trigger_type: anchorHistory.trigger_type as
+      | "initial_generation"
+      | "full_test_review",
+    source: "calibrated_user_skill_projection",
+  };
+};
 
 type MockLearningAssessmentLocator = {
   dayIndex: number;
@@ -1286,17 +1454,19 @@ export const getLearningPathV2Overview = async (
    * Nó được giữ như snapshot roadmap ROI dài hạn để vẽ canvas và truy vết
    * các cycle được tạo sau Entry/Full test.
    */
-  const selectedOption = await LearningPathStrategyOption.findOne({
-    learning_path_id: input.learning_path_id,
-    user_id: input.user_id,
-    status: "selected",
-  }).sort({ created_at: -1 });
-
-  const pendingOptions = await LearningPathStrategyOption.find({
-    learning_path_id: input.learning_path_id,
-    user_id: input.user_id,
-    status: "pending_selection",
-  }).sort({ created_at: -1 });
+  const [selectedOption, pendingOptions, scoreSummary] = await Promise.all([
+    LearningPathStrategyOption.findOne({
+      learning_path_id: input.learning_path_id,
+      user_id: input.user_id,
+      status: "selected",
+    }).sort({ created_at: -1 }),
+    LearningPathStrategyOption.find({
+      learning_path_id: input.learning_path_id,
+      user_id: input.user_id,
+      status: "pending_selection",
+    }).sort({ created_at: -1 }),
+    buildLearningPathV2ScoreSummary(input),
+  ]);
   const requiresStrategySelection = pendingOptions.length > 0;
 
   const weekStudies =
@@ -1369,6 +1539,7 @@ export const getLearningPathV2Overview = async (
     selected_strategy_option: selectedOption,
     pending_strategy_options: pendingOptions,
     week_studies: overviewWeekStudies,
+    score_summary: scoreSummary,
     current_cycle: currentWeekStudy
       ? {
         week_study: currentWeekStudy,
