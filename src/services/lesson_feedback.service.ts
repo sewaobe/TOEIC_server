@@ -86,16 +86,12 @@ export async function createLessonFeedback(
         (fb: ILessonFeedback) => fb.day_study_id.toString() === dayStudyId
     );
 
-    if (existingIndex !== undefined && existingIndex >= 0 && learningPath.feedbacks) {
-        // Update feedback hiện có
-        learningPath.feedbacks[existingIndex] = newFeedback;
-    } else {
-        // Thêm feedback mới
-        if (!learningPath.feedbacks) {
-            learningPath.feedbacks = [];
-        }
-        learningPath.feedbacks.push(newFeedback);
+    if (existingIndex !== undefined && existingIndex >= 0) {
+        throw new Error("Feedback cho buổi học này đã tồn tại");
     }
+
+    learningPath.feedbacks = learningPath.feedbacks ?? [];
+    learningPath.feedbacks.push(newFeedback);
 
     learningPath.updated_at = new Date();
     await learningPath.save();
