@@ -853,7 +853,7 @@ export class LearningPathV2MockLearningError extends Error {
 
 type CurrentCycleResponse = {
   week_study: IWeekStudy;
-  day_studies: IDayStudy[];
+  day_studies: LearningPathV2DayStudyView[];
 };
 
 type CurrentLearningPathCycleV2Result = {
@@ -863,7 +863,14 @@ type CurrentLearningPathCycleV2Result = {
 };
 
 type LearningPathV2OverviewWeek = Record<string, unknown> & {
-  days: IDayStudy[];
+  days: LearningPathV2DayStudyView[];
+};
+
+type LearningPathV2DayStudyView = Record<string, unknown> & {
+  stage_no: number;
+  display_title: string;
+  display_subtitle: string;
+  activity_summary: string;
 };
 
 type LearningPathV2OverviewResult = CurrentLearningPathCycleV2Result & {
@@ -932,6 +939,75 @@ const findCurrentWeekStudy = async (
 
 const loadDayStudiesForWeek = (weekStudy: IWeekStudy): Promise<IDayStudy[]> =>
   DayStudy.find({ week_id: weekStudy._id }).sort({ dayOfWeek: 1 });
+
+const sessionKindLabel: Partial<Record<SessionType, string>> = {
+  [SessionType.LESSON]: "Bài học",
+  [SessionType.FLASH_CARD]: "Từ vựng",
+  [SessionType.QUIZ]: "Quiz",
+  [SessionType.DICTATION]: "Dictation",
+  [SessionType.SHADOWING]: "Shadowing",
+  [SessionType.MINI_TEST]: "Mini Test",
+  [SessionType.FULL_TEST]: "Full Test",
+};
+
+const buildDayStudyDisplayView = (
+  dayStudy: IDayStudy,
+  index: number
+): LearningPathV2DayStudyView => {
+  const stageNo = index + 1;
+  const raw =
+    typeof (dayStudy as any).toObject === "function"
+      ? (dayStudy as any).toObject()
+      : dayStudy;
+  const sessions = dayStudy.sessions ?? [];
+  const allItems = sessions.flatMap((session) => session.items ?? []);
+  const itemKinds = new Set(allItems.map((item) => item.kind));
+  const assessmentKind = itemKinds.has(SessionType.FULL_TEST)
+    ? SessionType.FULL_TEST
+    : itemKinds.has(SessionType.MINI_TEST)
+      ? SessionType.MINI_TEST
+      : null;
+  const partTypes = Array.from(
+    new Set(
+      sessions
+        .map((session) => session.part_type)
+        .filter((partType): partType is number => typeof partType === "number")
+    )
+  ).sort((a, b) => a - b);
+  const partLabel =
+    partTypes.length > 0 ? `Part ${partTypes.join(", ")}` : "Luyện tập";
+  const primarySession = sessions.find((session) => session.lesson_manager_title);
+  const activitySummary = Array.from(itemKinds)
+    .map((kind) => sessionKindLabel[kind] ?? kind)
+    .join(" · ");
+
+  if (assessmentKind) {
+    const assessmentLabel =
+      assessmentKind === SessionType.FULL_TEST ? "Full Test" : "Mini Test";
+    return {
+      ...raw,
+      stage_no: stageNo,
+      display_title: `${assessmentLabel} cuối cycle`,
+      display_subtitle: `Stage ${stageNo} · Đánh giá năng lực`,
+      activity_summary: activitySummary || assessmentLabel,
+    };
+  }
+
+  return {
+    ...raw,
+    stage_no: stageNo,
+    display_title:
+      primarySession?.lesson_manager_title?.trim() ||
+      `Stage ${stageNo} · ${partLabel}`,
+    display_subtitle: `Stage ${stageNo} · ${partLabel}`,
+    activity_summary: activitySummary || "Hoạt động học",
+  };
+};
+
+const buildDayStudyDisplayViews = (
+  dayStudies: IDayStudy[]
+): LearningPathV2DayStudyView[] =>
+  dayStudies.map((dayStudy, index) => buildDayStudyDisplayView(dayStudy, index));
 
 type MockLearningAssessmentLocator = {
   dayIndex: number;
@@ -1193,7 +1269,7 @@ export const getCurrentLearningPathCycleV2 = async (
     current_cycle: weekStudy
       ? {
         week_study: weekStudy,
-        day_studies: dayStudies,
+        day_studies: buildDayStudyDisplayViews(dayStudies),
       }
       : null,
   };
@@ -1269,7 +1345,9 @@ export const getLearningPathV2Overview = async (
   const overviewWeekStudies: LearningPathV2OverviewWeek[] = weekStudies.map(
     (week) => ({
       ...week.toObject(),
-      days: dayStudiesByWeekId.get(String(week._id)) ?? [],
+      days: buildDayStudyDisplayViews(
+        dayStudiesByWeekId.get(String(week._id)) ?? []
+      ),
     })
   );
   const roadmapStrategyOptions = await loadRoadmapCanvasStrategyOptions({
@@ -1294,7 +1372,7 @@ export const getLearningPathV2Overview = async (
     current_cycle: currentWeekStudy
       ? {
         week_study: currentWeekStudy,
-        day_studies: dayStudies,
+        day_studies: buildDayStudyDisplayViews(dayStudies),
       }
       : null,
     roadmap_canvas: buildRoadmapCanvasSnapshot({
