@@ -1,5 +1,7 @@
 import { NextFunction, Request, Response } from "express";
+import { Types } from "mongoose";
 import { ApiResponse } from "../utils/ApiResponse";
+import { GroupUser } from "../models";
 import {
   createLessonFeedback,
   getFeedbacks,
@@ -10,6 +12,25 @@ import {
   getPopularFeedbackReasons,
   deleteFeedback,
 } from "../services/lesson_feedback.service";
+
+async function canViewUserFeedback(req: Request, userId: string) {
+  const requesterId = req.user?._id?.toString();
+  if (!requesterId) return false;
+  if (requesterId === userId) return true;
+  if (req.user?.roleName === "admin") return true;
+
+  if (req.user?.roleName === "collaborator") {
+    const group = await GroupUser.findOne({
+      mentor_id: new Types.ObjectId(requesterId),
+      students: new Types.ObjectId(userId),
+    })
+      .select("_id")
+      .lean();
+    return Boolean(group);
+  }
+
+  return false;
+}
 
 /**
  * Tạo feedback cho buổi học
@@ -249,10 +270,16 @@ export const getFeedbacksByUserIdController = async (
   try {
     const { userId } = req.params;
 
-    if (!userId) {
+    if (!userId || !Types.ObjectId.isValid(userId)) {
       return res
         .status(400)
-        .json(ApiResponse.fail("User ID là bắt buộc"));
+        .json(ApiResponse.fail("User ID không hợp lệ"));
+    }
+
+    if (!(await canViewUserFeedback(req, userId))) {
+      return res
+        .status(403)
+        .json(ApiResponse.fail("Không có quyền xem feedback của học viên này"));
     }
 
     const feedbacks = await getFeedbacksByUserId(userId);
@@ -277,10 +304,16 @@ export const getFeedbackStatsByUserIdController = async (
   try {
     const { userId } = req.params;
 
-    if (!userId) {
+    if (!userId || !Types.ObjectId.isValid(userId)) {
       return res
         .status(400)
-        .json(ApiResponse.fail("User ID là bắt buộc"));
+        .json(ApiResponse.fail("User ID không hợp lệ"));
+    }
+
+    if (!(await canViewUserFeedback(req, userId))) {
+      return res
+        .status(403)
+        .json(ApiResponse.fail("Không có quyền xem thống kê feedback của học viên này"));
     }
 
     const stats = await getFeedbackStatsByUserId(userId);
