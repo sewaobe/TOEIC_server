@@ -837,7 +837,7 @@ export const runLearningPathV2AbilityPipeline = async (
 };
 
 
-type LearningPathV2ReadInput = {
+export type LearningPathV2ReadInput = {
   user_id: string;
   learning_path_id: string;
 };
@@ -854,7 +854,7 @@ export class LearningPathV2MockLearningError extends Error {
 
 type CurrentCycleResponse = {
   week_study: IWeekStudy;
-  day_studies: IDayStudy[];
+  day_studies: LearningPathV2DayStudyView[];
 };
 
 type CurrentLearningPathCycleV2Result = {
@@ -864,12 +864,36 @@ type CurrentLearningPathCycleV2Result = {
 };
 
 type LearningPathV2OverviewWeek = Record<string, unknown> & {
-  days: IDayStudy[];
+  days: LearningPathV2DayStudyView[];
+};
+
+type LearningPathV2DayStudyView = Record<string, unknown> & {
+  stage_no: number;
+  display_title: string;
+  display_subtitle: string;
+  activity_summary: string;
+};
+
+export type LearningPathV2ScoreSummary = {
+  current_total: number | null;
+  current_listening: number | null;
+  current_reading: number | null;
+  anchor_total: number | null;
+  anchor_listening: number | null;
+  anchor_reading: number | null;
+  anchor_projection_total: number | null;
+  current_projection_total: number | null;
+  listening_ability: number | null;
+  reading_ability: number | null;
+  last_evaluated_at: Date | null;
+  anchor_trigger_type: "initial_generation" | "full_test_review" | null;
+  source: "calibrated_user_skill_projection" | "not_available";
 };
 
 type LearningPathV2OverviewResult = CurrentLearningPathCycleV2Result & {
   pending_strategy_options: ILearningPathStrategyOption[];
   week_studies: LearningPathV2OverviewWeek[];
+  score_summary: LearningPathV2ScoreSummary;
   roadmap_canvas: {
     requires_strategy_selection: boolean;
     strategy_selection_reason: "full_test_review_pending" | null;
@@ -933,6 +957,226 @@ const findCurrentWeekStudy = async (
 
 const loadDayStudiesForWeek = (weekStudy: IWeekStudy): Promise<IDayStudy[]> =>
   DayStudy.find({ week_id: weekStudy._id }).sort({ dayOfWeek: 1 });
+
+const sessionKindLabel: Partial<Record<SessionType, string>> = {
+  [SessionType.LESSON]: "Bài học",
+  [SessionType.FLASH_CARD]: "Từ vựng",
+  [SessionType.QUIZ]: "Quiz",
+  [SessionType.DICTATION]: "Dictation",
+  [SessionType.SHADOWING]: "Shadowing",
+  [SessionType.MINI_TEST]: "Mini Test",
+  [SessionType.FULL_TEST]: "Full Test",
+};
+
+const buildDayStudyDisplayView = (
+  dayStudy: IDayStudy,
+  index: number
+): LearningPathV2DayStudyView => {
+  const stageNo = index + 1;
+  const raw =
+    typeof (dayStudy as any).toObject === "function"
+      ? (dayStudy as any).toObject()
+      : dayStudy;
+  const sessions = dayStudy.sessions ?? [];
+  const allItems = sessions.flatMap((session) => session.items ?? []);
+  const itemKinds = new Set(allItems.map((item) => item.kind));
+  const assessmentKind = itemKinds.has(SessionType.FULL_TEST)
+    ? SessionType.FULL_TEST
+    : itemKinds.has(SessionType.MINI_TEST)
+      ? SessionType.MINI_TEST
+      : null;
+  const partTypes = Array.from(
+    new Set(
+      sessions
+        .map((session) => session.part_type)
+        .filter((partType): partType is number => typeof partType === "number")
+    )
+  ).sort((a, b) => a - b);
+  const partLabel =
+    partTypes.length > 0 ? `Part ${partTypes.join(", ")}` : "Luyện tập";
+  const primarySession = sessions.find((session) => session.lesson_manager_title);
+  const activitySummary = Array.from(itemKinds)
+    .map((kind) => sessionKindLabel[kind] ?? kind)
+    .join(" · ");
+
+  if (assessmentKind) {
+    const assessmentLabel =
+      assessmentKind === SessionType.FULL_TEST ? "Full Test" : "Mini Test";
+    return {
+      ...raw,
+      stage_no: stageNo,
+      display_title: `${assessmentLabel} cuối cycle`,
+      display_subtitle: `Stage ${stageNo} · Đánh giá năng lực`,
+      activity_summary: activitySummary || assessmentLabel,
+    };
+  }
+
+  return {
+    ...raw,
+    stage_no: stageNo,
+    display_title:
+      primarySession?.lesson_manager_title?.trim() ||
+      `Stage ${stageNo} · ${partLabel}`,
+    display_subtitle: `Stage ${stageNo} · ${partLabel}`,
+    activity_summary: activitySummary || "Hoạt động học",
+  };
+};
+
+const buildDayStudyDisplayViews = (
+  dayStudies: IDayStudy[]
+): LearningPathV2DayStudyView[] =>
+  dayStudies.map((dayStudy, index) => buildDayStudyDisplayView(dayStudy, index));
+
+const emptyLearningPathV2ScoreSummary = (): LearningPathV2ScoreSummary => ({
+  current_total: null,
+  current_listening: null,
+  current_reading: null,
+  anchor_total: null,
+  anchor_listening: null,
+  anchor_reading: null,
+  anchor_projection_total: null,
+  current_projection_total: null,
+  listening_ability: null,
+  reading_ability: null,
+  last_evaluated_at: null,
+  anchor_trigger_type: null,
+  source: "not_available",
+});
+
+const roundScoreValue = (value: number): number => Math.round(value);
+
+const clampScoreValue = (value: number, max: number): number =>
+  Math.min(max, Math.max(0, roundScoreValue(value)));
+
+const buildPartAbilityMap = (
+  parts: Array<{ part_type: number; ability: number }>
+): Record<number, number> =>
+  parts.reduce<Record<number, number>>((acc, part) => {
+    acc[part.part_type] = part.ability;
+    return acc;
+  }, {});
+
+const calculateAnchorSectionScoreFromHistory = (
+  parts: Array<{ part_type: number; correct_count?: number }>,
+  section: "listening" | "reading"
+): number | null => {
+  const sectionParts = parts.filter((part) =>
+    section === "listening"
+      ? part.part_type >= 1 && part.part_type <= 4
+      : part.part_type >= 5 && part.part_type <= 7
+  );
+
+  if (sectionParts.length === 0) {
+    return null;
+  }
+
+  return sectionParts.reduce(
+    (total, part) => total + (Number(part.correct_count ?? 0) * 5),
+    0
+  );
+};
+
+export const buildLearningPathV2ScoreSummary = async (
+  input: LearningPathV2ReadInput
+): Promise<LearningPathV2ScoreSummary> => {
+  const baseQuery = {
+    user_id: input.user_id,
+    context_type: "learning_path" as const,
+    learning_path_id: input.learning_path_id,
+  };
+
+  const [userSkill, fullTestAnchor, entryAnchor] = await Promise.all([
+    UserSkill.findOne(baseQuery).lean<IUserSkill | null>(),
+    UserSkillHistory.findOne({
+      ...baseQuery,
+      trigger_type: "full_test_review",
+      source_user_test_id: { $ne: null },
+    })
+      .sort({ submitted_at: -1, created_at: -1 })
+      .lean<IUserSkillHistory | null>(),
+    UserSkillHistory.findOne({
+      ...baseQuery,
+      trigger_type: "initial_generation",
+      source_user_test_id: { $ne: null },
+    })
+      .sort({ submitted_at: -1, created_at: -1 })
+      .lean<IUserSkillHistory | null>(),
+  ]);
+
+  if (!userSkill || (userSkill.parts ?? []).length === 0) {
+    return emptyLearningPathV2ScoreSummary();
+  }
+
+  const anchorHistory = fullTestAnchor ?? entryAnchor;
+
+  if (
+    !anchorHistory ||
+    !anchorHistory.source_user_test_id ||
+    (anchorHistory.parts ?? []).length === 0
+  ) {
+    return emptyLearningPathV2ScoreSummary();
+  }
+
+  const anchorTest = await UserTest.findById(anchorHistory.source_user_test_id)
+    .select("score submit_at")
+    .lean<IUserTest | null>();
+
+  if (!anchorTest || !Number.isFinite(anchorTest.score)) {
+    return emptyLearningPathV2ScoreSummary();
+  }
+
+  const currentProjection = calculateProjectedToeicScore(
+    buildPartAbilityMap(userSkill.parts ?? [])
+  );
+  const anchorProjection = calculateProjectedToeicScore(
+    buildPartAbilityMap(anchorHistory.parts ?? [])
+  );
+  const anchorTotal = Number(anchorTest.score);
+  const anchorListening =
+    calculateAnchorSectionScoreFromHistory(anchorHistory.parts ?? [], "listening");
+  const anchorReading =
+    calculateAnchorSectionScoreFromHistory(anchorHistory.parts ?? [], "reading");
+  const currentTotal = clampScoreValue(
+    anchorTotal +
+    (currentProjection.projected_total_score -
+      anchorProjection.projected_total_score),
+    990
+  );
+
+  return {
+    current_total: currentTotal,
+    current_listening:
+      anchorListening === null
+        ? null
+        : clampScoreValue(
+          anchorListening +
+          (currentProjection.projected_listening_score -
+            anchorProjection.projected_listening_score),
+          495
+        ),
+    current_reading:
+      anchorReading === null
+        ? null
+        : clampScoreValue(
+          anchorReading +
+          (currentProjection.projected_reading_score -
+            anchorProjection.projected_reading_score),
+          495
+        ),
+    anchor_total: anchorTotal,
+    anchor_listening: anchorListening,
+    anchor_reading: anchorReading,
+    anchor_projection_total: anchorProjection.projected_total_score,
+    current_projection_total: currentProjection.projected_total_score,
+    listening_ability: currentProjection.listening_ability,
+    reading_ability: currentProjection.reading_ability,
+    last_evaluated_at: userSkill.last_evaluated_at ?? null,
+    anchor_trigger_type: anchorHistory.trigger_type as
+      | "initial_generation"
+      | "full_test_review",
+    source: "calibrated_user_skill_projection",
+  };
+};
 
 type MockLearningAssessmentLocator = {
   dayIndex: number;
@@ -1238,7 +1482,7 @@ export const getCurrentLearningPathCycleV2 = async (
     current_cycle: weekStudy
       ? {
         week_study: weekStudy,
-        day_studies: dayStudies,
+        day_studies: buildDayStudyDisplayViews(dayStudies),
       }
       : null,
   };
@@ -1255,17 +1499,19 @@ export const getLearningPathV2Overview = async (
    * Nó được giữ như snapshot roadmap ROI dài hạn để vẽ canvas và truy vết
    * các cycle được tạo sau Entry/Full test.
    */
-  const selectedOption = await LearningPathStrategyOption.findOne({
-    learning_path_id: input.learning_path_id,
-    user_id: input.user_id,
-    status: "selected",
-  }).sort({ created_at: -1 });
-
-  const pendingOptions = await LearningPathStrategyOption.find({
-    learning_path_id: input.learning_path_id,
-    user_id: input.user_id,
-    status: "pending_selection",
-  }).sort({ created_at: -1 });
+  const [selectedOption, pendingOptions, scoreSummary] = await Promise.all([
+    LearningPathStrategyOption.findOne({
+      learning_path_id: input.learning_path_id,
+      user_id: input.user_id,
+      status: "selected",
+    }).sort({ created_at: -1 }),
+    LearningPathStrategyOption.find({
+      learning_path_id: input.learning_path_id,
+      user_id: input.user_id,
+      status: "pending_selection",
+    }).sort({ created_at: -1 }),
+    buildLearningPathV2ScoreSummary(input),
+  ]);
   const requiresStrategySelection = pendingOptions.length > 0;
 
   const weekStudies =
@@ -1314,7 +1560,9 @@ export const getLearningPathV2Overview = async (
   const overviewWeekStudies: LearningPathV2OverviewWeek[] = weekStudies.map(
     (week) => ({
       ...week.toObject(),
-      days: dayStudiesByWeekId.get(String(week._id)) ?? [],
+      days: buildDayStudyDisplayViews(
+        dayStudiesByWeekId.get(String(week._id)) ?? []
+      ),
     })
   );
   const roadmapStrategyOptions = await loadRoadmapCanvasStrategyOptions({
@@ -1336,10 +1584,11 @@ export const getLearningPathV2Overview = async (
     selected_strategy_option: selectedOption,
     pending_strategy_options: pendingOptions,
     week_studies: overviewWeekStudies,
+    score_summary: scoreSummary,
     current_cycle: currentWeekStudy
       ? {
         week_study: currentWeekStudy,
-        day_studies: dayStudies,
+        day_studies: buildDayStudyDisplayViews(dayStudies),
       }
       : null,
     roadmap_canvas: buildRoadmapCanvasSnapshot({

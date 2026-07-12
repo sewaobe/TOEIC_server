@@ -55,6 +55,10 @@ export const createFeedbackController = async (
       .status(201)
       .json(ApiResponse.success(feedback, "Gửi đánh giá thành công!"));
   } catch (error: any) {
+    if (error.message === "Feedback cho buổi học này đã tồn tại") {
+      return res.status(409).json(ApiResponse.fail(error.message));
+    }
+
     if (
       error.message === "Không tìm thấy ngày học" ||
       error.message === "Không tìm thấy lộ trình học" ||

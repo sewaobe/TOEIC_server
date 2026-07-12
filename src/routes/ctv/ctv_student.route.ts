@@ -1,4 +1,4 @@
-﻿import express from "express";
+import express from "express";
 import {
   getStudentsController,
   getStudentDetailController,
@@ -13,25 +13,25 @@ import {
 
 const router = express.Router();
 
-// Danh sÃ¡ch há»c viÃªn
+// Danh sách học viên
 router.get("/", getStudentsController);
 
-// Láº¥y lá»‹ch sá»­ email nháº¯c nhá»Ÿ
+// Lấy lịch sử email nhắc nhở
 router.get('/:id/email-logs', getEmailLogsForStudentController);
 
 router.get('/:id/care-conversations', listStudentCareConversationsForCtvController);
 router.post('/:id/care-conversations', createStudentCareConversationController);
 
-// Gá»­i email nháº¯c nhá»Ÿ (CTV)
+// Gửi email nhắc nhở (CTV)
 router.post('/:id/send-reminder', sendReminderController);
 
-// Chuyá»ƒn tráº¡ng thÃ¡i progress cá»§a há»c viÃªn sang inactive
+// Chuyển trạng thái progress của học viên sang inactive
 router.post('/:id/mark-inactive', markStudentInactiveController);
 
-// Chi tiáº¿t 1 há»c viÃªn
+// Chi tiết 1 học viên
 router.get('/:id', getStudentDetailController);
 
-// BÃ¡o cÃ¡o nhÃ³m há»c viÃªn
+// Báo cáo nhóm học viên
 router.get("/reports/all", getGroupReportsController);
 
 export default router;

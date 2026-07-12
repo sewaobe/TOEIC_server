@@ -1,4 +1,4 @@
-﻿import { Types } from "mongoose";
+import { Types } from "mongoose";
 import {
   GroupUser,
   StudentCareConversation,
@@ -39,7 +39,7 @@ export async function assertCollaboratorCanManageStudent(
     .lean();
 
   if (!group) {
-    const error: any = new Error("CTV khÃ´ng cÃ³ quyá»n quáº£n lÃ½ há»c viÃªn nÃ y.");
+    const error: any = new Error("CTV không có quyền quản lý học viên này.");
     error.status = 403;
     throw error;
   }
@@ -85,17 +85,17 @@ export function deriveCareSignals(input: {
     signals.push({
       signalType: "low_engagement",
       signalScopeKey: "engagement:last_study_date",
-      title: "Há»c viÃªn Ä‘ang ngÆ°ng há»c",
+      title: "Học viên đang ngưng học",
       severity: typeof daysUntilDeletion === "number" && daysUntilDeletion <= 4 ? "high" : "warning",
       actionMode: "care_conversation",
       contextSummary: [
-        { code: "days_since_last_active", label: "Sá»‘ ngÃ y chÆ°a há»c", value: daysSinceLastActive ?? null },
-        { code: "days_until_learning_path_deletion", label: "CÃ²n láº¡i trÆ°á»›c má»‘c xÃ³a lá»™ trÃ¬nh", value: daysUntilDeletion ?? null },
-        { code: "last_active", label: "NgÃ y há»c cuá»‘i", value: summary.lastActive ?? null },
+        { code: "days_since_last_active", label: "Số ngày chưa học", value: daysSinceLastActive ?? null },
+        { code: "days_until_learning_path_deletion", label: "Còn lại trước mốc xóa lộ trình", value: daysUntilDeletion ?? null },
+        { code: "last_active", label: "Ngày học cuối", value: summary.lastActive ?? null },
       ],
       internalHypotheses: [
-        "CÃ³ thá»ƒ há»c viÃªn thiáº¿u thá»i gian, máº¥t Ä‘á»™ng lá»±c hoáº·c bá»‹ káº¹t á»Ÿ bÃ i hiá»‡n táº¡i.",
-        "CTV nÃªn há»i lÃ½ do trÆ°á»›c khi chá»‰ gá»­i nháº¯c há»c chung chung.",
+        "Có thể học viên thiếu thời gian, mất động lực hoặc bị kẹt ở bài hiện tại.",
+        "CTV nên hỏi lý do trước khi chỉ gửi nhắc học chung chung.",
       ],
       metrics: { daysSinceLastActive, daysUntilDeletion },
       hasOpenConversation: false,
@@ -106,19 +106,19 @@ export function deriveCareSignals(input: {
     signals.push({
       signalType: "no_recent_assessment",
       signalScopeKey: "assessment:latest_checkpoint",
-      title: "Thiáº¿u checkpoint Ä‘Ã¡nh giÃ¡ má»›i",
+      title: "Thiếu checkpoint đánh giá mới",
       severity: "warning",
       actionMode: "care_conversation",
       contextSummary: [
         {
           code: "days_since_last_assessment",
-          label: "Sá»‘ ngÃ y tá»« láº§n Ä‘Ã¡nh giÃ¡ gáº§n nháº¥t",
+          label: "Số ngày từ lần đánh giá gần nhất",
           value: interventionProfile?.assessment?.daysSinceLastAssessment ?? null,
         },
-        { code: "score_source", label: "Nguá»“n Ä‘iá»ƒm hiá»‡n táº¡i", value: summary.scoreSource || null },
+        { code: "score_source", label: "Nguồn điểm hiện tại", value: summary.scoreSource || null },
       ],
       internalHypotheses: [
-        "Náº¿u khÃ´ng cÃ³ checkpoint má»›i, IRT khÃ³ biáº¿t há»c viÃªn Ä‘Ã£ tháº­t sá»± tiáº¿n bá»™ hay chÆ°a.",
+        "Nếu không có checkpoint mới, IRT khó biết học viên đã thật sự tiến bộ hay chưa.",
       ],
       metrics: {
         daysSinceLastAssessment: interventionProfile?.assessment?.daysSinceLastAssessment ?? null,
@@ -131,23 +131,23 @@ export function deriveCareSignals(input: {
     signals.push({
       signalType: "studying_without_score_gain",
       signalScopeKey: "score:learning_without_gain",
-      title: "CÃ³ há»c nhÆ°ng nÄƒng lá»±c chÆ°a tÄƒng",
+      title: "Có học nhưng năng lực chưa tăng",
       severity: "warning",
       actionMode: "care_conversation",
       contextSummary: [
         {
           code: "recent_learning_activity_count",
-          label: "Hoáº¡t Ä‘á»™ng há»c gáº§n Ä‘Ã¢y",
+          label: "Hoạt động học gần đây",
           value: interventionProfile?.engagement?.recentLearningActivityCount ?? 0,
         },
         {
           code: "latest_score",
-          label: "Äiá»ƒm checkpoint gáº§n nháº¥t",
+          label: "Điểm checkpoint gần nhất",
           value: interventionProfile?.assessment?.latestScore ?? summary.currentScore ?? null,
         },
       ],
       internalHypotheses: [
-        "Há»c viÃªn cÃ³ thá»ƒ hoÃ n thÃ nh bÃ i nhÆ°ng chÆ°a review lá»—i hoáº·c lÃ m quiz chÆ°a ká»¹.",
+        "Học viên có thể hoàn thành bài nhưng chưa review lỗi hoặc làm quiz chưa kỹ.",
       ],
       hasOpenConversation: false,
     });
@@ -157,16 +157,16 @@ export function deriveCareSignals(input: {
     signals.push({
       signalType: "skill_plateau",
       signalScopeKey: getScopeForSkill(plateauSkill, "skill:plateau"),
-      title: "Skill yáº¿u chÆ°a cáº£i thiá»‡n",
+      title: "Skill yếu chưa cải thiện",
       severity: "warning",
       actionMode: "care_conversation",
       contextSummary: [
         { code: "skill", label: "Skill", value: plateauSkill.label || plateauSkill.skillKey },
         { code: "part", label: "Part", value: plateauSkill.partType ?? weakestPart?.partType ?? null },
-        { code: "ability_percent", label: "NÄƒng lá»±c hiá»‡n táº¡i", value: plateauSkill.abilityPercent ?? null },
+        { code: "ability_percent", label: "Năng lực hiện tại", value: plateauSkill.abilityPercent ?? null },
       ],
       internalHypotheses: [
-        "CÃ³ thá»ƒ há»c viÃªn chÆ°a hiá»ƒu phÆ°Æ¡ng phÃ¡p lÃ m dáº¡ng nÃ y hoáº·c thiáº¿u ná»n tá»« vá»±ng/ngá»¯ phÃ¡p liÃªn quan.",
+        "Có thể học viên chưa hiểu phương pháp làm dạng này hoặc thiếu nền từ vựng/ngữ pháp liên quan.",
       ],
       relatedSkill: plateauSkill.label || plateauSkill.skillKey,
       relatedPart: plateauSkill.partType,
@@ -179,16 +179,16 @@ export function deriveCareSignals(input: {
     signals.push({
       signalType: "declining_skill",
       signalScopeKey: getScopeForSkill(decliningSkill, "skill:declining"),
-      title: "Skill cÃ³ dáº¥u hiá»‡u giáº£m",
+      title: "Skill có dấu hiệu giảm",
       severity: "high",
       actionMode: "care_conversation",
       contextSummary: [
         { code: "skill", label: "Skill", value: decliningSkill.label || decliningSkill.skillKey },
         { code: "part", label: "Part", value: decliningSkill.partType ?? null },
-        { code: "ability_percent", label: "NÄƒng lá»±c hiá»‡n táº¡i", value: decliningSkill.abilityPercent ?? null },
+        { code: "ability_percent", label: "Năng lực hiện tại", value: decliningSkill.abilityPercent ?? null },
       ],
       internalHypotheses: [
-        "CÃ³ thá»ƒ checkpoint gáº§n Ä‘Ã¢y khÃ³ hÆ¡n, há»c viÃªn lÃ m vá»™i hoáº·c quÃªn láº¡i kiáº¿n thá»©c cÅ©.",
+        "Có thể checkpoint gần đây khó hơn, học viên làm vội hoặc quên lại kiến thức cũ.",
       ],
       relatedSkill: decliningSkill.label || decliningSkill.skillKey,
       relatedPart: decliningSkill.partType,
@@ -201,14 +201,14 @@ export function deriveCareSignals(input: {
     signals.push({
       signalType: "continue_monitoring",
       signalScopeKey: "monitoring:normal",
-      title: "ChÆ°a cÃ³ dáº¥u hiá»‡u cáº§n há»i há»c viÃªn",
+      title: "Chưa có dấu hiệu cần hỏi học viên",
       severity: "info",
       actionMode: "internal_only",
       contextSummary: [
-        { code: "status", label: "Tráº¡ng thÃ¡i", value: summary.status ?? null },
-        { code: "last_active", label: "NgÃ y há»c cuá»‘i", value: summary.lastActive ?? null },
+        { code: "status", label: "Trạng thái", value: summary.status ?? null },
+        { code: "last_active", label: "Ngày học cuối", value: summary.lastActive ?? null },
       ],
-      internalHypotheses: ["Tiáº¿p tá»¥c theo dÃµi sau checkpoint tiáº¿p theo."],
+      internalHypotheses: ["Tiếp tục theo dõi sau checkpoint tiếp theo."],
       hasOpenConversation: false,
     });
   }
@@ -315,14 +315,14 @@ export async function createCareConversation(input: {
 }) {
   await assertCollaboratorCanManageStudent(input.collaboratorId, input.studentId);
   if (input.signal.actionMode !== "care_conversation") {
-    const error: any = new Error("Dáº¥u hiá»‡u nÃ y chá»‰ dÃ¹ng Ä‘á»ƒ theo dÃµi ná»™i bá»™, khÃ´ng táº¡o trao Ä‘á»•i há»c táº­p.");
+    const error: any = new Error("Dấu hiệu này chỉ dùng để theo dõi nội bộ, không tạo trao đổi học tập.");
     error.status = 400;
     throw error;
   }
 
   const template = getTemplateForSignal(input.signal.signalType);
   if (!template) {
-    const error: any = new Error("ChÆ°a cÃ³ máº«u cÃ¢u há»i há»— trá»£ cho dáº¥u hiá»‡u nÃ y.");
+    const error: any = new Error("Chưa có mẫu câu hỏi hỗ trợ cho dấu hiệu này.");
     error.status = 400;
     throw error;
   }
@@ -374,7 +374,7 @@ export async function createCareConversation(input: {
     senderId: input.collaboratorId,
     recipientId: input.studentId,
     type: "system",
-    message: "CTV muá»‘n trao Ä‘á»•i nhanh vá» viá»‡c há»c cá»§a báº¡n",
+    message: "CTV muốn trao đổi nhanh về việc học của bạn",
     description: sentText,
     metadata: {
       entityType: "student_care_conversation",
@@ -409,14 +409,14 @@ export async function respondToCareConversation(input: {
     status: "waiting_for_response",
   });
   if (!conversation) {
-    const error: any = new Error("Trao Ä‘á»•i há»c táº­p khÃ´ng tá»“n táº¡i hoáº·c Ä‘Ã£ Ä‘Æ°á»£c pháº£n há»“i.");
+    const error: any = new Error("Trao đổi học tập không tồn tại hoặc đã được phản hồi.");
     error.status = 409;
     throw error;
   }
 
   const primary = findOption(conversation.primary_options as CareQuestionOption[], input.primaryAnswerCode);
   if (!primary) {
-    const error: any = new Error("CÃ¢u tráº£ lá»i chÃ­nh khÃ´ng há»£p lá»‡.");
+    const error: any = new Error("Câu trả lời chính không hợp lệ.");
     error.status = 400;
     throw error;
   }
@@ -425,12 +425,12 @@ export async function respondToCareConversation(input: {
     ((conversation.secondary_options_by_primary || {})[input.primaryAnswerCode] as CareQuestionOption[]) || [];
   const secondary = findOption(secondaryOptions, input.secondaryAnswerCode);
   if (primary.requires_secondary && !secondary) {
-    const error: any = new Error("Vui lÃ²ng chá»n cÃ¢u tráº£ lá»i bá»• sung.");
+    const error: any = new Error("Vui lòng chọn câu trả lời bổ sung.");
     error.status = 400;
     throw error;
   }
   if (input.secondaryAnswerCode && !secondary) {
-    const error: any = new Error("CÃ¢u tráº£ lá»i bá»• sung khÃ´ng há»£p lá»‡.");
+    const error: any = new Error("Câu trả lời bổ sung không hợp lệ.");
     error.status = 400;
     throw error;
   }
@@ -467,7 +467,7 @@ export async function respondToCareConversation(input: {
   );
 
   if (!updated) {
-    const error: any = new Error("Trao Ä‘á»•i há»c táº­p Ä‘Ã£ Ä‘Æ°á»£c xá»­ lÃ½ trÆ°á»›c Ä‘Ã³.");
+    const error: any = new Error("Trao đổi học tập đã được xử lý trước đó.");
     error.status = 409;
     throw error;
   }
@@ -477,8 +477,8 @@ export async function respondToCareConversation(input: {
     recipientId: String(updated.collaborator_id),
     type: "system",
     message: requiresSupport
-      ? "Há»c viÃªn Ä‘Ã£ pháº£n há»“i vÃ  cáº§n Ä‘Æ°á»£c há»— trá»£"
-      : "Há»c viÃªn Ä‘Ã£ pháº£n há»“i trao Ä‘á»•i há»c táº­p",
+      ? "Học viên đã phản hồi và cần được hỗ trợ"
+      : "Học viên đã phản hồi trao đổi học tập",
     description: primary.label,
     metadata: {
       entityType: "student_care_conversation",
@@ -502,7 +502,7 @@ export async function getCtvCareConversationDetail(conversationId: string, colla
     collaborator_id: toObjectId(collaboratorId),
   }).lean();
   if (!conversation) {
-    const error: any = new Error("KhÃ´ng tÃ¬m tháº¥y trao Ä‘á»•i há»c táº­p.");
+    const error: any = new Error("Không tìm thấy trao đổi học tập.");
     error.status = 404;
     throw error;
   }
@@ -515,7 +515,7 @@ export async function getStudentCareConversationDetail(conversationId: string, s
     student_id: toObjectId(studentId),
   }).lean();
   if (!conversation) {
-    const error: any = new Error("KhÃ´ng tÃ¬m tháº¥y trao Ä‘á»•i há»c táº­p.");
+    const error: any = new Error("Không tìm thấy trao đổi học tập.");
     error.status = 404;
     throw error;
   }
@@ -576,7 +576,7 @@ export async function addCtvSolution(input: {
     status: { $in: ["responded", "needs_support", "solution_provided", "follow_up_due"] },
   });
   if (!conversation) {
-    const error: any = new Error("Trao Ä‘á»•i há»c táº­p khÃ´ng tá»“n táº¡i hoáº·c chÆ°a thá»ƒ ghi nháº­n giáº£i phÃ¡p.");
+    const error: any = new Error("Trao đổi học tập không tồn tại hoặc chưa thể ghi nhận giải pháp.");
     error.status = 404;
     throw error;
   }
@@ -621,7 +621,7 @@ export async function updateFollowUp(input: {
     { new: true }
   );
   if (!conversation) {
-    const error: any = new Error("KhÃ´ng thá»ƒ cáº­p nháº­t lá»‹ch theo dÃµi.");
+    const error: any = new Error("Không thể cập nhật lịch theo dõi.");
     error.status = 404;
     throw error;
   }
@@ -639,7 +639,7 @@ export async function resolveCareConversation(input: { conversationId: string; c
     { new: true }
   );
   if (!conversation) {
-    const error: any = new Error("KhÃ´ng thá»ƒ Ä‘Ã³ng trao Ä‘á»•i há»c táº­p.");
+    const error: any = new Error("Không thể đóng trao đổi học tập.");
     error.status = 404;
     throw error;
   }

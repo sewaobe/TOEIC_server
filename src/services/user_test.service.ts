@@ -132,14 +132,14 @@ export const getRecentUserTestsService = async (
   const userObjectId = userId;
 
   const recentTests = await UserTest.aggregate<IUserRecentTest>([
-    // L?c b�i l�m c?a user
+    // Lọc bài làm của user
     { $match: { user_id: userObjectId } },
 
-    // Sort b�i l�m g?n nh?t
+    // Sort bài làm gần nhất
     { $sort: { submit_at: -1 } },
     { $limit: limit },
 
-    // Join Test d? l?y th�ng tin d? thi
+    // Join Test để lấy thông tin đề thi
     {
       $lookup: {
         from: "tests",
@@ -178,7 +178,7 @@ export const getUserTestHistoryService = async (
   limit: number
 ): Promise<PaginationResult<IUserTestHistory>> => {
   const safePage = Math.max(1, Number(page) || 1);
-  const safeLimit = Math.min(100, Math.max(1, Number(limit) || 10)); // ch?n limit qu� l?n
+  const safeLimit = Math.min(100, Math.max(1, Number(limit) || 10)); // chặn limit quá lớn
   const skip = (safePage - 1) * safeLimit;
 
   const userObjectId = userId;
@@ -264,7 +264,7 @@ export const getDemoTestTagAccuracyService = async (
     .sort({ submit_at: -1 })
     .populate({
       path: "answers.question_id",
-      select: "tags", // Question c� tru?ng tags: string[]
+      select: "tags", // Question có trường tags: string[]
     })
     .lean();
 

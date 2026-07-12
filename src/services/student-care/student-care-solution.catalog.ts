@@ -1,4 +1,4 @@
-﻿import { CareSignalType } from "../../models/student_care_conversation.model";
+import { CareSignalType } from "../../models/student_care_conversation.model";
 import { SuggestedSolution } from "./student-care.types";
 
 export function resolveSuggestedSolutions(input: {
@@ -16,8 +16,8 @@ export function resolveSuggestedSolutions(input: {
   if (signalType === "low_engagement" || codes.has("busy_schedule") || codes.has("lack_time")) {
     solutions.push({
       code: "recommend_short_session",
-      title: "Gá»£i Ã½ phiÃªn há»c ngáº¯n",
-      description: "Äá» nghá»‹ há»c viÃªn quay láº¡i báº±ng phiÃªn 10-15 phÃºt Ä‘á»ƒ giá»¯ nhá»‹p trÆ°á»›c má»‘c xÃ³a lá»™ trÃ¬nh.",
+      title: "Gợi ý phiên học ngắn",
+      description: "Đề nghị học viên quay lại bằng phiên 10-15 phút để giữ nhịp trước mốc xóa lộ trình.",
       action_type: "recommend_short_session",
     });
   }
@@ -25,8 +25,8 @@ export function resolveSuggestedSolutions(input: {
   if (signalType === "no_recent_assessment" || codes.has("do_not_know_where") || codes.has("can_do_mini_test")) {
     solutions.push({
       code: "request_mini_test",
-      title: "YÃªu cáº§u lÃ m checkpoint",
-      description: "HÆ°á»›ng há»c viÃªn lÃ m Mini Test hoáº·c Full Test phÃ¹ há»£p Ä‘á»ƒ IRT cáº­p nháº­t láº¡i nÄƒng lá»±c.",
+      title: "Yêu cầu làm checkpoint",
+      description: "Hướng học viên làm Mini Test hoặc Full Test phù hợp để IRT cập nhật lại năng lực.",
       action_type: "request_assessment",
     });
   }
@@ -39,8 +39,8 @@ export function resolveSuggestedSolutions(input: {
   ) {
     solutions.push({
       code: "review_wrong_answers",
-      title: "HÆ°á»›ng dáº«n review cÃ¢u sai",
-      description: "Nháº¯c há»c viÃªn ghi láº¡i lá»—i láº·p láº¡i, lÃ m láº¡i quiz/dictation/shadowing vÃ  khÃ´ng chá»‰ click hoÃ n thÃ nh.",
+      title: "Hướng dẫn review câu sai",
+      description: "Nhắc học viên ghi lại lỗi lặp lại, làm lại quiz/dictation/shadowing và không chỉ click hoàn thành.",
       action_type: "review_wrong_answers",
       action_payload: {
         part: relatedPart ?? null,
@@ -59,8 +59,8 @@ export function resolveSuggestedSolutions(input: {
   ) {
     solutions.push({
       code: "manual_support",
-      title: "Há»— trá»£ 1-1 theo Ä‘iá»ƒm yáº¿u",
-      description: "CTV nÃªn há»i thÃªm vÃ­ dá»¥ cá»¥ thá»ƒ há»c viÃªn sai á»Ÿ Ä‘Ã¢u, sau Ä‘Ã³ hÆ°á»›ng dáº«n cÃ¡ch lÃ m cho part/skill liÃªn quan.",
+      title: "Hỗ trợ 1-1 theo điểm yếu",
+      description: "CTV nên hỏi thêm ví dụ cụ thể học viên sai ở đâu, sau đó hướng dẫn cách làm cho part/skill liên quan.",
       action_type: "manual_support",
       action_payload: {
         part: relatedPart ?? null,
@@ -72,8 +72,8 @@ export function resolveSuggestedSolutions(input: {
   if (solutions.length === 0) {
     solutions.push({
       code: "send_advice",
-      title: "Gá»­i lá»i khuyÃªn há»c táº­p",
-      description: "Pháº£n há»“i ngáº¯n theo váº¥n Ä‘á» há»c viÃªn chá»n vÃ  háº¹n theo dÃµi láº¡i sau vÃ i ngÃ y.",
+      title: "Gửi lời khuyên học tập",
+      description: "Phản hồi ngắn theo vấn đề học viên chọn và hẹn theo dõi lại sau vài ngày.",
       action_type: "send_advice",
     });
   }

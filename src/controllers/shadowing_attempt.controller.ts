@@ -101,7 +101,7 @@ export const fastCompleteShadowingAttemptController = async (
 ) => {
   try {
     if (!req.user?._id) {
-      return res.status(401).json(ApiResponse.fail("NgÆ°á»i dÃ¹ng chÆ°a Ä‘Äƒng nháº­p!"));
+      return res.status(401).json(ApiResponse.fail("Người dùng chưa đăng nhập!"));
     }
 
     const payload = parsePayload(req.body.payload);
@@ -111,7 +111,7 @@ export const fastCompleteShadowingAttemptController = async (
       payload,
     );
 
-    res.status(200).json(ApiResponse.success(attempt, "HoÃ n thÃ nh nhanh shadowing attempt thÃ nh cÃ´ng."));
+    res.status(200).json(ApiResponse.success(attempt, "Hoàn thành nhanh shadowing attempt thành công."));
   } catch (err) {
     next(err);
   }
