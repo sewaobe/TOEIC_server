@@ -52,6 +52,7 @@ import { WeekStudyStatus } from "../../models/enums/WeekStudyStatus";
 import { SessionType } from "../../models/enums/SessionType";
 import { getToeicSkillLabelVi } from "../../utils/toeic_skill.util";
 import { updateUserProgress } from "../user_progress.service";
+import { logLearningActivityCompleted } from "../learning_activity_log.service";
 
 export type LearningPathV2AbilityPipelineInput =
   | BuildInitialLearningPathPlanInput
@@ -952,6 +953,12 @@ export type MockLearningPathV2Result = {
   completed_item_count: number;
 };
 
+type MockLearningCompletedSessionLogTarget = {
+  dayStudy: IDayStudy;
+  sessionIndex: number;
+  completedItemIndexes: number[];
+};
+
 const findLastAssessmentItem = (
   dayStudies: IDayStudy[]
 ): MockLearningAssessmentLocator | null => {
@@ -1070,6 +1077,30 @@ export const mockCompleteLearningPathV2CurrentWeek = async (
   let completedSessionCount = 0;
   let completedItemCount = 0;
   const changedDayStudies = new Set<IDayStudy>();
+  const completedSessionLogTargets = new Map<
+    string,
+    MockLearningCompletedSessionLogTarget
+  >();
+
+  const addCompletedSessionLogTarget = (
+    dayStudy: IDayStudy,
+    sessionIndex: number,
+    itemIndex: number
+  ) => {
+    const key = `${String(dayStudy._id)}:${sessionIndex}`;
+    const existingTarget = completedSessionLogTargets.get(key);
+
+    if (existingTarget) {
+      existingTarget.completedItemIndexes.push(itemIndex);
+      return;
+    }
+
+    completedSessionLogTargets.set(key, {
+      dayStudy,
+      sessionIndex,
+      completedItemIndexes: [itemIndex],
+    });
+  };
 
   dayStudies.forEach((dayStudy, dayIndex) => {
     if (dayIndex < assessmentLocator.dayIndex) {
@@ -1113,6 +1144,7 @@ export const mockCompleteLearningPathV2CurrentWeek = async (
         ) {
           if (item.status !== WeekStudyStatus.COMPLETED) {
             completedItemCount += 1;
+            addCompletedSessionLogTarget(dayStudy, sessionIndex, itemIndex);
           }
           item.status = WeekStudyStatus.COMPLETED;
         } else if (
@@ -1134,6 +1166,19 @@ export const mockCompleteLearningPathV2CurrentWeek = async (
   });
 
   await Promise.all([...changedDayStudies].map((dayStudy) => dayStudy.save()));
+  await Promise.all(
+    Array.from(completedSessionLogTargets.values()).map((target) =>
+      logLearningActivityCompleted({
+        userId: input.user_id,
+        dayStudy: target.dayStudy,
+        sessionIndex: target.sessionIndex,
+        completedItemIndexes: target.completedItemIndexes,
+        completionSource: "mock_learning",
+        learningPathId: input.learning_path_id,
+        weekStudyId: weekStudy._id,
+      })
+    )
+  );
 
   try {
     await updateUserProgress(

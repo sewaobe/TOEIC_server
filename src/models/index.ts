@@ -1,4 +1,4 @@
-export * from "./achievement.model";
+﻿export * from "./achievement.model";
 export * from "./badge.model";
 export * from "./comment.model";
 export * from "./day_study.model";
@@ -47,3 +47,5 @@ export * from "./report.model";
 
 export * from "./user_sessions.model";
 export * from "./learning_path_strategy_option.model";
+export * from "./student_care_conversation.model";
+

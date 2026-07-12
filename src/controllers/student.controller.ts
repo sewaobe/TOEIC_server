@@ -73,7 +73,11 @@ export const getStudentDetailController = async (
       return;
     }
 
-    const data = await studentService.getStudentDetailService(id);
+    const currentUser = req.user as JwtUserPayload | undefined;
+    const data = await studentService.getStudentDetailService(
+      id,
+      currentUser?._id ? String(currentUser._id) : undefined
+    );
 
     if (!data) {
       res

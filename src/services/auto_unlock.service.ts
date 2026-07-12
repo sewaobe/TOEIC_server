@@ -21,7 +21,8 @@ export async function autoUnlockAfterComplete(
   activityId: string,
   activityType: SessionType,
   score?: number,
-  dayStudyId?: string
+  dayStudyId?: string,
+  attemptId?: string
 ): Promise<{
   unlocked: boolean;
   message: string;
@@ -121,7 +122,12 @@ export async function autoUnlockAfterComplete(
     const itemResult = await unlockNextItem(
       finalDayStudyId,
       sessionIndex,
-      itemIndex
+      itemIndex,
+      {
+        userId,
+        score,
+        attemptId,
+      }
     );
 
     if (!itemResult.session_completed) {

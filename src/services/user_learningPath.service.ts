@@ -483,7 +483,7 @@ export const getLearningProgressService = async (userId: string) => {
     learningPath_id: learningPath._id,
   }).lean();
 
-  const lastAttempt = userProgress?.updated_at ?? null;
+  const lastAttempt = userProgress?.last_study_date ?? null;
   const now = new Date();
   const inactiveDays = lastAttempt
     ? Math.floor(
@@ -550,8 +550,7 @@ export const getLearningProgressService = async (userId: string) => {
       inactiveDays > LEARNING_PATH_INACTIVITY_LIMIT_DAYS
         ? "inactivity_over_14_days"
         : learningPath.reason ?? null,
-    // `updated_at` is written whenever the user completes learning activity,
-    // therefore it is the authoritative timestamp for the latest attempt.
+    // This is the single source used by both student and CTV inactivity checks.
     last_attempt: lastAttempt,
     overview: {
       completed_lessons: userProgress?.completed_lessons || 0,

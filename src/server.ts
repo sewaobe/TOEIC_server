@@ -1,4 +1,4 @@
-/// <reference path="./types/express/index.d.ts" />
+﻿/// <reference path="./types/express/index.d.ts" />
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -7,15 +7,15 @@ const isProduction = process.env.NODE_ENV === "production";
 import * as Sentry from '@sentry/node'; // Sentry
 import { nodeProfilingIntegration } from '@sentry/profiling-node'; // Sentry
 
-// === KHỞI TẠO SENTRY ===
+// === KHá»žI Táº O SENTRY ===
 if (isProduction) {
   Sentry.init({
     dsn: process.env.SENTRY_DSN,
     integrations: [
-      // Bật tính năng theo dõi hiệu suất (Profiling)
+      // Báº­t tÃ­nh nÄƒng theo dÃµi hiá»‡u suáº¥t (Profiling)
       nodeProfilingIntegration(),
     ],
-    // TracesSampleRate: 1.0 nghĩa là gửi 100% dữ liệu về Sentry (Dùng lúc dev/test)
+    // TracesSampleRate: 1.0 nghÄ©a lÃ  gá»­i 100% dá»¯ liá»‡u vá» Sentry (DÃ¹ng lÃºc dev/test)
     tracesSampleRate: 1.0,
     profilesSampleRate: 1.0,
   })
@@ -53,6 +53,7 @@ import ctvFolderRoutes from "./routes/ctv/ctv_media_folder.route";
 import ctvDictationRouter from "./routes/ctv/ctv_dictation.route";
 import ctvShadowingRouter from "./routes/ctv/ctv_shadowing.route";
 import ctvStudentRouter from "./routes/ctv/ctv_student.route";
+import ctvCareConversationRouter from "./routes/ctv/ctv_care_conversation.route";
 import ctvLessonManagerRouter from "./routes/ctv/ctv_lesson_manager.route";
 import ctvLessonRouter from "./routes/ctv/ctv_lesson.route";
 import ctvQuizRouteRouter from "./routes/ctv/ctv_quiz.route";
@@ -77,13 +78,14 @@ import shadowingV2Router from "./routes/shadowing_v2.route";
 import shadowingAttemptRouter from "./routes/shadowing_attempt.route";
 import userVocabularyProgressV2Router from "./routes/user_vocabulary_progress_v2.route";
 
-// 🆕 Learning Path routes (user study in learning path)
+// ðŸ†• Learning Path routes (user study in learning path)
 import quizLearningPathRouter from "./routes/quiz_learningpath.route";
 import dictationLearningPathRouter from "./routes/dictation_learningpath.route";
 import lessonLearningPathRouter from "./routes/lesson_learningpath.route";
 import flashcardLearningPathRouter from "./routes/flashcard_learningpath.route";
 import shadowingLearningPathRouter from "./routes/shadowing_learningpath.route";
 import userStudyRouter from "./routes/user_study.route";
+import studentCareConversationRouter from "./routes/student_care_conversation.route";
 import historyRouter from "./routes/history.route";
 
 import vocabulary_definition_attempt_router from "./routes/vocabulary_definition_attempt.route";
@@ -121,7 +123,7 @@ app.use(
   cors({
     origin: allowOrigins,
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'sentry-trace', 'baggage', 'sentry-sample-rate', 'Idempotency-Key'], // Thêm các header của Sentry
+    allowedHeaders: ['Content-Type', 'Authorization', 'sentry-trace', 'baggage', 'sentry-sample-rate', 'Idempotency-Key'], // ThÃªm cÃ¡c header cá»§a Sentry
   })
 );
 
@@ -189,7 +191,7 @@ app.use(
   practice_definition_router,
 );
 
-// 🆕 Learning Path routes (activities in learning path flow)
+// ðŸ†• Learning Path routes (activities in learning path flow)
 app.use("/api/quiz-learningpath", quizLearningPathRouter);
 app.use("/api/dictation-learningpath", dictationLearningPathRouter);
 app.use("/api/lessons-learningpath", lessonLearningPathRouter);
@@ -201,6 +203,7 @@ app.use("/api/irt", verifyAccessToken, irtRouter);
 // User study general routes
 app.use("/api/history", historyRouter);
 app.use("/api/user", userStudyRouter); // GET /streak, /study-history, /stats
+app.use("/api/student/care-conversations", verifyAccessToken, studentCareConversationRouter);
 // ========= CTV ============
 app.use("/api/ctv", ctvTestRouter);
 app.use("/api/ctv/topics", verifyAccessToken, ctvTopicRouter);
@@ -211,6 +214,7 @@ app.use("/api/ctv/folders", verifyAccessToken, ctvFolderRoutes);
 app.use("/api/ctv/dictation", verifyAccessToken, ctvDictationRouter);
 app.use("/api/ctv/shadowing", verifyAccessToken, ctvShadowingRouter);
 app.use("/api/ctv/students", verifyAccessToken, ctvStudentRouter);
+app.use("/api/ctv/care-conversations", verifyAccessToken, ctvCareConversationRouter);
 app.use("/api/ctv/lesson-manager", verifyAccessToken, ctvLessonManagerRouter);
 app.use("/api/ctv/lesson", verifyAccessToken, ctvLessonRouter);
 app.use("/api/ctv/quiz", verifyAccessToken, ctvQuizRouteRouter);
@@ -240,14 +244,14 @@ app.use("/api/chat-feedback", verifyAccessToken, chatFeedbackRouter);
 // Mount Azure AI routes without auth for local/dev testing. Re-enable verifyAccessToken in production.
 app.use("/api/azure-ai", azureAIRouter);
 
-// Middleware của Sentry để ghi lại lỗi (phải đặt sau tất cả route)
+// Middleware cá»§a Sentry Ä‘á»ƒ ghi láº¡i lá»—i (pháº£i Ä‘áº·t sau táº¥t cáº£ route)
 if (isProduction) {
   Sentry.setupExpressErrorHandler(app);
 }
 
 app.use(errorLogger);
 
-// Middleware xử lý lỗi cuối cùng (error-handling middleware MUST have 4 args)
+// Middleware xá»­ lÃ½ lá»—i cuá»‘i cÃ¹ng (error-handling middleware MUST have 4 args)
 app.use((err: any, req: Request, res: Response, next: any) => {
   const statusCode = err.status || 500;
 
@@ -260,14 +264,14 @@ app.use((err: any, req: Request, res: Response, next: any) => {
 
   res.status(statusCode).json({
     ...response,
-    errorId: sentryId, // Trả về ID lỗi của Sentry để dễ dàng tra cứu
+    errorId: sentryId, // Tráº£ vá» ID lá»—i cá»§a Sentry Ä‘á»ƒ dá»… dÃ ng tra cá»©u
   });
 });
 
-// === TẠO SERVER HTTP ===
+// === Táº O SERVER HTTP ===
 const server = http.createServer(app);
 
-// === KHỞI TẠO SOCKET.IO ===
+// === KHá»žI Táº O SOCKET.IO ===
 initSocket(server);
 
 const PORT = process.env.PORT || 5000;
@@ -275,3 +279,4 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
+

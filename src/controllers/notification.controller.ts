@@ -89,7 +89,7 @@ export const sendNotification = async (
         }
 
         const senderId = req.user._id;
-        const { recipientId, message, type } = req.body;
+        const { recipientId, message, type, description, metadata } = req.body;
 
         if (!recipientId) {
             return res
@@ -103,13 +103,15 @@ export const sendNotification = async (
             recipientId,
             message: message || "Đây là thông báo thử nghiệm từ hệ thống Web Push 💫",
             type: type || "test",
+            description,
+            metadata,
         });
 
         // Gửi Web Push ra trình duyệt
         await sendWebPushToUser(recipientId, {
-            title: "Thông báo thử nghiệm",
-            body: message || "Đây là thông báo test từ hệ thống 💫",
-            url: "https://your-frontend-url.com/dashboard", // ← thay bằng URL dashboard thật
+            title: "TOEIC Smart",
+            body: description || message || "Bạn có thông báo mới từ TOEIC Smart",
+            url: "/notifications",
         });
 
         const socketId = onlineUsers.get(recipientId.toString());
