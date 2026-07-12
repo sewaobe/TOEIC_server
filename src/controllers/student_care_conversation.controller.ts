@@ -1,4 +1,4 @@
-﻿import { NextFunction, Request, Response } from "express";
+import { NextFunction, Request, Response } from "express";
 import { Types } from "mongoose";
 import { ApiResponse } from "../utils/ApiResponse";
 import * as studentService from "../services/student.service";
@@ -37,11 +37,11 @@ export const createStudentCareConversationController = async (
     const { id: studentId } = req.params;
     const { signalType, signalScopeKey, sentText } = req.body || {};
     if (!collaboratorId) {
-      res.status(401).json(ApiResponse.fail("ChÆ°a Ä‘Äƒng nháº­p."));
+      res.status(401).json(ApiResponse.fail("Chưa đăng nhập."));
       return;
     }
     if (!Types.ObjectId.isValid(studentId)) {
-      res.status(400).json(ApiResponse.fail("ID há»c viÃªn khÃ´ng há»£p lá»‡."));
+      res.status(400).json(ApiResponse.fail("ID học viên không hợp lệ."));
       return;
     }
 
@@ -54,7 +54,7 @@ export const createStudentCareConversationController = async (
         item.signalType === signalType && item.signalScopeKey === signalScopeKey
     );
     if (!signal) {
-      res.status(400).json(ApiResponse.fail("Signal khÃ´ng cÃ²n há»£p lá»‡ hoáº·c Ä‘Ã£ thay Ä‘á»•i."));
+      res.status(400).json(ApiResponse.fail("Signal không còn hợp lệ hoặc đã thay đổi."));
       return;
     }
 
@@ -67,7 +67,7 @@ export const createStudentCareConversationController = async (
     });
     res
       .status(result.reused ? 200 : 201)
-      .json(ApiResponse.success(result, "ÄÃ£ táº¡o trao Ä‘á»•i há»c táº­p cho há»c viÃªn."));
+      .json(ApiResponse.success(result, "Đã tạo trao đổi học tập cho học viên."));
   } catch (error) {
     handleControllerError(error, res, next);
   }
@@ -82,7 +82,7 @@ export const listStudentCareConversationsForCtvController = async (
     const collaboratorId = getAuthUserId(req);
     const { id: studentId } = req.params;
     if (!collaboratorId) {
-      res.status(401).json(ApiResponse.fail("ChÆ°a Ä‘Äƒng nháº­p."));
+      res.status(401).json(ApiResponse.fail("Chưa đăng nhập."));
       return;
     }
     const result = await listCtvStudentCareConversations({
@@ -92,7 +92,7 @@ export const listStudentCareConversationsForCtvController = async (
       page: Number(req.query.page || 1),
       limit: Number(req.query.limit || 10),
     });
-    res.json(ApiResponse.success(result, "Láº¥y danh sÃ¡ch trao Ä‘á»•i há»c táº­p thÃ nh cÃ´ng."));
+    res.json(ApiResponse.success(result, "Lấy danh sách trao đổi học tập thành công."));
   } catch (error) {
     handleControllerError(error, res, next);
   }
@@ -106,11 +106,11 @@ export const getCtvCareConversationDetailController = async (
   try {
     const collaboratorId = getAuthUserId(req);
     if (!collaboratorId) {
-      res.status(401).json(ApiResponse.fail("ChÆ°a Ä‘Äƒng nháº­p."));
+      res.status(401).json(ApiResponse.fail("Chưa đăng nhập."));
       return;
     }
     const conversation = await getCtvCareConversationDetail(req.params.id, collaboratorId);
-    res.json(ApiResponse.success(conversation, "Láº¥y chi tiáº¿t trao Ä‘á»•i há»c táº­p thÃ nh cÃ´ng."));
+    res.json(ApiResponse.success(conversation, "Lấy chi tiết trao đổi học tập thành công."));
   } catch (error) {
     handleControllerError(error, res, next);
   }
@@ -124,7 +124,7 @@ export const addCtvSolutionController = async (
   try {
     const collaboratorId = getAuthUserId(req);
     if (!collaboratorId) {
-      res.status(401).json(ApiResponse.fail("ChÆ°a Ä‘Äƒng nháº­p."));
+      res.status(401).json(ApiResponse.fail("Chưa đăng nhập."));
       return;
     }
     const conversation = await addCtvSolution({
@@ -134,7 +134,7 @@ export const addCtvSolutionController = async (
       note: req.body?.note,
       followUpDueAt: req.body?.followUpDueAt,
     });
-    res.json(ApiResponse.success(conversation, "ÄÃ£ ghi nháº­n hÆ°á»›ng há»— trá»£."));
+    res.json(ApiResponse.success(conversation, "Đã ghi nhận hướng hỗ trợ."));
   } catch (error) {
     handleControllerError(error, res, next);
   }
@@ -148,7 +148,7 @@ export const updateFollowUpController = async (
   try {
     const collaboratorId = getAuthUserId(req);
     if (!collaboratorId) {
-      res.status(401).json(ApiResponse.fail("ChÆ°a Ä‘Äƒng nháº­p."));
+      res.status(401).json(ApiResponse.fail("Chưa đăng nhập."));
       return;
     }
     const conversation = await updateFollowUp({
@@ -156,7 +156,7 @@ export const updateFollowUpController = async (
       collaboratorId,
       dueAt: req.body?.dueAt,
     });
-    res.json(ApiResponse.success(conversation, "ÄÃ£ cáº­p nháº­t lá»‹ch theo dÃµi."));
+    res.json(ApiResponse.success(conversation, "Đã cập nhật lịch theo dõi."));
   } catch (error) {
     handleControllerError(error, res, next);
   }
@@ -170,11 +170,11 @@ export const resolveCareConversationController = async (
   try {
     const collaboratorId = getAuthUserId(req);
     if (!collaboratorId) {
-      res.status(401).json(ApiResponse.fail("ChÆ°a Ä‘Äƒng nháº­p."));
+      res.status(401).json(ApiResponse.fail("Chưa đăng nhập."));
       return;
     }
     const conversation = await resolveCareConversation({ conversationId: req.params.id, collaboratorId });
-    res.json(ApiResponse.success(conversation, "ÄÃ£ Ä‘Ã³ng trao Ä‘á»•i há»c táº­p."));
+    res.json(ApiResponse.success(conversation, "Đã đóng trao đổi học tập."));
   } catch (error) {
     handleControllerError(error, res, next);
   }
@@ -188,11 +188,11 @@ export const listStudentPendingCareConversationsController = async (
   try {
     const studentId = getAuthUserId(req);
     if (!studentId) {
-      res.status(401).json(ApiResponse.fail("ChÆ°a Ä‘Äƒng nháº­p."));
+      res.status(401).json(ApiResponse.fail("Chưa đăng nhập."));
       return;
     }
     const conversations = await listStudentPendingCareConversations(studentId);
-    res.json(ApiResponse.success(conversations, "Láº¥y trao Ä‘á»•i Ä‘ang chá» thÃ nh cÃ´ng."));
+    res.json(ApiResponse.success(conversations, "Lấy trao đổi đang chờ thành công."));
   } catch (error) {
     handleControllerError(error, res, next);
   }
@@ -206,11 +206,11 @@ export const getStudentCareConversationDetailController = async (
   try {
     const studentId = getAuthUserId(req);
     if (!studentId) {
-      res.status(401).json(ApiResponse.fail("ChÆ°a Ä‘Äƒng nháº­p."));
+      res.status(401).json(ApiResponse.fail("Chưa đăng nhập."));
       return;
     }
     const conversation = await getStudentCareConversationDetail(req.params.id, studentId);
-    res.json(ApiResponse.success(conversation, "Láº¥y trao Ä‘á»•i há»c táº­p thÃ nh cÃ´ng."));
+    res.json(ApiResponse.success(conversation, "Lấy trao đổi học tập thành công."));
   } catch (error) {
     handleControllerError(error, res, next);
   }
@@ -224,7 +224,7 @@ export const respondStudentCareConversationController = async (
   try {
     const studentId = getAuthUserId(req);
     if (!studentId) {
-      res.status(401).json(ApiResponse.fail("ChÆ°a Ä‘Äƒng nháº­p."));
+      res.status(401).json(ApiResponse.fail("Chưa đăng nhập."));
       return;
     }
     const conversation = await respondToCareConversation({
@@ -234,7 +234,7 @@ export const respondStudentCareConversationController = async (
       secondaryAnswerCode: req.body?.secondaryAnswerCode,
       note: req.body?.note,
     });
-    res.json(ApiResponse.success(conversation, "ÄÃ£ gá»­i pháº£n há»“i cho CTV."));
+    res.json(ApiResponse.success(conversation, "Đã gửi phản hồi cho CTV."));
   } catch (error) {
     handleControllerError(error, res, next);
   }

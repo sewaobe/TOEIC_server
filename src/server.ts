@@ -1,4 +1,4 @@
-﻿/// <reference path="./types/express/index.d.ts" />
+/// <reference path="./types/express/index.d.ts" />
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -7,15 +7,15 @@ const isProduction = process.env.NODE_ENV === "production";
 import * as Sentry from '@sentry/node'; // Sentry
 import { nodeProfilingIntegration } from '@sentry/profiling-node'; // Sentry
 
-// === KHá»žI Táº O SENTRY ===
+// === KHỞI TẠO SENTRY ===
 if (isProduction) {
   Sentry.init({
     dsn: process.env.SENTRY_DSN,
     integrations: [
-      // Báº­t tÃ­nh nÄƒng theo dÃµi hiá»‡u suáº¥t (Profiling)
+      // Bật tính năng theo dõi hiệu suất (Profiling)
       nodeProfilingIntegration(),
     ],
-    // TracesSampleRate: 1.0 nghÄ©a lÃ  gá»­i 100% dá»¯ liá»‡u vá» Sentry (DÃ¹ng lÃºc dev/test)
+    // TracesSampleRate: 1.0 nghĩa là gửi 100% dữ liệu về Sentry (Dùng lúc dev/test)
     tracesSampleRate: 1.0,
     profilesSampleRate: 1.0,
   })
@@ -78,7 +78,7 @@ import shadowingV2Router from "./routes/shadowing_v2.route";
 import shadowingAttemptRouter from "./routes/shadowing_attempt.route";
 import userVocabularyProgressV2Router from "./routes/user_vocabulary_progress_v2.route";
 
-// ðŸ†• Learning Path routes (user study in learning path)
+// 🆕 Learning Path routes (user study in learning path)
 import quizLearningPathRouter from "./routes/quiz_learningpath.route";
 import dictationLearningPathRouter from "./routes/dictation_learningpath.route";
 import lessonLearningPathRouter from "./routes/lesson_learningpath.route";
@@ -123,7 +123,7 @@ app.use(
   cors({
     origin: allowOrigins,
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'sentry-trace', 'baggage', 'sentry-sample-rate', 'Idempotency-Key'], // ThÃªm cÃ¡c header cá»§a Sentry
+    allowedHeaders: ['Content-Type', 'Authorization', 'sentry-trace', 'baggage', 'sentry-sample-rate', 'Idempotency-Key'], // Thêm các header của Sentry
   })
 );
 
@@ -191,7 +191,7 @@ app.use(
   practice_definition_router,
 );
 
-// ðŸ†• Learning Path routes (activities in learning path flow)
+// 🆕 Learning Path routes (activities in learning path flow)
 app.use("/api/quiz-learningpath", quizLearningPathRouter);
 app.use("/api/dictation-learningpath", dictationLearningPathRouter);
 app.use("/api/lessons-learningpath", lessonLearningPathRouter);
@@ -244,14 +244,14 @@ app.use("/api/chat-feedback", verifyAccessToken, chatFeedbackRouter);
 // Mount Azure AI routes without auth for local/dev testing. Re-enable verifyAccessToken in production.
 app.use("/api/azure-ai", azureAIRouter);
 
-// Middleware cá»§a Sentry Ä‘á»ƒ ghi láº¡i lá»—i (pháº£i Ä‘áº·t sau táº¥t cáº£ route)
+// Middleware của Sentry để ghi lại lỗi (phải đặt sau tất cả route)
 if (isProduction) {
   Sentry.setupExpressErrorHandler(app);
 }
 
 app.use(errorLogger);
 
-// Middleware xá»­ lÃ½ lá»—i cuá»‘i cÃ¹ng (error-handling middleware MUST have 4 args)
+// Middleware xử lý lỗi cuối cùng (error-handling middleware MUST have 4 args)
 app.use((err: any, req: Request, res: Response, next: any) => {
   const statusCode = err.status || 500;
 
@@ -264,14 +264,14 @@ app.use((err: any, req: Request, res: Response, next: any) => {
 
   res.status(statusCode).json({
     ...response,
-    errorId: sentryId, // Tráº£ vá» ID lá»—i cá»§a Sentry Ä‘á»ƒ dá»… dÃ ng tra cá»©u
+    errorId: sentryId, // Trả về ID lỗi của Sentry để dễ dàng tra cứu
   });
 });
 
-// === Táº O SERVER HTTP ===
+// === TẠO SERVER HTTP ===
 const server = http.createServer(app);
 
-// === KHá»žI Táº O SOCKET.IO ===
+// === KHỞI TẠO SOCKET.IO ===
 initSocket(server);
 
 const PORT = process.env.PORT || 5000;

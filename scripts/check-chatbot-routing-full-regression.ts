@@ -302,11 +302,11 @@ addMany("unknown in-domain / gemini fallback", [
 addMany("chroma error fail closed", [
   "hi",
   "hello",
-  "chÃ¡n quÃ¡",
-  "lá»™ trÃ¬nh cá»§a tÃ´i",
-  "cÃ¢u nÃ y lÃ m tháº¿ nÃ o",
-  "tÃ´i yáº¿u ká»¹ nÄƒng nÃ o",
-  "bitcoin giÃ¡ bao nhiÃªu",
+  "chán quá",
+  "lộ trình của tôi",
+  "câu này làm thế nào",
+  "tôi yếu kỹ năng nào",
+  "bitcoin giá bao nhiêu",
 ], {
   contextType: "none",
   expectedIntent: "safe_fallback",

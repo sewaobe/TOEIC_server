@@ -13,7 +13,7 @@ import { WeekStudyStatus } from "../models/enums/WeekStudyStatus";
 import { TestType } from "../models/enums/TestType";
 import { UserTestSubmitType } from "../models/enums/UserTestSubmitType";
 import { getToeicSkillLabelVi } from "../utils/toeic_skill.util";
-import { calculateProjectedToeicScore } from "./learning_path_v2/skill_roi_optimizer.service";
+import { buildLearningPathV2ScoreSummary } from "./learning_path_v2/learning_path_v2.service";
 import {
   assertCollaboratorCanManageStudent,
   buildCareProfile,
@@ -234,7 +234,7 @@ function normalizeUserActivity(activity: any): RecentActivity | null {
   return {
     id: String(activity._id),
     type: normalizedType,
-    title: activity.title || "Hoáº¡t Ä‘á»™ng há»c táº­p",
+    title: activity.title || "Hoạt động học tập",
     description: activity.description || "",
     timestamp: timestamp.toISOString(),
     metadata: activity.metadata || {},
@@ -249,11 +249,11 @@ function normalizeUserTestActivity(test: any): RecentActivity | null {
   return {
     id: String(test._id),
     type: "test_submit",
-    title: `Ná»™p bÃ i kiá»ƒm tra: ${
-      (test.test_id as any)?.title || "BÃ i thi khÃ´ng rÃµ tÃªn"
+    title: `Nộp bài kiểm tra: ${
+      (test.test_id as any)?.title || "Bài thi không rõ tên"
     }`,
     description: (test.test_id as any)?.topic
-      ? `Chá»§ Ä‘á»: ${(test.test_id as any)?.topic}`
+      ? `Chủ đề: ${(test.test_id as any)?.topic}`
       : "",
     timestamp: timestamp.toISOString(),
     metadata: {
@@ -365,18 +365,37 @@ function getPartAbilityProjection(skillSnapshot: any) {
 async function getScoreSnapshot(userId: any, learningPath?: any): Promise<ScoreSnapshot> {
   const skillSnapshot = await getLatestSkillSnapshotForScore(userId, learningPath);
   const projectionInput = getPartAbilityProjection(skillSnapshot);
+  const learningPathId = learningPath?._id?.toString?.() ?? learningPath?._id;
 
-  if (projectionInput.missingAbilityParts.length === 0) {
-    const projectedScore = calculateProjectedToeicScore(projectionInput.abilities);
-    return {
-      score: projectedScore.projected_total_score,
-      source: "projected_ability",
-      estimatedScore: projectedScore.projected_total_score,
-      estimatedListeningScore: projectedScore.projected_listening_score,
-      estimatedReadingScore: projectedScore.projected_reading_score,
-      scoreAbilityCoverage: projectionInput.scoreAbilityCoverage,
-      missingAbilityParts: [],
-    };
+  if (learningPathId) {
+    const scoreSummary = await buildLearningPathV2ScoreSummary({
+      user_id: userId?.toString?.() ?? String(userId),
+      learning_path_id: learningPathId,
+    });
+
+    if (
+      scoreSummary.source === "calibrated_user_skill_projection" &&
+      typeof scoreSummary.current_total === "number"
+    ) {
+      const estimatedListeningScore =
+        typeof scoreSummary.current_listening === "number"
+          ? scoreSummary.current_listening
+          : undefined;
+      const estimatedReadingScore =
+        typeof scoreSummary.current_reading === "number"
+          ? scoreSummary.current_reading
+          : undefined;
+
+      return {
+        score: scoreSummary.current_total,
+        source: "calibrated_user_skill_projection",
+        estimatedScore: scoreSummary.current_total,
+        estimatedListeningScore,
+        estimatedReadingScore,
+        scoreAbilityCoverage: projectionInput.scoreAbilityCoverage,
+        missingAbilityParts: projectionInput.missingAbilityParts,
+      };
+    }
   }
 
   const tests = await UserTest.find({
@@ -479,9 +498,9 @@ function deriveStudentStatus(input: {
 }
 
 function buildTags(completionRate: number) {
-  if (completionRate >= 80) return ["xuáº¥t sáº¯c"];
-  if (completionRate >= 50) return ["tiáº¿n bá»™ tá»‘t"];
-  return ["cáº§n há»— trá»£"];
+  if (completionRate >= 80) return ["xuất sắc"];
+  if (completionRate >= 50) return ["tiến bộ tốt"];
+  return ["cần hỗ trợ"];
 }
 
 function abilityPercent(value: unknown) {
@@ -780,47 +799,47 @@ function buildInterventionProfile(input: {
 
   if (riskFlags.has("low_engagement")) {
     const inactiveDaysText =
-      daysSinceLastActive === null ? "nhiá»u" : String(daysSinceLastActive);
+      daysSinceLastActive === null ? "nhiều" : String(daysSinceLastActive);
     const deletionText =
       daysUntilLearningPathDeletion === null
-        ? "chÆ°a xÃ¡c Ä‘á»‹nh"
-        : `${daysUntilLearningPathDeletion} ngÃ y`;
+        ? "chưa xác định"
+        : `${daysUntilLearningPathDeletion} ngày`;
     recommendedActions.push({
       type: "send_reminder",
-      title: "Gá»­i nháº¯c há»c",
-      description: `Há»c viÃªn Ä‘Ã£ ngÆ°ng há»c ${inactiveDaysText} ngÃ y, cÃ²n ${deletionText} trÆ°á»›c má»‘c xÃ³a lá»™ trÃ¬nh.`,
+      title: "Gửi nhắc học",
+      description: `Học viên đã ngừng học ${inactiveDaysText} ngày, còn ${deletionText} trước mốc xóa lộ trình.`,
       priority: "high",
     });
   }
   if (riskFlags.has("no_recent_assessment")) {
     recommendedActions.push({
       type: "request_assessment",
-      title: "YÃªu cáº§u lÃ m bÃ i Ä‘Ã¡nh giÃ¡",
-      description: "Cáº§n Mini Test hoáº·c Full Test má»›i Ä‘á»ƒ IRT cáº­p nháº­t nÄƒng lá»±c vÃ  roadmap.",
+      title: "Yêu cầu làm bài đánh giá",
+      description: "Cần Mini Test hoặc Full Test mới để IRT cập nhật năng lực và roadmap.",
       priority: "high",
     });
   }
   if (riskFlags.has("studying_without_score_gain")) {
     recommendedActions.push({
       type: "coach_review_method",
-      title: "TÆ° váº¥n cÃ¡ch review lá»—i",
-      description: "CÃ³ há»c nhÆ°ng checkpoint chÆ°a cáº£i thiá»‡n; nháº¯c há»c viÃªn review lá»—i vÃ  lÃ m láº¡i cÃ¢u sai.",
+      title: "Tư vấn cách review lỗi",
+      description: "Có học nhưng checkpoint chưa cải thiện; nhắc học viên review lỗi và làm lại câu sai.",
       priority: "medium",
     });
   }
   if (riskFlags.has("skill_plateau") || riskFlags.has("declining_skill")) {
     recommendedActions.push({
       type: "mark_needs_support",
-      title: "ÄÃ¡nh dáº¥u cáº§n há»— trá»£",
-      description: "Skill yáº¿u chÆ°a cáº£i thiá»‡n hoáº·c cÃ³ dáº¥u hiá»‡u giáº£m qua nhiá»u checkpoint; cÃ¢n nháº¯c há»— trá»£ 1-1.",
+      title: "Đánh dấu cần hỗ trợ",
+      description: "Skill yếu chưa cải thiện hoặc có dấu hiệu giảm qua nhiều checkpoint; cân nhắc hỗ trợ 1-1.",
       priority: "medium",
     });
   }
   if (recommendedActions.length === 0) {
     recommendedActions.push({
       type: "continue_monitoring",
-      title: "Tiáº¿p tá»¥c theo dÃµi",
-      description: "Há»c viÃªn chÆ°a cÃ³ tÃ­n hiá»‡u rá»§i ro rÃµ; theo dÃµi sau checkpoint tiáº¿p theo.",
+      title: "Tiếp tục theo dõi",
+      description: "Học viên chưa có tín hiệu rủi ro rõ; theo dõi sau checkpoint tiếp theo.",
       priority: "low",
     });
   }
@@ -849,7 +868,7 @@ function buildInterventionProfile(input: {
     recommendedActions,
     notes:
       progressRecord?.notes?.join(", ") ||
-      "CTV nÃªn theo dÃµi má»©c Ä‘á»™ há»c, checkpoint IRT vÃ  skill yáº¿u trÆ°á»›c khi can thiá»‡p.",
+      "CTV nên theo dõi mức độ học, checkpoint IRT và skill yếu trước khi can thiệp.",
   };
 }
 
@@ -868,7 +887,7 @@ async function buildStudentSnapshot(user: any) {
   return {
     id: String(user._id),
     learningPathId: learningPath?._id ? String(learningPath._id) : null,
-    name: user?.profile?.fullname || "ChÆ°a cÃ³ tÃªn",
+    name: user?.profile?.fullname || "Chưa có tên",
     email: user?.email || "",
     phone: user?.profile?.phone || user?.phone || "",
     avatar: user?.profile?.avatar || "",
@@ -898,7 +917,7 @@ async function buildStudentSnapshot(user: any) {
     progressUpdatedAt: toDate(progressRecord?.updated_at)?.toISOString() || null,
     studyStreak: progressRecord?.streak_days || user?.streak_days || 0,
     totalStudyTime: progressRecord?.total_study_time || 0,
-    assignedMentor: progressRecord?.mentor_id ? String(progressRecord.mentor_id) : "ChÆ°a phÃ¢n cÃ´ng",
+    assignedMentor: progressRecord?.mentor_id ? String(progressRecord.mentor_id) : "Chưa phân công",
     tags: [],
   };
 }
@@ -1056,7 +1075,7 @@ export const getStudentDetailService = async (id: string, collaboratorId?: strin
     careProfile,
     notes:
       progressRecord?.notes?.join(", ") ||
-      "Há»c viÃªn Ä‘ang trong tiáº¿n trÃ¬nh há»c táº­p, cáº§n theo dÃµi thÃªm.",
+      "Học viên đang trong tiến trình học tập, cần theo dõi thêm.",
   };
 };
 
@@ -1070,8 +1089,8 @@ export const getGroupReportsService = async () => {
     const completionRate = total ? Math.round((active / total) * 100) : 0;
 
     return {
-      groupName: group.name || "NhÃ³m há»c viÃªn",
-      mentorName: mentor?.profile?.fullname || "ChÆ°a phÃ¢n cÃ´ng",
+      groupName: group.name || "Nhóm học viên",
+      mentorName: mentor?.profile?.fullname || "Chưa phân công",
       totalStudents: total,
       activeStudents: active,
       averageProgress: group.average_progress || 0,

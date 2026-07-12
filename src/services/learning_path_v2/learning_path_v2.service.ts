@@ -837,7 +837,7 @@ export const runLearningPathV2AbilityPipeline = async (
 };
 
 
-type LearningPathV2ReadInput = {
+export type LearningPathV2ReadInput = {
   user_id: string;
   learning_path_id: string;
 };
@@ -874,7 +874,7 @@ type LearningPathV2DayStudyView = Record<string, unknown> & {
   activity_summary: string;
 };
 
-type LearningPathV2ScoreSummary = {
+export type LearningPathV2ScoreSummary = {
   current_total: number | null;
   current_listening: number | null;
   current_reading: number | null;
@@ -1076,7 +1076,7 @@ const calculateAnchorSectionScoreFromHistory = (
   );
 };
 
-const buildLearningPathV2ScoreSummary = async (
+export const buildLearningPathV2ScoreSummary = async (
   input: LearningPathV2ReadInput
 ): Promise<LearningPathV2ScoreSummary> => {
   const baseQuery = {
