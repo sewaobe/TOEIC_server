@@ -53,6 +53,7 @@ import ctvFolderRoutes from "./routes/ctv/ctv_media_folder.route";
 import ctvDictationRouter from "./routes/ctv/ctv_dictation.route";
 import ctvShadowingRouter from "./routes/ctv/ctv_shadowing.route";
 import ctvStudentRouter from "./routes/ctv/ctv_student.route";
+import ctvCareConversationRouter from "./routes/ctv/ctv_care_conversation.route";
 import ctvLessonManagerRouter from "./routes/ctv/ctv_lesson_manager.route";
 import ctvLessonRouter from "./routes/ctv/ctv_lesson.route";
 import ctvQuizRouteRouter from "./routes/ctv/ctv_quiz.route";
@@ -84,6 +85,7 @@ import lessonLearningPathRouter from "./routes/lesson_learningpath.route";
 import flashcardLearningPathRouter from "./routes/flashcard_learningpath.route";
 import shadowingLearningPathRouter from "./routes/shadowing_learningpath.route";
 import userStudyRouter from "./routes/user_study.route";
+import studentCareConversationRouter from "./routes/student_care_conversation.route";
 import historyRouter from "./routes/history.route";
 
 import vocabulary_definition_attempt_router from "./routes/vocabulary_definition_attempt.route";
@@ -201,6 +203,7 @@ app.use("/api/irt", verifyAccessToken, irtRouter);
 // User study general routes
 app.use("/api/history", historyRouter);
 app.use("/api/user", userStudyRouter); // GET /streak, /study-history, /stats
+app.use("/api/student/care-conversations", verifyAccessToken, studentCareConversationRouter);
 // ========= CTV ============
 app.use("/api/ctv", ctvTestRouter);
 app.use("/api/ctv/topics", verifyAccessToken, ctvTopicRouter);
@@ -211,6 +214,7 @@ app.use("/api/ctv/folders", verifyAccessToken, ctvFolderRoutes);
 app.use("/api/ctv/dictation", verifyAccessToken, ctvDictationRouter);
 app.use("/api/ctv/shadowing", verifyAccessToken, ctvShadowingRouter);
 app.use("/api/ctv/students", verifyAccessToken, ctvStudentRouter);
+app.use("/api/ctv/care-conversations", verifyAccessToken, ctvCareConversationRouter);
 app.use("/api/ctv/lesson-manager", verifyAccessToken, ctvLessonManagerRouter);
 app.use("/api/ctv/lesson", verifyAccessToken, ctvLessonRouter);
 app.use("/api/ctv/quiz", verifyAccessToken, ctvQuizRouteRouter);
@@ -275,3 +279,4 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
+

@@ -1,5 +1,6 @@
 import { ChatIntent, IntentAvailability, IntentLane } from "../types/chat.types";
 import type { IntentSignalMetadata } from "./chat_intent_signal.service";
+import { CHAT_INTENT_EXTRA_POSITIVE_EXAMPLES } from "./chat_intent_extra_examples.data";
 
 export type IntentEngine =
   | "TEMPLATE"
@@ -32,7 +33,7 @@ export type IntentCatalogEntry = {
 type RawIntentCatalogEntry = Omit<IntentCatalogEntry, keyof IntentSignalMetadata>;
 
 export const CHAT_INTENT_COLLECTION = "chat_intent_examples";
-export const CHAT_INTENT_CATALOG_VERSION = 11;
+export const CHAT_INTENT_CATALOG_VERSION = 18;
 
 const INTENT_SIGNAL_METADATA: Partial<Record<ChatIntent, IntentSignalMetadata>> = {
   "smalltalk.greeting_feedback": {
@@ -40,6 +41,13 @@ const INTENT_SIGNAL_METADATA: Partial<Record<ChatIntent, IntentSignalMetadata>> 
     actions: ["general_ask"],
     defaultAction: "general_ask",
     forbiddenActions: ["create", "translate", "analyze", "locate_ui", "open", "navigate"],
+  },
+  "user_profile.identity": {
+    entities: ["user_profile"],
+    actions: ["ask_status", "general_ask"],
+    defaultAction: "ask_status",
+    requiredContext: ["userId"],
+    forbiddenActions: ["locate_ui", "open", "navigate", "create", "translate"],
   },
   "user_progress.summary": {
     entities: ["progress"],
@@ -82,6 +90,13 @@ const INTENT_SIGNAL_METADATA: Partial<Record<ChatIntent, IntentSignalMetadata>> 
     defaultAction: "recommend",
     requiredContext: ["questionId"],
     forbiddenActions: ["locate_ui", "open", "navigate", "create", "ask_status", "translate"],
+  },
+  "lesson.recommendation": {
+    entities: ["lesson"],
+    actions: ["recommend"],
+    defaultAction: "recommend",
+    requiredContext: ["userId"],
+    forbiddenActions: ["locate_ui", "open", "navigate", "create", "translate", "ask_status"],
   },
   "vocabulary.contextual": {
     entities: ["question"],
@@ -165,6 +180,12 @@ const INTENT_SIGNAL_METADATA: Partial<Record<ChatIntent, IntentSignalMetadata>> 
     defaultAction: "locate_ui",
     forbiddenActions: ["ask_status", "analyze", "create", "translate"],
   },
+  "out_of_project.general": {
+    entities: ["out_of_project"],
+    actions: ["general_ask"],
+    defaultAction: "general_ask",
+    forbiddenActions: ["create", "translate", "analyze", "locate_ui", "open", "navigate"],
+  },
 };
 
 const DEFAULT_SIGNAL_METADATA: IntentSignalMetadata = {
@@ -175,6 +196,48 @@ const DEFAULT_SIGNAL_METADATA: IntentSignalMetadata = {
 };
 
 const RAW_CHAT_INTENT_EXAMPLES: RawIntentCatalogEntry[] = [
+  {
+    id: "out_of_project_general",
+    intentId: "out_of_project.general",
+    lane: "SYSTEM",
+    engine: "TEMPLATE",
+    availability: "ACTIVE",
+    semanticSearchEnabled: true,
+    contextType: "out_of_project",
+    contextPolicy: { onMissing: "SAFE_FALLBACK" },
+    priority: 95,
+    examples: [
+      "thoi tiet hom nay the nao",
+      "hom nay mua hay nang",
+      "bitcoin gia bao nhieu",
+      "gia vang hom nay",
+      "du doan chung khoan hom nay",
+      "bong da toi nay ai da",
+      "lich thi dau bong da",
+      "tu van thuoc dau dau",
+      "toi bi sot uong thuoc gi",
+      "nau pho nhu the nao",
+      "cong thuc nau an don gian",
+      "viet code python cho toi",
+      "sua bug react giup toi",
+      "tin chinh tri moi nhat",
+      "mua laptop nao tot",
+      "dat ve may bay di da nang",
+      "lich chieu phim hom nay",
+      "ke chuyen ma di",
+      "viet tho tinh cho toi",
+      "crypto nao nen mua",
+    ],
+    hardNegatives: [
+      "dich cau nay",
+      "giai thich cau nay",
+      "toi yeu ky nang nao",
+      "mo roadmap",
+      "tao flashcard",
+      "TOEIC Part 5 la gi",
+      "cach hoc tu vung TOEIC",
+    ],
+  },
   {
     id: "smalltalk_greeting_feedback",
     intentId: "smalltalk.greeting_feedback",
@@ -202,6 +265,13 @@ const RAW_CHAT_INTENT_EXAMPLES: RawIntentCatalogEntry[] = [
       "cam on nhe",
       "cam on nhieu",
       "cam on ban nhe",
+      "cam on ban nhieu",
+      "cam on nha",
+      "cam on ban nha",
+      "minh cam on",
+      "minh cam on ban",
+      "thanks ban",
+      "thank you ban",
       "thanks",
       "thank you",
       "ok",
@@ -213,9 +283,14 @@ const RAW_CHAT_INTENT_EXAMPLES: RawIntentCatalogEntry[] = [
       "minh hieu roi",
       "ro roi",
       "ngon roi",
+      "chan",
+      "toi chan",
+      "minh chan",
       "hoc kho qua",
       "chan qua",
       "toi chan qua",
+      "minh chan qua",
+      "hoc chan qua",
       "met qua",
       "buon ngu qua",
       "hom nay hoc met qua",
@@ -238,6 +313,45 @@ const RAW_CHAT_INTENT_EXAMPLES: RawIntentCatalogEntry[] = [
     ],
   },
   {
+    id: "user_profile_identity",
+    intentId: "user_profile.identity",
+    lane: "CONTEXTUAL",
+    engine: "DB_FIRST",
+    availability: "ACTIVE",
+    semanticSearchEnabled: true,
+    contextType: "user_profile_identity",
+    contextPolicy: { auth: true, onMissing: "SAFE_FALLBACK" },
+    priority: 87,
+    examples: [
+      "toi la ai",
+      "toi la ai tren he thong",
+      "ban biet toi la ai khong",
+      "ban dang biet gi ve toi",
+      "thong tin ca nhan cua toi",
+      "thong tin account cua toi",
+      "ho so cua toi tren he thong",
+      "profile cua toi co gi",
+      "email dang dang nhap la gi",
+      "ten hien thi cua toi la gi",
+      "toi dang dung tai khoan nao",
+      "tai khoan nao dang dang nhap",
+    ],
+    hardNegatives: [
+      "toi la ai trong cuoc doi nay",
+      "toi la ai tren doi nay",
+      "ban nghi toi la nguoi nhu the nao",
+      "toi co phai nguoi tot khong",
+      "toi nen song nhu the nao",
+      "ban co biet toi ngoai doi khong",
+      "toi yeu phan nao",
+      "tien do cua toi",
+      "diem gan nhat cua toi",
+      "lo trinh cua toi",
+      "doi ten tai khoan",
+      "doi mat khau",
+    ],
+  },
+  {
     id: "user_progress_summary",
     intentId: "user_progress.summary",
     lane: "CONTEXTUAL",
@@ -249,10 +363,29 @@ const RAW_CHAT_INTENT_EXAMPLES: RawIntentCatalogEntry[] = [
     priority: 85,
     examples: [
       "tien do hoc cua toi the nao",
+      "tien do hoc cua toi ra sao",
+      "tien do hoc tap cua toi the nao",
+      "tien do hoc tap cua toi ra sao",
       "tong quan tien do cua toi ra sao",
+      "tong hop tien do hoc cua toi",
       "toi dang hoc duoc bao nhieu phan tram",
       "toi yeu phan nao",
+      "toi yeu phan nao vay",
+      "toi yeu phan nao nhi",
+      "toi yeu phan nao nhat",
+      "toi yeu phan nao trong TOEIC",
+      "toi yeu phan nao trong qua trinh hoc",
+      "toi dang yeu phan nao",
+      "toi con yeu phan nao",
+      "toi can cai thien phan nao",
+      "phan nao cua toi dang yeu",
       "phan nao toi yeu nhat",
+      "phan nao cua toi yeu nhat",
+      "ky nang nao cua toi yeu nhat",
+      "skill nao cua toi dang yeu",
+      "trong TOEIC toi yeu phan nao",
+      "xem tong quan toi yeu phan nao",
+      "dua tren tien do toi yeu phan nao",
       "phan nao toi can on nhieu nhat",
       "toi da hoan thanh bao nhieu bai",
       "muc tieu diem cua toi la bao nhieu",
@@ -278,8 +411,6 @@ const RAW_CHAT_INTENT_EXAMPLES: RawIntentCatalogEntry[] = [
       "phan tich de gan nhat cua toi",
       "bai test vua lam cua toi ra sao",
       "bai nay toi sai phan nao",
-      "toi yeu phan nao",
-      "phan nao toi yeu nhat",
       "buoc tiep theo trong roadmap la gi",
       "meo tang diem reading",
     ],
@@ -358,9 +489,22 @@ const RAW_CHAT_INTENT_EXAMPLES: RawIntentCatalogEntry[] = [
       "phan tich de gan nhat cua toi",
       "de moi nhat cua toi ra sao",
       "bai nay toi sai phan nao",
+      "phan tich de thi nay",
+      "de thi nay toi sai nhieu khong",
+      "de thi nay toi sai phan nao",
+      "ket qua de thi nay ra sao",
       "de thi gan nhat cua toi the nao",
       "phan tich de thi gan nhat cua toi",
       "de gan nhat toi sai chu yeu o dau",
+      "de gan nhat toi sai o dau",
+      "de gan nhat toi sai nhieu o dau",
+      "de gan nhat toi sai nhieu phan nao",
+      "de gan nhat toi hay sai gi",
+      "de gan nhat loi sai chinh cua toi la gi",
+      "bai gan nhat toi sai chu yeu o dau",
+      "bai test gan nhat toi sai chu yeu o dau",
+      "attempt gan nhat toi sai chu yeu o dau",
+      "bai thi gan nhat toi sai chu yeu o dau",
       "de moi nhat toi sai nhieu phan nao",
       "ket qua bai test gan nhat cua toi the nao",
       "bai thi gan nhat cua toi the nao",
@@ -380,6 +524,10 @@ const RAW_CHAT_INTENT_EXAMPLES: RawIntentCatalogEntry[] = [
       "bai thi thu nay cho thay toi can hoc gi",
     ],
     hardNegatives: [
+      "cau nay toi sai o dau",
+      "toi sai o dau trong cau nay",
+      "loi sai cua toi o cau nay la gi",
+      "dap an cua toi sai cho nao",
       "tien do hoc cua toi the nao",
       "nang luc cua toi the nao",
       "tien do hoc cua toi ra sao",
@@ -419,8 +567,25 @@ const RAW_CHAT_INTENT_EXAMPLES: RawIntentCatalogEntry[] = [
       "huong dan cach lam cau nay",
       "phan tich dap an dung sai cua cau nay",
       "cau nay can chu y diem nao",
+      "cau nay toi sai o dau",
+      "cau nay toi sai o dau vay",
+      "cau nay minh sai o dau",
+      "cau nay em sai o dau",
+      "cau nay sai cho nao",
+      "cau nay toi sai cho nao",
+      "cau nay minh sai cho nao",
+      "toi sai o dau o cau nay",
+      "minh sai o dau o cau nay",
+      "toi sai cho nao trong cau nay",
+      "minh sai cho nao trong cau nay",
       "loi sai cua toi o cau nay la gi",
       "toi bi sai o dau trong cau nay",
+      "toi sai o dau trong cau nay",
+      "dap an cua toi sai cho nao",
+      "dap an toi chon sai o dau trong cau nay",
+      "vi sao toi sai cau nay",
+      "tai sao toi sai cau nay",
+      "sai o dau trong cau hien tai",
       "cau nay co meo gi de lam khong",
       "tai sao cau nay dung theo dap an he thong",
       "giai thich tung lua chon cua cau nay",
@@ -460,6 +625,13 @@ const RAW_CHAT_INTENT_EXAMPLES: RawIntentCatalogEntry[] = [
     priority: 88,
     examples: [
       "dich cau nay",
+      "dich cau nay sang tieng viet",
+      "dich giup minh cau nay",
+      "dich giup toi cau nay",
+      "hay dich cau nay",
+      "cho minh ban dich cau nay",
+      "ban dich cua cau nay",
+      "cau nay dich la gi",
       "dich noi dung cau hoi nay",
       "dich phan de bai nay",
       "dich 4 dap an",
@@ -491,6 +663,10 @@ const RAW_CHAT_INTENT_EXAMPLES: RawIntentCatalogEntry[] = [
       "viet lai nghia tieng viet cua cau hoi",
     ],
     hardNegatives: [
+      "tao cho toi 10 tu vung cho chu de house",
+      "tao 10 tu vung chu de house",
+      "tao bo tu vung ve chu de house",
+      "sinh flashcard chu de house",
       "affect va effect khac nhau the nao",
       "meo lam part 7",
       "phan tich ket qua bai test",
@@ -539,6 +715,48 @@ const RAW_CHAT_INTENT_EXAMPLES: RawIntentCatalogEntry[] = [
     ],
   },
   {
+    id: "lesson_recommendation",
+    intentId: "lesson.recommendation",
+    lane: "CONTEXTUAL",
+    engine: "DB_FIRST",
+    availability: "ACTIVE",
+    semanticSearchEnabled: true,
+    contextType: "lesson_recommendation",
+    contextPolicy: { auth: true, onMissing: "SAFE_FALLBACK" },
+    priority: 86,
+    examples: [
+      "goi y bai hoc part 5",
+      "cho toi bai luyen part 7",
+      "tim lesson part 3",
+      "goi y bai hoc menh de quan he",
+      "bai hoc ve tu loai",
+      "bai luyen dang suy luan",
+      "goi y bai hoc part 5 menh de quan he",
+      "goi y bai hoc part 7 dang suy luan",
+      "recommend lesson relative clause",
+      "suggest part 7 inference lessons",
+      "tim bai hoc ngu phap part 5",
+      "cho minh activity ve chu de company",
+    ],
+    hardNegatives: [
+      "hom nay hoc gi",
+      "bai tiep theo la gi",
+      "goi y bai hoc tiep theo cho toi",
+      "hoc gi theo lo trinh",
+      "bai hoc tiep theo cua toi",
+      "goi y theo tien do hien tai",
+      "menh de quan he la gi",
+      "cach lam part 7",
+      "ngu phap part 5 gom gi",
+      "tao flashcard tu cau nay",
+      "luu tu nay vao flashcard",
+      "liet ke tu vung trong cau nay",
+      "giai thich tu nay",
+      "dich cau nay",
+      "luyen cau tuong tu cau nay",
+    ],
+  },
+  {
     id: "vocabulary_contextual",
     intentId: "vocabulary.contextual",
     lane: "CONTEXTUAL",
@@ -556,12 +774,25 @@ const RAW_CHAT_INTENT_EXAMPLES: RawIntentCatalogEntry[] = [
       "awning nghia la gi",
       "pick up nghia la gi",
       "pick up trong cau nay nghia la gi",
+      "pick up trong cau nay co nghia la gi",
+      "cum pick up trong cau nay nghia la gi",
+      "cum tu pick up trong cau nay nghia la gi",
+      "pick up o day nghia la gi",
+      "pick up trong ngu canh nay nghia la gi",
+      "tu pick up trong cau nay co nghia gi",
+      "giai thich nghia pick up trong cau nay",
+      "nghia cua pick up trong cau nay",
       "tu nay nghia la gi",
+      "tu nay trong cau nay nghia la gi",
+      "tu nay trong cau nay co nghia gi",
       "cum tu nay nghia la gi",
+      "cum tu nay trong cau nay nghia la gi",
+      "cum tu nay trong ngu canh nay nghia la gi",
       "load voi unload khac gi",
       "cho toi vocab cau nay",
       "liet ke tu vung trong cau nay",
       "tu nao quan trong trong cau nay",
+      "giai thich tu significant trong cau nay",
       "giai thich nghia cua tu nay",
       "giai thich cum tu nay",
       "nghia cua word nay la gi",
@@ -610,6 +841,27 @@ const RAW_CHAT_INTENT_EXAMPLES: RawIntentCatalogEntry[] = [
     priority: 86,
     examples: [
       "cau nay dung ngu phap gi",
+      "cau nay dung ngu phap gi vay",
+      "cau nay dung ngu phap gi nhi",
+      "cau nay dung ngu phap gi the",
+      "cau nay dung ngu phap gi day",
+      "cau nay dung ngu phap gi de ra dap an",
+      "cau nay dang dung ngu phap gi",
+      "cau nay la dang ngu phap gi",
+      "cau nay dung diem ngu phap gi",
+      "cau nay thuoc ngu phap gi",
+      "cau nay ap dung ngu phap nao",
+      "cau nay la ngu phap nao",
+      "cau nay dang dung ngu phap nao",
+      "cau nay dung grammar gi",
+      "cau nay dung grammar point nao",
+      "cau nay thuoc grammar point nao",
+      "cau nay kiem tra ngu phap nao",
+      "cau nay kiem tra diem ngu phap nao",
+      "cau nay co ngu phap gi",
+      "cau nay co diem ngu phap nao",
+      "ngu phap nao trong cau nay",
+      "ngu phap cua cau nay la diem nao",
       "ngu phap cua cau nay la gi",
       "cho trong can loai tu gi",
       "vi sao khong dung V-ing",
@@ -644,8 +896,6 @@ const RAW_CHAT_INTENT_EXAMPLES: RawIntentCatalogEntry[] = [
       "menh de quan he la gi",
       "cac chu diem ngu phap toeic quan trong",
       "meo lam part 5",
-      "cau nay dung ngu phap gi",
-      "ngu phap cua cau nay la gi",
       "lo trinh hoc o dau",
       "xem lo trinh o cho nao",
       "roadmap nam o dau trong app",
@@ -715,6 +965,15 @@ const RAW_CHAT_INTENT_EXAMPLES: RawIntentCatalogEntry[] = [
     priority: 82,
     examples: [
       "mo roadmap",
+      "mo roadmap cua toi",
+      "mo phan roadmap",
+      "mo muc roadmap",
+      "mo trang roadmap",
+      "vao roadmap",
+      "vao trang roadmap",
+      "di toi roadmap",
+      "di den trang roadmap",
+      "chuyen sang roadmap",
       "mo lo trinh",
       "di den roadmap",
       "cho toi xem trang roadmap",
@@ -861,12 +1120,31 @@ const RAW_CHAT_INTENT_EXAMPLES: RawIntentCatalogEntry[] = [
     priority: 91,
     examples: [
       "tao 20 tu chu de office",
+      "tao cho toi 10 tu vung cho chu de house",
+      "tao cho toi 10 tu vung ve chu de house",
+      "tao cho toi muoi tu vung chu de house",
+      "tao giup toi 10 tu vung chu de house",
+      "tao 10 tu vung chu de house",
+      "tao 10 tu vung ve house",
+      "tao 10 tu vung ve chu de house",
+      "tao bo tu vung ve chu de house",
+      "tao danh sach tu vung chu de house",
+      "tao tu vung theo chu de house",
+      "tao flashcard tu vung chu de house",
+      "sinh flashcard chu de house",
+      "sinh 10 flashcard chu de house",
+      "sinh bo tu vung chu de house",
+      "tao flashcard chu de house",
       "tao flashcard chu de business",
       "tao 15 flashcard ve travel",
       "tao bo tu vung ve meeting",
       "tao nhanh 20 tu de hoc flashcard",
       "tao flashcard tu cau nay",
       "tao 10 tu trong cau nay",
+      "tao cho toi 10 tu chu de cau nay",
+      "tao 10 tu vung lien quan den cau nay",
+      "sinh bo tu vung tu cau nay de hoc",
+      "luu cac tu kho cua cau nay thanh flashcard",
       "chi lay tu trong cau nay de tao flashcard",
       "tao flashcard tu cau sai nay",
       "tao bo tu de on cau nay",
@@ -876,6 +1154,9 @@ const RAW_CHAT_INTENT_EXAMPLES: RawIntentCatalogEntry[] = [
       "di den flashcard",
       "toi co bao nhieu flashcard can on",
       "cach hoc tu vung toeic",
+      "liet ke tu vung trong cau nay",
+      "giai thich tu significant trong cau nay",
+      "tu nao quan trong trong cau nay",
       "luyen cau tuong tu",
     ],
   },
@@ -891,6 +1172,15 @@ const RAW_CHAT_INTENT_EXAMPLES: RawIntentCatalogEntry[] = [
     priority: 82,
     examples: [
       "mo flashcard",
+      "mo flashcard cua toi",
+      "mo phan flashcard",
+      "mo muc flashcard",
+      "mo trang flashcard",
+      "vao flashcard",
+      "vao trang flashcard",
+      "di toi flashcard",
+      "di den trang flashcard",
+      "chuyen sang flashcard",
       "di den flashcard",
       "cho toi vao phan on flashcard",
       "mo trang on tu",
@@ -994,7 +1284,80 @@ const RAW_CHAT_INTENT_EXAMPLES: RawIntentCatalogEntry[] = [
   },
 ];
 
-export const CHAT_INTENT_EXAMPLES: IntentCatalogEntry[] = RAW_CHAT_INTENT_EXAMPLES.map((entry) => ({
+function normalizeIntentExample(value = "") {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\u0111/g, "d")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function mergeExtraPositiveExamples(
+  catalog: RawIntentCatalogEntry[]
+): RawIntentCatalogEntry[] {
+  const searchableIntentIds = new Set(
+    catalog
+      .filter(
+        (entry) =>
+          entry.semanticSearchEnabled && entry.availability !== "DISABLED"
+      )
+      .map((entry) => entry.intentId)
+  );
+  const extraIntentIds = new Set(
+    Object.keys(CHAT_INTENT_EXTRA_POSITIVE_EXAMPLES) as ChatIntent[]
+  );
+  const missingExtra = [...searchableIntentIds].filter(
+    (intentId) => !extraIntentIds.has(intentId)
+  );
+  const unknownExtra = [...extraIntentIds].filter(
+    (intentId) => !searchableIntentIds.has(intentId)
+  );
+  if (missingExtra.length || unknownExtra.length) {
+    throw new Error(
+      `Chat intent extra examples mismatch. Missing: ${missingExtra.join(", ") || "none"}; unknown: ${unknownExtra.join(", ") || "none"}`
+    );
+  }
+
+  const seen = new Set<string>();
+  for (const entry of catalog) {
+    if (!searchableIntentIds.has(entry.intentId)) continue;
+    for (const example of [...entry.hardNegatives, ...entry.examples]) {
+      const key = normalizeIntentExample(example);
+      if (key) seen.add(key);
+    }
+  }
+
+  return catalog.map((entry) => {
+    if (
+      !entry.semanticSearchEnabled ||
+      entry.availability === "DISABLED"
+    ) {
+      return entry;
+    }
+
+    const additions: string[] = [];
+    for (const example of CHAT_INTENT_EXTRA_POSITIVE_EXAMPLES[entry.intentId] ?? []) {
+      const key = normalizeIntentExample(example);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      additions.push(example);
+    }
+
+    return {
+      ...entry,
+      examples: [...entry.examples, ...additions],
+    };
+  });
+}
+
+const MERGED_CHAT_INTENT_EXAMPLES = mergeExtraPositiveExamples(
+  RAW_CHAT_INTENT_EXAMPLES
+);
+
+export const CHAT_INTENT_EXAMPLES: IntentCatalogEntry[] = MERGED_CHAT_INTENT_EXAMPLES.map((entry) => ({
   ...entry,
   ...(INTENT_SIGNAL_METADATA[entry.intentId] ?? DEFAULT_SIGNAL_METADATA),
 }));

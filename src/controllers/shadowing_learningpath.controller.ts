@@ -110,7 +110,8 @@ export const submitShadowingController = async (
       shadowingId.toString(),
       SessionType.SHADOWING,
       accuracy,
-      day_study_id
+      day_study_id,
+      String(created[created.length - 1]?._id)
     );
 
     return res.status(200).json(

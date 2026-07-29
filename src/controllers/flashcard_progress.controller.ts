@@ -48,7 +48,7 @@ export const startSuggestionReviewSessionController = async (req: Request, res: 
         if (!req.user?._id) {
             return res
                 .status(401)
-                .json(ApiResponse.fail('NgÆ°á»i dÃ¹ng chÆ°a Ä‘Äƒng nháº­p!'));
+                .json(ApiResponse.fail('Người dùng chưa đăng nhập!'));
         }
 
         const { sessionId, newSession, preview_metadata } = await startSuggestionReviewSessionService(

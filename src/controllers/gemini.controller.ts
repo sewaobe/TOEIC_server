@@ -169,8 +169,14 @@ export const analyzeDictationController = async (
   res: Response,
   next: NextFunction
 ) => {
+  const startedAt = Date.now();
   try {
     const { logs, dictation } = req.body;
+    console.info("[DictationAI:legacy] request start", {
+      dictationId: dictation?._id,
+      title: dictation?.title,
+      logs: Array.isArray(logs) ? logs.length : 0,
+    });
 
     if (!logs || !Array.isArray(logs) || !dictation) {
       return res
@@ -179,6 +185,10 @@ export const analyzeDictationController = async (
     }
 
     const result = await analyzeDictationWithAI(logs, dictation);
+    console.info("[DictationAI:legacy] request success", {
+      dictationId: dictation?._id,
+      elapsedMs: Date.now() - startedAt,
+    });
 
     return res
       .status(200)
@@ -186,6 +196,10 @@ export const analyzeDictationController = async (
         ApiResponse.success(result, "Phân tích bài luyện Dictation thành công!")
       );
   } catch (error) {
+    console.error("[DictationAI:legacy] request failed", {
+      elapsedMs: Date.now() - startedAt,
+      error: error instanceof Error ? error.message : error,
+    });
     next(error);
   }
 };

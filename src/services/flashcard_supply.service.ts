@@ -62,16 +62,299 @@ type FinalVocabCandidate = {
   existingId?: Types.ObjectId;
 };
 
+type FlashcardTopicProfile = {
+  id: "home_household";
+  canonicalTopic: string;
+  searchTerms: readonly string[];
+  promptInstructions: readonly string[];
+  tags: readonly string[];
+  allowedWords: readonly string[];
+  allowedTextTerms: readonly string[];
+  deniedWords: readonly string[];
+  deniedTextTerms: readonly string[];
+};
+
 const DEFAULT_COUNT = 20;
 const MIN_COUNT = 5;
 const MAX_COUNT = 30;
 const MAX_GEMINI_ATTEMPTS = 2;
+
+const HOME_TOPIC_ALIASES = [
+  "house",
+  "home",
+  "household",
+  "household items",
+  "home appliances",
+  "nha",
+  "nha cua",
+  "ngoi nha",
+  "can nha",
+  "do dung gia dinh",
+  "do dung trong nha",
+  "noi that",
+];
+
+const REAL_ESTATE_TOPIC_TERMS = [
+  "real estate",
+  "property",
+  "housing market",
+  "rental",
+  "rent",
+  "lease",
+  "landlord",
+  "tenant",
+  "hotel",
+  "lodging",
+  "accommodation",
+  "premises",
+  "facility",
+  "building management",
+  "bat dong san",
+  "cho thue",
+  "thue nha",
+  "khach san",
+  "co so vat chat",
+  "nha hang",
+];
+
+const HOME_HOUSEHOLD_PROFILE: FlashcardTopicProfile = {
+  id: "home_household",
+  canonicalTopic: "home/household vocabulary",
+  searchTerms: [
+    "home",
+    "household",
+    "room",
+    "furniture",
+    "appliance",
+    "kitchen",
+    "bedroom",
+    "bathroom",
+    "living room",
+    "door",
+    "window",
+    "roof",
+    "garden",
+    "garage",
+    "chores",
+  ],
+  promptInstructions: [
+    "Interpret the topic as a home or household vocabulary set.",
+    "Generate concrete words for rooms, furniture, fixtures, appliances, household objects, home areas, and common chores.",
+    "Do not broaden this topic into real estate, rental, hotel, corporate premises, public facilities, institutions, or accommodation vocabulary.",
+    "Avoid words such as premises, facility, accommodation, institution, property, real estate, tenant, landlord, and lease unless the user explicitly asked for real estate or lodging.",
+  ],
+  tags: ["home", "household"],
+  allowedWords: [
+    "air conditioner",
+    "appliance",
+    "armchair",
+    "attic",
+    "balcony",
+    "basement",
+    "bathroom",
+    "bed",
+    "bedroom",
+    "blanket",
+    "bookshelf",
+    "broom",
+    "cabinet",
+    "carpet",
+    "ceiling",
+    "chair",
+    "closet",
+    "couch",
+    "cupboard",
+    "curtain",
+    "desk",
+    "dishwasher",
+    "door",
+    "drawer",
+    "driveway",
+    "faucet",
+    "floor",
+    "fridge",
+    "furniture",
+    "garage",
+    "garden",
+    "hallway",
+    "home",
+    "house",
+    "household",
+    "kettle",
+    "key",
+    "kitchen",
+    "lamp",
+    "laundry",
+    "lawn",
+    "living room",
+    "lock",
+    "microwave",
+    "mirror",
+    "mop",
+    "oven",
+    "pillow",
+    "porch",
+    "refrigerator",
+    "roof",
+    "room",
+    "shelf",
+    "sink",
+    "sofa",
+    "stairs",
+    "stove",
+    "table",
+    "toilet",
+    "vacuum cleaner",
+    "wall",
+    "wardrobe",
+    "washing machine",
+    "window",
+    "yard",
+  ],
+  allowedTextTerms: [
+    "air conditioner",
+    "appliance",
+    "attic",
+    "balcony",
+    "basement",
+    "bathroom",
+    "bedroom",
+    "blanket",
+    "cabinet",
+    "carpet",
+    "ceiling",
+    "clean the house",
+    "closet",
+    "cupboard",
+    "curtain",
+    "dishwasher",
+    "door",
+    "drawer",
+    "faucet",
+    "floor",
+    "fridge",
+    "furniture",
+    "garage",
+    "garden",
+    "hallway",
+    "home appliance",
+    "household chore",
+    "household item",
+    "kitchen",
+    "laundry",
+    "living room",
+    "microwave",
+    "mirror",
+    "oven",
+    "pillow",
+    "porch",
+    "refrigerator",
+    "roof",
+    "sink",
+    "sofa",
+    "stairs",
+    "stove",
+    "vacuum",
+    "wall",
+    "wardrobe",
+    "washing machine",
+    "window",
+    "yard",
+    "can phong",
+    "cua so",
+    "cua ra vao",
+    "do gia dung",
+    "do noi that",
+    "may giat",
+    "may hut bui",
+    "mai nha",
+    "nha bep",
+    "phong",
+    "phong khach",
+    "phong ngu",
+    "san nha",
+    "tu lanh",
+  ],
+  deniedWords: [
+    "accommodation",
+    "estate",
+    "facility",
+    "institution",
+    "landlord",
+    "lease",
+    "lodging",
+    "premises",
+    "property",
+    "real estate",
+    "rental",
+    "tenant",
+  ],
+  deniedTextTerms: [
+    "accommodation",
+    "business property",
+    "company",
+    "commercial property",
+    "conference room",
+    "corporate premises",
+    "facility",
+    "hotel",
+    "institution",
+    "landlord",
+    "lease",
+    "lodging",
+    "meeting room",
+    "office building",
+    "premises",
+    "property market",
+    "public facility",
+    "real estate",
+    "rental agreement",
+    "tenant",
+    "workplace",
+  ],
+};
 
 export function normalizeVocabularyWord(word?: string) {
   return String(word ?? "")
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ");
+}
+
+function normalizeTopicText(text = "") {
+  return String(text)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\u0111\u0110]/g, "d")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function escapeRegex(text: string) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function containsNormalizedTerm(text: string, term: string) {
+  const normalizedText = normalizeTopicText(text);
+  const normalizedTerm = normalizeTopicText(term);
+  if (!normalizedText || !normalizedTerm) return false;
+  const pattern = escapeRegex(normalizedTerm).replace(/\s+/g, "\\s+");
+  return new RegExp(`(^|[^a-z0-9])${pattern}(?=$|[^a-z0-9])`).test(normalizedText);
+}
+
+function containsAnyNormalizedTerm(text: string, terms: readonly string[]) {
+  return terms.some((term) => containsNormalizedTerm(text, term));
+}
+
+function resolveFlashcardTopicProfile(source: FlashcardSupplyRequest["source"]) {
+  if (source.kind !== "topic") return undefined;
+  const topic = source.topic ?? "";
+  if (!topic.trim()) return undefined;
+  if (containsAnyNormalizedTerm(topic, REAL_ESTATE_TOPIC_TERMS)) return undefined;
+  if (containsAnyNormalizedTerm(topic, HOME_TOPIC_ALIASES)) return HOME_HOUSEHOLD_PROFILE;
+  return undefined;
 }
 
 function serializeChoices(choices: any) {
@@ -110,8 +393,7 @@ function configuredSystemTopicIds() {
 function extractWords(text = "") {
   return Array.from(
     new Set(
-      String(text)
-        .toLowerCase()
+      normalizeTopicText(text)
         .match(/\b[a-z][a-z'-]{1,}\b/g) ?? []
     )
   );
@@ -132,18 +414,19 @@ function buildAllowedTermsFromQuestion(question: any) {
   return new Set(extractWords(raw).map(normalizeVocabularyWord));
 }
 
-function topicSearchTokens(topic = "") {
-  return extractWords(topic).filter((token) => token.length >= 3);
+function topicSearchTokens(topic = "", topicProfile?: FlashcardTopicProfile) {
+  const profileTerms = topicProfile?.searchTerms.join(" ") ?? "";
+  return extractWords(`${topic} ${profileTerms}`).filter((token) => token.length >= 3);
 }
 
 function candidateMatchesTopic(vocabulary: any, tokens: string[], questionTags: string[]) {
   if (!tokens.length && !questionTags.length) return true;
-  const word = normalizeVocabularyWord(vocabulary.word);
-  const definition = String(vocabulary.definition ?? "").toLowerCase();
+  const word = normalizeTopicText(vocabulary.word);
+  const definition = normalizeTopicText(vocabulary.definition ?? "");
   const tags = (Array.isArray(vocabulary.tags) ? vocabulary.tags : [])
-    .map((tag: string) => String(tag).toLowerCase());
+    .map((tag: string) => normalizeTopicText(tag));
   const tagText = tags.join(" ");
-  return [...tokens, ...questionTags.map((tag) => tag.toLowerCase())].some((token) =>
+  return [...tokens, ...questionTags.map((tag) => normalizeTopicText(tag))].some((token) =>
     word.includes(token) || definition.includes(token) || tagText.includes(token)
   );
 }
@@ -153,7 +436,7 @@ function rankCandidate(vocabulary: any, tokens: string[], allowedTerms: Set<stri
   let score = 0;
   if (allowedTerms.has(normalized)) score += 10;
   if (tokens.some((token) => normalized.includes(token))) score += 4;
-  const tagText = (vocabulary.tags ?? []).join(" ").toLowerCase();
+  const tagText = normalizeTopicText((vocabulary.tags ?? []).join(" "));
   if (tokens.some((token) => tagText.includes(token))) score += 3;
   score += 1 - Math.min(1, Math.max(0, Number(vocabulary.weight ?? 0.5)));
   return score;
@@ -188,12 +471,64 @@ function extractJsonArray(text = "") {
   }
 }
 
+function draftSearchText(draft: VocabularyDraft) {
+  const exampleText = (draft.examples ?? [])
+    .map((example) => `${example.en ?? ""} ${example.vi ?? ""}`)
+    .join(" ");
+  return [
+    draft.word,
+    draft.type,
+    draft.definition,
+    exampleText,
+    ...(draft.tags ?? []),
+    draft.notes,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function isDraftRelevantToTopicProfile(draft: VocabularyDraft, topicProfile?: FlashcardTopicProfile) {
+  if (!topicProfile) return true;
+
+  const normalizedWord = normalizeTopicText(draft.word);
+  if (topicProfile.deniedWords.some((word) => normalizedWord === normalizeTopicText(word))) {
+    return false;
+  }
+
+  const searchText = draftSearchText(draft);
+  if (containsAnyNormalizedTerm(searchText, topicProfile.deniedTextTerms)) {
+    return false;
+  }
+
+  if (topicProfile.allowedWords.some((word) => normalizedWord === normalizeTopicText(word))) {
+    return true;
+  }
+
+  return containsAnyNormalizedTerm(searchText, topicProfile.allowedTextTerms);
+}
+
+function generatedSourceTags(
+  source: FlashcardSupplyRequest["source"],
+  questionTags: string[],
+  topicProfile?: FlashcardTopicProfile
+) {
+  if (source.kind !== "topic") return questionTags;
+  return Array.from(
+    new Set([
+      ...topicSearchTokens(source.topic ?? "", topicProfile),
+      ...(topicProfile?.tags ?? []),
+    ])
+  ).slice(0, 8);
+}
+
 function validateDrafts(
   rawItems: any[],
   blockedKeys: Set<string>,
-  sourceTags: string[]
-): FinalVocabCandidate[] {
-  const result: FinalVocabCandidate[] = [];
+  sourceTags: string[],
+  topicProfile?: FlashcardTopicProfile
+): { accepted: FinalVocabCandidate[]; rejectedWords: string[] } {
+  const accepted: FinalVocabCandidate[] = [];
+  const rejectedWords: string[] = [];
   const seen = new Set<string>();
   for (const raw of rawItems) {
     const word = String(raw?.word ?? "").trim();
@@ -203,37 +538,46 @@ function validateDrafts(
     const key = `${normalizedWord}::${type}`;
     if (!word || word.length > 80 || !definition || definition.length < 2) continue;
     if (blockedKeys.has(key) || seen.has(key)) continue;
+
+    const draft: VocabularyDraft = {
+      word,
+      phonetic: String(raw?.phonetic ?? "").trim(),
+      type,
+      definition,
+      examples: Array.isArray(raw?.examples)
+        ? raw.examples
+            .slice(0, 3)
+            .map((example: any) => ({
+              en: String(example?.en ?? "").trim(),
+              vi: String(example?.vi ?? "").trim(),
+            }))
+            .filter((example: any) => example.en || example.vi)
+        : [],
+      tags: Array.from(
+        new Set([
+          ...sourceTags,
+          ...(Array.isArray(raw?.tags) ? raw.tags.map((tag: any) => String(tag).trim()) : []),
+        ].filter(Boolean))
+      ).slice(0, 8),
+      notes: String(raw?.notes ?? "").trim(),
+      cefrLevel: String(raw?.cefrLevel ?? "").trim(),
+    };
+
+    if (!isDraftRelevantToTopicProfile(draft, topicProfile)) {
+      rejectedWords.push(normalizedWord);
+      seen.add(key);
+      continue;
+    }
+
     seen.add(key);
-    result.push({
+    accepted.push({
       source: "gemini",
       normalizedWord,
       type,
-      payload: {
-        word,
-        phonetic: String(raw?.phonetic ?? "").trim(),
-        type,
-        definition,
-        examples: Array.isArray(raw?.examples)
-          ? raw.examples
-              .slice(0, 3)
-              .map((example: any) => ({
-                en: String(example?.en ?? "").trim(),
-                vi: String(example?.vi ?? "").trim(),
-              }))
-              .filter((example: any) => example.en || example.vi)
-          : [],
-        tags: Array.from(
-          new Set([
-            ...sourceTags,
-            ...(Array.isArray(raw?.tags) ? raw.tags.map((tag: any) => String(tag).trim()) : []),
-          ].filter(Boolean))
-        ).slice(0, 8),
-        notes: String(raw?.notes ?? "").trim(),
-        cefrLevel: String(raw?.cefrLevel ?? "").trim(),
-      },
+      payload: draft,
     });
   }
-  return result;
+  return { accepted, rejectedWords };
 }
 
 function cefrToWeight(level?: string) {
@@ -274,6 +618,7 @@ async function loadSystemCandidates(params: {
   source: FlashcardSupplyRequest["source"];
   questionTags: string[];
   allowedTerms: Set<string>;
+  topicProfile?: FlashcardTopicProfile;
   limit: number;
 }) {
   const topicIds = configuredSystemTopicIds();
@@ -296,7 +641,7 @@ async function loadSystemCandidates(params: {
   if (!vocabularyIds.length) return [];
 
   const vocabularies = await Vocabulary.find({ _id: { $in: vocabularyIds } }).lean();
-  const tokens = topicSearchTokens(params.source.topic ?? "");
+  const tokens = topicSearchTokens(params.source.topic ?? "", params.topicProfile);
   return vocabularies
     .filter((vocabulary: any) =>
       candidateMatchesTopic(vocabulary, tokens, params.questionTags)
@@ -319,6 +664,7 @@ async function loadSystemCandidates(params: {
         notes: vocabulary.notes,
       },
     }))
+    .filter((candidate) => isDraftRelevantToTopicProfile(candidate.payload, params.topicProfile))
     .slice(0, params.limit * 2);
 }
 
@@ -329,14 +675,22 @@ function buildGeminiPrompt(params: {
   blockedWords: string[];
   questionText?: string;
   questionTags: string[];
+  topicProfile?: FlashcardTopicProfile;
 }) {
   const topicText =
     params.source.kind === "topic"
-      ? [
-          `User topic: ${params.source.topic}`,
-          "Convert this topic into TOEIC-compatible workplace, business, travel, service, schedule, notice, email, reservation, customer-support, or safety-training vocabulary.",
-          "If the topic is casual or daily-life, choose words that could realistically appear in a TOEIC workplace/travel/business context, not hobby-only words.",
-        ].join("\n")
+      ? params.topicProfile
+        ? [
+            `User topic: ${params.source.topic}`,
+            `Interpreted topic: ${params.topicProfile.canonicalTopic}`,
+            "Keep topic fit as the first priority and TOEIC plausibility as the second priority.",
+            ...params.topicProfile.promptInstructions,
+          ].join("\n")
+        : [
+            `User topic: ${params.source.topic}`,
+            "Keep the user's topic as the primary constraint; do not broaden it to unrelated business, travel, service, or office vocabulary.",
+            "For casual or daily-life topics, choose concrete topic words that can realistically appear in simple TOEIC notices, conversations, emails, travel, service, or workplace contexts.",
+          ].join("\n")
       : [
           `Question context: ${params.questionText ?? ""}`,
           `Tags: ${params.questionTags.join(", ")}`,
@@ -358,9 +712,10 @@ Each object must match:
   "cefrLevel": "A2"
 }
 Rules:
-- Every word must be plausible in TOEIC Reading or Listening.
-- Prefer terms used in business, office, travel service, event planning, customer service, logistics, hospitality, announcements, notices, schedules, emails, or workplace safety.
-- Avoid hobby-only or outdoor-survival-only terms unless they can appear in a TOEIC scenario.
+- Every word must directly fit the requested topic or question context.
+- Every word must still be plausible in TOEIC Reading or Listening.
+- Do not replace a daily-life topic with adjacent business, real-estate, travel, or hospitality vocabulary unless the user explicitly requested that adjacent domain.
+- Avoid broad category labels when a concrete topic word would be more useful.
 - Examples must sound like TOEIC sentences, such as notices, emails, schedules, reservations, staff instructions, or customer-service conversations.
 - Keep definitions concise in Vietnamese or bilingual Vietnamese-English.
 - Avoid duplicates.`;
@@ -372,13 +727,15 @@ async function generateMissingCandidates(params: {
   questionText?: string;
   questionTags: string[];
   blockedKeys: Set<string>;
+  topicProfile?: FlashcardTopicProfile;
 }) {
   const accepted: FinalVocabCandidate[] = [];
+  const rejectedWords = new Set<string>();
   let model: string | undefined;
   for (let attempt = 0; attempt < MAX_GEMINI_ATTEMPTS && accepted.length < params.needed; attempt += 1) {
     const blockedWords = Array.from(params.blockedKeys)
       .map((key) => key.split("::")[0])
-      .concat(accepted.map((candidate) => candidate.normalizedWord));
+      .concat(accepted.map((candidate) => candidate.normalizedWord), Array.from(rejectedWords));
     const prompt = buildGeminiPrompt({
       needed: params.needed - accepted.length,
       source: params.source,
@@ -386,6 +743,7 @@ async function generateMissingCandidates(params: {
       blockedWords,
       questionText: params.questionText,
       questionTags: params.questionTags,
+      topicProfile: params.topicProfile,
     });
     const result = await generateFromPromptWithMeta(prompt);
     model = result.model;
@@ -394,7 +752,16 @@ async function generateMissingCandidates(params: {
       ...params.blockedKeys,
       ...accepted.map((candidate) => `${candidate.normalizedWord}::${candidate.type}`),
     ]);
-    accepted.push(...validateDrafts(parsed, blocked, params.questionTags));
+    const validation = validateDrafts(
+      parsed,
+      blocked,
+      generatedSourceTags(params.source, params.questionTags, params.topicProfile),
+      params.topicProfile
+    );
+    accepted.push(...validation.accepted);
+    for (const word of validation.rejectedWords) {
+      if (word) rejectedWords.add(word);
+    }
   }
   return { candidates: accepted.slice(0, params.needed), model };
 }
@@ -568,6 +935,7 @@ export async function createFlashcardSupplyDeck(params: {
     count: clampCount(params.request.count),
     expansion: params.request.expansion ?? "related",
   } as FlashcardSupplyRequest & { count: number; expansion: "strict" | "related" };
+  const topicProfile = resolveFlashcardTopicProfile(request.source);
 
   const existing = await TopicVocabulary.findOne({
     created_by: userObjectId,
@@ -591,7 +959,7 @@ export async function createFlashcardSupplyDeck(params: {
   }
 
   if (request.source.kind === "topic" && !request.source.topic?.trim()) {
-    return softFailure("Minh can biet chu de de tao flashcard.");
+    return softFailure("Mình cần biết chủ đề để tạo flashcard.");
   }
 
   const resolvedQuestionId =
@@ -603,7 +971,7 @@ export async function createFlashcardSupplyDeck(params: {
       ? await loadQuestionContext(params.userId, resolvedQuestionId, params.routeContext)
       : null;
   if (request.source.kind === "question_error" && !questionContext) {
-    return softFailure("Minh chua xac thuc duoc cau hoi trong ngu canh hien tai de tao flashcard.");
+    return softFailure("Mình chưa xác thực được câu hỏi trong ngữ cảnh hiện tại để tạo flashcard.");
   }
 
   const allowedTerms = questionContext?.allowedTerms ?? new Set<string>();
@@ -620,6 +988,7 @@ export async function createFlashcardSupplyDeck(params: {
     source: request.source,
     questionTags,
     allowedTerms,
+    topicProfile,
     limit: request.count,
   });
 
@@ -634,7 +1003,7 @@ export async function createFlashcardSupplyDeck(params: {
 
   if (request.expansion === "strict") {
     if (!finalCandidates.length) {
-      return softFailure("Minh chua tim thay tu hop le nam trong cau hoi nay de tao flashcard.");
+      return softFailure("Mình chưa tìm thấy từ hợp lệ nằm trong câu hỏi này để tạo flashcard.");
     }
     policyReason = "STRICT_SOURCE_LIMIT";
   } else if (finalCandidates.length < request.count) {
@@ -646,6 +1015,7 @@ export async function createFlashcardSupplyDeck(params: {
         questionText: directQuestionText,
         questionTags,
         blockedKeys,
+        topicProfile,
       });
       geminiCount = generated.candidates.length;
       finalCandidates = dedupeCandidates([...finalCandidates, ...generated.candidates], request.count);
@@ -657,12 +1027,13 @@ export async function createFlashcardSupplyDeck(params: {
   }
 
   if (finalCandidates.length < MIN_COUNT) {
-    return softFailure("Minh chua co du tu hop le de tao bo flashcard huu ich.");
+    return softFailure("Mình chưa có đủ từ hợp lệ để tạo bộ flashcard hữu ích.");
   }
 
   const tags = Array.from(
     new Set([
-      ...(request.source.topic ? topicSearchTokens(request.source.topic) : []),
+      ...(request.source.topic ? topicSearchTokens(request.source.topic, topicProfile) : []),
+      ...(topicProfile?.tags ?? []),
       ...questionTags,
       "chatbot",
     ])
@@ -731,3 +1102,13 @@ export async function createFlashcardSupplyDeck(params: {
     throw err;
   }
 }
+
+export const __test__ = {
+  buildGeminiPrompt,
+  generatedSourceTags,
+  isDraftRelevantToTopicProfile,
+  normalizeTopicText,
+  resolveFlashcardTopicProfile,
+  topicSearchTokens,
+  validateDrafts,
+};

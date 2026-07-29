@@ -2160,7 +2160,8 @@ export const generateIRTWeeklyPlanService = async (
         testId,
         SessionType.MINI_TEST,
         result.score,
-        day_study_id
+        day_study_id,
+        String(result.userTestId)
       );
       console.log("✅ Auto unlock result:", unlockResult);
     } catch (err) {

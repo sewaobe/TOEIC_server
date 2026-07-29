@@ -24,6 +24,99 @@ export interface FeedbackQueryOptions {
     limit?: number;
 }
 
+export interface LessonFeedbackView {
+    _id?: string;
+    day_study_id: string;
+    rating: number;
+    reasons: string[];
+    comment?: string;
+    is_positive: boolean;
+    created_at: Date;
+    dayStudy?: {
+        id: string;
+        stageNo?: number | null;
+        status?: string | null;
+        accuracyOverall?: number | null;
+        cycleNo?: number | null;
+        cycleStatus?: string | null;
+        lessonTitles: string[];
+    } | null;
+}
+
+function buildLearningPathOwnerFilter(userId: string | Types.ObjectId) {
+    const userObjectId = new Types.ObjectId(userId.toString());
+    return {
+        $or: [{ user_id: userObjectId }, { created_by: userObjectId }],
+    };
+}
+
+async function findLatestLearningPathByUserId(userId: string | Types.ObjectId) {
+    const ownerFilter = buildLearningPathOwnerFilter(userId);
+    const dayPopulate = {
+        path: "feedbacks.day_study_id",
+        select: "dayOfWeek status accuracy_overall sessions week_id",
+        populate: {
+            path: "week_id",
+            select: "no status",
+        },
+    };
+
+    const active = await LearningPath.findOne({
+        $and: [
+            ownerFilter,
+            { $or: [{ isActive: true }, { status: "active" }] },
+        ],
+    })
+        .sort({ isActive: -1, updated_at: -1, created_at: -1, _id: -1 })
+        .populate(dayPopulate);
+
+    if (active) return active;
+
+    return LearningPath.findOne(ownerFilter)
+        .sort({ updated_at: -1, created_at: -1, _id: -1 })
+        .populate(dayPopulate);
+}
+
+function toFeedbackView(feedback: any): LessonFeedbackView {
+    const dayStudy = feedback?.day_study_id;
+    const populatedDay =
+        dayStudy && typeof dayStudy === "object" && "_id" in dayStudy ? dayStudy : null;
+    const week =
+        populatedDay?.week_id && typeof populatedDay.week_id === "object"
+            ? populatedDay.week_id
+            : null;
+    const lessonTitles = Array.from(
+        new Set<string>(
+            (populatedDay?.sessions ?? [])
+                .map((session: any) => session?.lesson_manager_title)
+                .filter((title: unknown): title is string => typeof title === "string" && title.trim().length > 0)
+        )
+    );
+
+    return {
+        _id: feedback?._id ? String(feedback._id) : undefined,
+        day_study_id: populatedDay?._id
+            ? String(populatedDay._id)
+            : String(feedback?.day_study_id ?? ""),
+        rating: feedback.rating,
+        reasons: Array.isArray(feedback.reasons) ? feedback.reasons : [],
+        comment: feedback.comment,
+        is_positive: Boolean(feedback.is_positive),
+        created_at: feedback.created_at,
+        dayStudy: populatedDay
+            ? {
+                id: String(populatedDay._id),
+                stageNo: populatedDay.dayOfWeek ?? null,
+                status: populatedDay.status ?? null,
+                accuracyOverall: populatedDay.accuracy_overall ?? null,
+                cycleNo: week?.no ?? null,
+                cycleStatus: week?.status ?? null,
+                lessonTitles,
+            }
+            : null,
+    };
+}
+
 /**
  * Tìm LearningPath từ DayStudy thông qua week_study_ids
  */
@@ -36,10 +129,14 @@ async function findLearningPathByDayStudy(
 
     // Tìm LearningPath có chứa week_id trong week_study_ids
     const learningPath = await LearningPath.findOne({
-        user_id: new Types.ObjectId(userId.toString()),
-        $or: [
-            { week_study_ids: dayStudy.week_id },
-            { additional_week_studies: dayStudy.week_id },
+        $and: [
+            buildLearningPathOwnerFilter(userId),
+            {
+                $or: [
+                    { week_study_ids: dayStudy.week_id },
+                    { additional_week_studies: dayStudy.week_id },
+                ],
+            },
         ],
     });
 
@@ -86,16 +183,12 @@ export async function createLessonFeedback(
         (fb: ILessonFeedback) => fb.day_study_id.toString() === dayStudyId
     );
 
-    if (existingIndex !== undefined && existingIndex >= 0 && learningPath.feedbacks) {
-        // Update feedback hiện có
-        learningPath.feedbacks[existingIndex] = newFeedback;
-    } else {
-        // Thêm feedback mới
-        if (!learningPath.feedbacks) {
-            learningPath.feedbacks = [];
-        }
-        learningPath.feedbacks.push(newFeedback);
+    if (existingIndex !== undefined && existingIndex >= 0) {
+        throw new Error("Feedback cho buổi học này đã tồn tại");
     }
+
+    learningPath.feedbacks = learningPath.feedbacks ?? [];
+    learningPath.feedbacks.push(newFeedback);
 
     learningPath.updated_at = new Date();
     await learningPath.save();
@@ -179,13 +272,7 @@ export async function getFeedbacks(options: FeedbackQueryOptions) {
  * Lấy tất cả feedback của một user theo learning path ID
  */
 export async function getFeedbacksByUserId(userId: string) {
-    const learningPath = await LearningPath.findOne({
-        user_id: new Types.ObjectId(userId),
-        isActive: true,
-    }).populate({
-        path: "feedbacks.day_study_id",
-        select: "dayOfWeek status",
-    });
+    const learningPath = await findLatestLearningPathByUserId(userId);
 
     if (!learningPath || !learningPath.feedbacks) {
         return [];
@@ -196,7 +283,7 @@ export async function getFeedbacksByUserId(userId: string) {
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
 
-    return feedbacks;
+    return feedbacks.map(toFeedbackView);
 }
 
 /**
@@ -241,10 +328,7 @@ export async function getFeedbackStats(learningPathId: string) {
  * Lấy thống kê feedback theo user ID
  */
 export async function getFeedbackStatsByUserId(userId: string) {
-    const learningPath = await LearningPath.findOne({
-        user_id: new Types.ObjectId(userId),
-        isActive: true,
-    });
+    const learningPath = await findLatestLearningPathByUserId(userId);
 
     if (!learningPath) {
         return {

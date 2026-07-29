@@ -25,6 +25,7 @@ type SubmitLearningPathV2AssessmentInput = {
   assessment_type: LearningPathV2AssessmentType;
   week_study_id?: string;
   day_study_id?: string;
+  debug_scenario_override?: "PLATEAU";
 };
 
 const toObjectId = (id: string, label: string): Types.ObjectId => {
@@ -295,6 +296,11 @@ export const submitLearningPathV2Assessment = async (
     learning_path_created_at: learningPath.created_at ?? new Date(),
     target_completion_date: learningPath.target_completion_date,
     week_study_id: weekStudyId,
+    debug_scenario_override:
+      triggerType === "mini_test_completion" &&
+      input.debug_scenario_override === "PLATEAU"
+        ? "PLATEAU"
+        : undefined,
   } as any);
 
   return {

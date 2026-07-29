@@ -8,6 +8,7 @@ export interface IUserActivity extends Document {
     | "TEST"
     | "COMMENT"
     | "OTHER"
+    | "LEARNING_ACTIVITY_COMPLETED"
     | "DAY_STUDY_COMPLETED"
     | "WEEK_STUDY_COMPLETED"
     | "ADJUSTMENT_REQUEST_CREATED"
@@ -31,6 +32,7 @@ const UserActivitySchema = new Schema<IUserActivity>({
       "TEST",
       "COMMENT",
       "OTHER",
+      "LEARNING_ACTIVITY_COMPLETED",
       "DAY_STUDY_COMPLETED",
       "WEEK_STUDY_COMPLETED",
       "ADJUSTMENT_REQUEST_CREATED",

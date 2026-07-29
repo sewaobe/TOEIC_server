@@ -11,6 +11,13 @@ import {
   FlashCardAttempt,
   ShadowingAttempt,
 } from "../models";
+import { logLearningActivityCompleted as createLearningActivityCompletedLog } from "./learning_activity_log.service";
+
+type UnlockNextItemContext = {
+  userId?: Types.ObjectId;
+  score?: number | null;
+  attemptId?: string | Types.ObjectId | null;
+};
 
 /**
  * Check unlock condition
@@ -66,7 +73,8 @@ export async function getScoreFromAttempt(
 export async function unlockNextItem(
   dayStudyId: Types.ObjectId,
   sessionIndex: number,
-  itemIndex: number
+  itemIndex: number,
+  context?: UnlockNextItemContext
 ) {
   const dayStudy = await DayStudy.findById(dayStudyId);
   if (!dayStudy) throw new Error("DayStudy not found");
@@ -102,6 +110,13 @@ export async function unlockNextItem(
   session.status = WeekStudyStatus.COMPLETED;
 
   await dayStudy.save();
+  await createLearningActivityCompletedLog({
+    dayStudy,
+    sessionIndex,
+    userId: context?.userId,
+    score: context?.score,
+    attemptId: context?.attemptId,
+  });
 
   return { session_completed: true };
 }

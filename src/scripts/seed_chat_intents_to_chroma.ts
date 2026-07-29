@@ -12,6 +12,41 @@ import { resetChatIntentCollectionCache } from "../core/collections/chat_intent"
 
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
+function metadataList(values?: string[]) {
+  return (values ?? []).join(",");
+}
+
+function buildIntentProfileDocument(intent: (typeof CHAT_INTENT_EXAMPLES)[number]) {
+  const triggerExamples = intent.examples.slice(0, 12).join(" | ");
+  const boundaryExamples = intent.hardNegatives.slice(0, 8).join(" | ");
+  return [
+    `intent profile ${intent.intentId}`,
+    `entity ${metadataList(intent.entities)}`,
+    `actions ${metadataList(intent.actions)}`,
+    `default action ${intent.defaultAction ?? ""}`,
+    `context ${intent.contextType}`,
+    `positive triggers ${triggerExamples}`,
+    `not this intent when ${boundaryExamples}`,
+  ].join("\n");
+}
+
+function baseMetadata(intent: (typeof CHAT_INTENT_EXAMPLES)[number]) {
+  return {
+    catalogVersion: CHAT_INTENT_CATALOG_VERSION,
+    intentId: intent.intentId,
+    lane: intent.lane,
+    engine: intent.engine,
+    availability: intent.availability,
+    contextType: intent.contextType,
+    priority: intent.priority,
+    entities: metadataList(intent.entities),
+    actions: metadataList(intent.actions),
+    defaultAction: intent.defaultAction ?? "",
+    forbiddenActions: metadataList(intent.forbiddenActions),
+    source: `intent_catalog_v${CHAT_INTENT_CATALOG_VERSION}`,
+  };
+}
+
 function buildIntentRows() {
   const catalog = validateIntentCatalog();
   return catalog
@@ -19,23 +54,41 @@ function buildIntentRows() {
       (intent) =>
         intent.semanticSearchEnabled && intent.availability !== "DISABLED"
     )
-    .flatMap((intent) =>
-    intent.examples.map((example, index) => ({
-      id: `${intent.id}_${index + 1}`,
-      document: example,
-      metadata: {
-        catalogVersion: CHAT_INTENT_CATALOG_VERSION,
-        intentId: intent.intentId,
-        lane: intent.lane,
-        engine: intent.engine,
-        availability: intent.availability,
-        contextType: intent.contextType,
-        priority: intent.priority,
-        type: "positive_example",
-        source: `intent_catalog_v${CHAT_INTENT_CATALOG_VERSION}`,
+    .flatMap((intent) => [
+      {
+        id: `${intent.id}_profile`,
+        document: buildIntentProfileDocument(intent),
+        metadata: {
+          ...baseMetadata(intent),
+          exampleType: "intent_profile",
+          polarity: "profile",
+          sourceIntent: intent.intentId,
+          type: "intent_profile",
+        },
       },
-    }))
-  );
+      ...intent.examples.map((example, index) => ({
+        id: `${intent.id}_positive_${index + 1}`,
+        document: example,
+        metadata: {
+          ...baseMetadata(intent),
+          exampleType: "positive_example",
+          polarity: "positive",
+          sourceIntent: intent.intentId,
+          type: "positive_example",
+        },
+      })),
+      ...intent.hardNegatives.map((example, index) => ({
+        id: `${intent.id}_negative_${index + 1}`,
+        document: example,
+        metadata: {
+          ...baseMetadata(intent),
+          exampleType: "boundary_negative",
+          polarity: "negative",
+          sourceIntent: intent.intentId,
+          type: "boundary_negative",
+        },
+      })),
+    ]);
 }
 
 async function run() {

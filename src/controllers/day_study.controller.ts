@@ -53,6 +53,7 @@ export const completeActivityController = async (
     const { dayId } = req.params;
     const { session_no, item_index, activity_type, attempt_id } = req.body;
     const userId = new Types.ObjectId(req.user._id);
+    let completedActivityScore: number | null = null;
 
     // 1. Lấy DayStudy
     const dayStudy = await DayStudy.findById(dayId);
@@ -75,6 +76,7 @@ export const completeActivityController = async (
     if (attempt_id && activity_type !== SessionType.LESSON) {
       const attemptObjectId = new Types.ObjectId(attempt_id);
       const score = await getScoreFromAttempt(attemptObjectId, activity_type);
+      completedActivityScore = score;
 
       if (score === null) {
         return res.status(400).json(
@@ -108,7 +110,12 @@ export const completeActivityController = async (
     const itemResult = await unlockNextItem(
       new Types.ObjectId(dayId),
       session_no,
-      item_index
+      item_index,
+      {
+        userId,
+        score: completedActivityScore,
+        attemptId: attempt_id,
+      }
     );
 
     if (!itemResult.session_completed) {

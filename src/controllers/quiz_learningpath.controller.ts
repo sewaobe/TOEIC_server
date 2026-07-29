@@ -133,7 +133,8 @@ export const submitQuizController = async (
       quizId.toString(),
       SessionType.QUIZ,
       score,
-      day_study_id
+      day_study_id,
+      String(attempt._id)
     );
 
     return res.status(201).json(

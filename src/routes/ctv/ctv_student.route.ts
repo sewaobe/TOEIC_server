@@ -6,6 +6,10 @@ import {
 } from "../../controllers/student.controller";
 import { sendReminderController, getEmailLogsForStudentController } from '../../controllers/mail.controller';
 import { markStudentInactiveController } from '../../controllers/student.controller';
+import {
+  createStudentCareConversationController,
+  listStudentCareConversationsForCtvController,
+} from "../../controllers/student_care_conversation.controller";
 
 const router = express.Router();
 
@@ -14,6 +18,9 @@ router.get("/", getStudentsController);
 
 // Lấy lịch sử email nhắc nhở
 router.get('/:id/email-logs', getEmailLogsForStudentController);
+
+router.get('/:id/care-conversations', listStudentCareConversationsForCtvController);
+router.post('/:id/care-conversations', createStudentCareConversationController);
 
 // Gửi email nhắc nhở (CTV)
 router.post('/:id/send-reminder', sendReminderController);
@@ -28,3 +35,4 @@ router.get('/:id', getStudentDetailController);
 router.get("/reports/all", getGroupReportsController);
 
 export default router;
+

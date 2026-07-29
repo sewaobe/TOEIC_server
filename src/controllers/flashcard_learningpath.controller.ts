@@ -116,7 +116,8 @@ export const submitFlashCardController = async (
       topicVocabId.toString(),
       SessionType.FLASH_CARD,
       accuracy,
-      day_study_id
+      day_study_id,
+      String(attempt._id)
     );
 
     // 5. Return

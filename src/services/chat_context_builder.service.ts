@@ -1,6 +1,7 @@
 import { Types } from "mongoose";
 import { Group } from "../models/group.model";
 import { Question } from "../models/question.model";
+import { User } from "../models/user.model";
 import { UserProgress } from "../models/user_progress.model";
 import { UserSkill } from "../models/user_skill.model";
 import { UserSkillHistory } from "../models/user_skill_history.model";
@@ -14,11 +15,29 @@ import {
   DbFirstContext,
 } from "../types/chat.types";
 import { resolveQuestionReferenceFromRouteContext } from "./chat_question_reference.service";
-import { normalizeToeicSkillTags } from "../utils/toeic_skill.util";
+import {
+  normalizeToeicSkillTags,
+  TOEIC_SKILL_DEFINITIONS,
+} from "../utils/toeic_skill.util";
 import {
   createFlashcardSupplyDeck,
   FlashcardSupplyRequest,
 } from "./flashcard_supply.service";
+
+export type UserProfileIdentityView = {
+  displayName?: string;
+  username?: string;
+  email?: string;
+  accountStatus?: "active" | "inactive" | "locked";
+  joinedAt?: string;
+  lastActiveAt?: string;
+  streakDays?: number;
+  longestStreak?: number;
+  lastStudyDate?: string;
+  targetScore?: number;
+  latestTestScore?: number;
+  hasLearningData: boolean;
+};
 
 export function ensureObjectId(id?: string) {
   if (!id || !Types.ObjectId.isValid(id)) return null;
@@ -764,6 +783,90 @@ export async function buildProgressContext(userId: string): Promise<DbFirstConte
   };
 }
 
+function isoDate(value: unknown) {
+  const date = value ? new Date(value as any) : null;
+  return date && Number.isFinite(date.getTime()) ? date.toISOString() : undefined;
+}
+
+function accountStatusFromUser(user: any): UserProfileIdentityView["accountStatus"] {
+  if (!user?.isActive || user?.status === "banned" || user?.status === "banned_permanent") {
+    return "locked";
+  }
+  return user?.status === "active" ? "active" : "inactive";
+}
+
+export async function buildUserProfileIdentityContext(userId: string): Promise<DbFirstContext> {
+  const userObjectId = ensureObjectId(userId);
+  if (!userObjectId) {
+    return {
+      ok: false,
+      errorType: "UNAUTHORIZED",
+      outcome: "unauthorized",
+      fallback: "Mình cần bạn đăng nhập để xem thông tin tài khoản của bạn.",
+    };
+  }
+
+  const [user, progress, roadmap, latestTest] = await Promise.all([
+    User.findById(userObjectId)
+      .select("username email isActive status profile.fullname created_at updated_at last_active streak_days longest_streak last_study_date")
+      .lean(),
+    UserProgress.findOne({ user_id: userObjectId })
+      .sort({ updated_at: -1 })
+      .select("target_score streak_days longest_streak last_study_date")
+      .lean(),
+    LearningPath.findOne({ user_id: userObjectId, isActive: true })
+      .sort({ updated_at: -1 })
+      .select("target_score")
+      .lean(),
+    UserTest.findOne({ user_id: userId }).sort({ submit_at: -1 }).select("score submit_at").lean(),
+  ]);
+
+  if (!user) {
+    return {
+      ok: false,
+      errorType: "NO_USER_DATA",
+      outcome: "no_data",
+      fallback: "Mình chưa tìm thấy hồ sơ tài khoản của bạn trong hệ thống.",
+    };
+  }
+
+  const displayName = String(user.profile?.fullname ?? "").trim() || undefined;
+  const username = String(user.username ?? "").trim() || undefined;
+  const email = String(user.email ?? "").trim() || undefined;
+  const targetScore = Number(progress?.target_score ?? roadmap?.target_score);
+  const latestTestScore = Number(latestTest?.score);
+  const streakDays = Number(progress?.streak_days ?? user.streak_days);
+  const longestStreak = Number(progress?.longest_streak ?? user.longest_streak);
+  const view: UserProfileIdentityView = {
+    displayName,
+    username,
+    email,
+    accountStatus: accountStatusFromUser(user),
+    joinedAt: isoDate(user.created_at),
+    lastActiveAt: isoDate(user.last_active ?? user.updated_at),
+    streakDays: Number.isFinite(streakDays) ? streakDays : undefined,
+    longestStreak: Number.isFinite(longestStreak) ? longestStreak : undefined,
+    lastStudyDate: isoDate(progress?.last_study_date ?? user.last_study_date),
+    targetScore: Number.isFinite(targetScore) && targetScore > 0 ? targetScore : undefined,
+    latestTestScore: Number.isFinite(latestTestScore) ? latestTestScore : undefined,
+    hasLearningData: Boolean(
+      progress ||
+      roadmap ||
+      latestTest ||
+      Number.isFinite(streakDays) ||
+      Number.isFinite(longestStreak)
+    ),
+  };
+
+  return {
+    ok: true,
+    contextType: "user_profile_identity",
+    data: {
+      profile: view,
+    },
+  };
+}
+
 export async function buildRoadmapContext(
   userId: string,
   routeContext?: ChatRouteContext
@@ -956,6 +1059,7 @@ function getAbilityForSimilarPractice(userSkill: any, skillKeys: string[], partT
 }
 
 function activityTitle(activityType: string) {
+  if (activityType === "lesson") return "Học bài";
   if (activityType === "vocabulary") return "Ôn flashcard";
   if (activityType === "dictation") return "Luyện nghe chép chính tả";
   if (activityType === "shadowing") return "Luyện shadowing";
@@ -972,6 +1076,49 @@ function normalizePlainText(text = "") {
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+const GENERIC_LESSON_TOPIC_WORDS = new Set([
+  "cac",
+  "cho",
+  "phan",
+  "muc",
+  "noi",
+  "dung",
+  "nay",
+  "do",
+  "nao",
+  "can",
+  "hoc",
+  "luyen",
+  "them",
+]);
+
+function cleanLessonRecommendationTopic(topic = "") {
+  const trimmed = topic.trim();
+  const normalized = normalizePlainText(trimmed);
+  if (!normalized) return "";
+
+  const genericPhrases = [
+    "cac cho",
+    "cho nao",
+    "cac phan",
+    "phan nao",
+    "cac muc",
+    "noi dung nay",
+    "bai nay",
+    "bai hoc nay",
+    "hoc them",
+    "luyen them",
+  ];
+  if (genericPhrases.includes(normalized)) return "";
+
+  const tokens = normalized.split(/\s+/).filter(Boolean);
+  if (tokens.length > 0 && tokens.every((token) => GENERIC_LESSON_TOPIC_WORDS.has(token))) {
+    return "";
+  }
+
+  return trimmed;
 }
 
 function parseFlashcardCount(userText = "", payload: any = {}) {
@@ -1049,6 +1196,388 @@ export async function buildFlashcardSupplyContext(
     ok: true,
     contextType: "flashcard_supply",
     data: result.data,
+  };
+}
+
+type LessonActivityType = "lesson" | "vocabulary" | "dictation" | "shadowing" | "quiz";
+
+type LessonRecommendationFilter = {
+  partType?: number;
+  count: number;
+  topic: string;
+  matchedSkills: ReturnType<typeof normalizeToeicSkillTags>;
+  topicSkillKeys: string[];
+  topicLabels: string[];
+};
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function parseLessonRecommendationRequest(userText = "", clientContext?: ChatClientContext): LessonRecommendationFilter {
+  const payload = clientContext?.actionPayload ?? {};
+  const value = normalizePlainText(userText);
+  const payloadPart = parsePartType(payload.part ?? payload.partType);
+  const textPartMatch = value.match(/\b(?:part|phan)\s*([1-7])\b/);
+  const partType = payloadPart ?? (textPartMatch ? Number(textPartMatch[1]) : undefined);
+  const explicitCount = Number(payload.count);
+  const textCountMatch = value.match(/\b(\d{1,2})\s*(?:bai hoc|lesson|bai luyen|activity|unit|bai)\b/);
+  const count = clampNumber(
+    Number.isFinite(explicitCount) && explicitCount > 0
+      ? explicitCount
+      : textCountMatch
+        ? Number(textCountMatch[1])
+        : 5,
+    1,
+    8
+  );
+
+  const topicMatch =
+    value.match(/\b(?:ngu phap|grammar|dang|chu de|ky nang|skill|tag|ve)\s+(.+)$/) ??
+    value.match(/\b(?:about|for)\s+(.+)$/);
+  let topic = String(payload.topic ?? topicMatch?.[1] ?? "").trim();
+  if (!topic) {
+    topic = value
+      .replace(/\b(goi y|de xuat|tim|cho toi|cho minh|recommend|suggest|find|list|danh sach)\b/g, " ")
+      .replace(/\b(bai hoc|lesson|bai luyen|activity|unit|hoc phan|phu hop|dung trinh do|theo kha nang hien tai)\b/g, " ")
+      .replace(/\b(?:part|phan)\s*[1-7]\b/g, " ")
+      .replace(/\b\d{1,2}\s*(?:bai hoc|lesson|bai luyen|activity|unit|bai)\b/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  topic = topic
+    .replace(/\b(cho toi|cho minh|nhe|di|duoc khong|voi|phu hop|dung trinh do|theo muc diem cua toi)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  topic = cleanLessonRecommendationTopic(topic);
+
+  const matchedSkills = resolveLessonTopicSkills(topic, partType);
+  return {
+    partType,
+    count,
+    topic,
+    matchedSkills,
+    topicSkillKeys: matchedSkills.map((skill) => skill.key),
+    topicLabels: matchedSkills.map((skill) => skill.label_vi),
+  };
+}
+
+function resolveLessonTopicSkills(topic: string, partType?: number) {
+  if (!topic) return [];
+  const direct = normalizeToeicSkillTags([topic], partType);
+  const normalizedTopic = normalizePlainText(topic);
+  const directKeys = new Set(direct.map((skill) => skill.key));
+  const matched = [...direct];
+
+  const synonymKeys = new Set<string>();
+  const synonymMap: Array<[RegExp, RegExp]> = [
+    [/\b(menh de quan he|relative clause)\b/, /relative_clause/],
+    [/\b(tu loai|word form|danh tu|dong tu|tinh tu|trang tu)\b/, /(word_form|noun|verb|adjective|adverb)/],
+    [/\b(gioi tu|preposition)\b/, /preposition/],
+    [/\b(lien tu|conjunction)\b/, /conjunction/],
+    [/\b(cau bi dong|passive)\b/, /passive/],
+    [/\b(suy luan|inference)\b/, /inference/],
+    [/\b(main idea|chu de|muc dich|purpose)\b/, /(main_idea|purpose)/],
+    [/\b(chi tiet|detail|thong tin)\b/, /(detail|information)/],
+    [/\b(implied meaning|ham y)\b/, /implied_meaning/],
+    [/\b(graphic|do thi|bieu do|bang bieu)\b/, /graphic/],
+  ];
+  for (const [topicPattern, keyPattern] of synonymMap) {
+    if (!topicPattern.test(normalizedTopic)) continue;
+    TOEIC_SKILL_DEFINITIONS
+      .filter((skill) => (!partType || skill.part_type === partType) && keyPattern.test(skill.key))
+      .forEach((skill) => synonymKeys.add(skill.key));
+  }
+
+  for (const definition of TOEIC_SKILL_DEFINITIONS) {
+    if (partType && definition.part_type !== partType) continue;
+    const candidates = [definition.key, definition.label_vi, ...(definition.aliases ?? [])]
+      .map(normalizePlainText)
+      .filter(Boolean);
+    const lexicalMatch = candidates.some((candidate) =>
+      candidate === normalizedTopic ||
+      (candidate.length >= 5 && normalizedTopic.includes(candidate)) ||
+      (normalizedTopic.length >= 5 && candidate.includes(normalizedTopic))
+    );
+    if (!lexicalMatch && !synonymKeys.has(definition.key)) continue;
+    if (directKeys.has(definition.key)) continue;
+    matched.push({
+      key: definition.key,
+      label_vi: definition.label_vi,
+      raw_tag: topic,
+      part_type: definition.part_type,
+      skill_group: definition.skill_group,
+    });
+    directKeys.add(definition.key);
+  }
+
+  return matched;
+}
+
+function getLessonAbility(params: {
+  userSkill: any;
+  progress: any;
+  latestTest: any;
+  partType?: number;
+  skillKeys: string[];
+}) {
+  const parts = Array.isArray(params.userSkill?.parts) ? params.userSkill.parts : [];
+  for (const skillKey of params.skillKeys) {
+    for (const part of parts) {
+      const matchedSkill = (part.skills ?? []).find((skill: any) => String(skill.skill_key) === skillKey);
+      if (typeof matchedSkill?.ability === "number") return matchedSkill.ability;
+    }
+  }
+  const matchedPart = parts.find((part: any) => Number(part.part_type) === params.partType);
+  if (typeof matchedPart?.ability === "number") return matchedPart.ability;
+  if (typeof params.latestTest?.theta_overall === "number" && params.latestTest.theta_overall > 0) {
+    return clampNumber(params.latestTest.theta_overall, 0, 1);
+  }
+  const score = Number(params.progress?.current_score || params.latestTest?.score || 0);
+  if (score > 0) return clampNumber((score - 200) / 790, 0, 1);
+  return null;
+}
+
+function lessonTargetInfo(lesson: any, partType?: number) {
+  const rawTags = Array.isArray(lesson.target_tags)
+    ? lesson.target_tags.map((tag: any) => String(tag)).filter(Boolean)
+    : [];
+  const normalized = normalizeToeicSkillTags(rawTags, partType ?? lesson.part_type);
+  return {
+    rawTags,
+    normalized,
+    normalizedKeys: normalized.map((skill) => skill.key),
+    normalizedLabels: normalized.map((skill) => skill.label_vi),
+    searchable: [
+      lesson.title,
+      lesson.description,
+      ...rawTags,
+      ...normalized.map((skill) => skill.key),
+      ...normalized.map((skill) => skill.label_vi),
+    ].map(normalizePlainText).join(" "),
+  };
+}
+
+function buildLessonActivities(lesson: any) {
+  return [...(lesson.recommended_activity_order ?? [])]
+    .sort((a: any, b: any) => {
+      const aType = String(a.activity_type);
+      const bType = String(b.activity_type);
+      if (aType === "lesson" && bType !== "lesson") return -1;
+      if (aType !== "lesson" && bType === "lesson") return 1;
+      return Number(a.order ?? 0) - Number(b.order ?? 0);
+    })
+    .slice(0, 3)
+    .map((activity: any) => {
+      const activityType = String(activity.activity_type) as LessonActivityType;
+      const actionType = activityType === "lesson" ? "open_lesson" : "start_practice";
+      return {
+        id: String(activity.activity_id),
+        type: activityType,
+        title: activityTitle(activityType),
+        estimatedMinutes: activity.estimated_minutes,
+        action: {
+          id: `${actionType}-${activityType}-${activity.activity_id}`,
+          label: activityType === "lesson" ? "Học ngay" : "Luyện ngay",
+          type: actionType,
+          payload: {
+            activityType,
+            activityId: String(activity.activity_id),
+            lessonManagerId: String(lesson._id),
+            route: activityType === "lesson" ? "/programs" : undefined,
+            part: lesson.part_type,
+            tags: lesson.target_tags ?? [],
+          },
+        },
+      };
+    });
+}
+
+function lessonRecommendationSubtitle(filter: LessonRecommendationFilter, matchMode?: string) {
+  const parts = [
+    filter.partType ? `Part ${filter.partType}` : "",
+    filter.topic || filter.topicLabels[0] || "",
+  ].filter(Boolean);
+  const label = parts.length ? parts.join(" - ") : "Theo yêu cầu của bạn";
+  return matchMode && matchMode !== "exact" ? `${label} (gợi ý gần đúng)` : label;
+}
+
+export async function buildLessonRecommendationContext(
+  userId: string,
+  userText = "",
+  clientContext?: ChatClientContext
+): Promise<DbFirstContext> {
+  const userObjectId = ensureObjectId(userId);
+  if (!userObjectId) {
+    return {
+      ok: false,
+      errorType: "AUTH_REQUIRED",
+      outcome: "safe_fallback",
+      fallback: "Mình cần bạn đăng nhập để gợi ý bài học cá nhân hóa.",
+    };
+  }
+
+  const filter = parseLessonRecommendationRequest(userText, clientContext);
+  if (!filter.partType && !filter.topic) {
+    return {
+      ok: false,
+      errorType: "MISSING_REQUIRED_CONTEXT",
+      outcome: "clarify",
+      fallback:
+        "Mình hiểu bạn muốn gợi ý bài học, nhưng chưa rõ Part hoặc chủ đề. Bạn muốn học Part nào, dạng bài nào, hay theo roadmap hôm nay?",
+    };
+  }
+
+  const topicQuery = [
+    filter.topic,
+    ...filter.topicSkillKeys,
+    ...filter.topicLabels,
+  ].filter(Boolean);
+  const inferredPartTypes = Array.from(
+    new Set(filter.matchedSkills.map((skill) => Number(skill.part_type)).filter(Boolean))
+  );
+  const baseQuery: Record<string, any> = {
+    status: "approved",
+    ...(filter.partType
+      ? { part_type: filter.partType }
+      : inferredPartTypes.length
+        ? { part_type: { $in: inferredPartTypes } }
+        : {}),
+  };
+
+  let matchMode = "exact";
+  const lessons = await LessonManager.find(baseQuery)
+    .select("title description part_type target_tags weight planned_completion_time recommended_activity_order rating student_count score_band")
+    .limit(filter.partType ? 80 : 160)
+    .lean();
+
+  if (!lessons.length && filter.topic && !filter.partType) {
+    return {
+      ok: false,
+      errorType: "NO_DATA",
+      outcome: "no_data",
+      fallback: `Mình chưa tìm thấy bài học phù hợp với chủ đề "${filter.topic}". Bạn có thể thử nêu rõ Part hoặc đổi sang chủ đề gần hơn.`,
+    };
+  }
+
+  const [userSkill, progress, latestTest] = await Promise.all([
+    UserSkill.findOne({ user_id: userObjectId }).sort({ updated_at: -1 }).lean(),
+    UserProgress.findOne({ user_id: userObjectId }).sort({ updated_at: -1 }).lean(),
+    UserTest.findOne({ user_id: userId }).sort({ submit_at: -1 }).lean(),
+  ]);
+  const ability = getLessonAbility({
+    userSkill,
+    progress,
+    latestTest,
+    partType: filter.partType,
+    skillKeys: filter.topicSkillKeys,
+  });
+  const normalizedTopic = normalizePlainText(filter.topic);
+
+  const scoredRecommendations = lessons
+    .map((lesson: any) => {
+      const target = lessonTargetInfo(lesson, filter.partType);
+      const tagHits = topicQuery.filter((tag) => target.searchable.includes(normalizePlainText(tag))).length;
+      const textHit = normalizedTopic && target.searchable.includes(normalizedTopic) ? 1 : 0;
+      const topicMatched = !filter.topic || tagHits > 0 || textHit > 0;
+      const partScore =
+        filter.partType && Number(lesson.part_type) === filter.partType
+          ? 1
+          : inferredPartTypes.includes(Number(lesson.part_type))
+            ? 0.6
+            : 0;
+      const fitDistance =
+        typeof ability === "number" && typeof lesson.weight === "number"
+          ? Math.abs(lesson.weight - ability)
+          : 0.5;
+      const fitScore = Number((1 - Math.min(1, fitDistance)).toFixed(3));
+      const score =
+        tagHits * 8 +
+        textHit * 4 +
+        partScore * 3 +
+        fitScore * 2 +
+        Math.min(Number(lesson.rating ?? 0), 5) * 0.1 +
+        Math.min(Number(lesson.student_count ?? 0), 100) * 0.005;
+      const activities = buildLessonActivities(lesson);
+      const reasonParts = [
+        filter.partType && Number(lesson.part_type) === filter.partType ? `khớp Part ${filter.partType}` : "",
+        filter.topic && topicMatched ? `khớp chủ đề ${filter.topic}` : "",
+        typeof ability === "number" ? "gần mức hiện tại của bạn" : "",
+      ].filter(Boolean);
+      return {
+        lessonManagerId: String(lesson._id),
+        title: String(lesson.title ?? "Bài học"),
+        part: Number(lesson.part_type) || undefined,
+        targetTags: target.rawTags,
+        estimatedMinutes: lesson.planned_completion_time,
+        fitScore,
+        reason: reasonParts.join(", "),
+        matchScore: score,
+        topicMatched,
+        activities,
+      };
+    })
+    .filter((item: any) => item.activities.length > 0)
+    .sort((a: any, b: any) =>
+      b.matchScore - a.matchScore ||
+      b.fitScore - a.fitScore ||
+      (a.estimatedMinutes ?? 999) - (b.estimatedMinutes ?? 999)
+    );
+
+  let selectedRecommendations = scoredRecommendations;
+  if (filter.topic) {
+    const exactRecommendations = scoredRecommendations.filter((item: any) => item.topicMatched);
+    if (exactRecommendations.length > 0) {
+      selectedRecommendations = exactRecommendations;
+    } else if (filter.partType) {
+      matchMode = "part_only_fallback";
+      selectedRecommendations = scoredRecommendations.map((item: any) => ({
+        ...item,
+        reason: [
+          item.reason,
+          "chưa có bài khớp cả Part và chủ đề nên gợi ý gần đúng",
+        ].filter(Boolean).join(", "),
+      }));
+    } else {
+      selectedRecommendations = [];
+    }
+  }
+
+  const recommendations = selectedRecommendations
+    .slice(0, filter.count)
+    .map(({ matchScore, topicMatched, ...item }: any) => item);
+
+  if (!recommendations.length) {
+    return {
+      ok: false,
+      errorType: "NO_DATA",
+      outcome: "no_data",
+      fallback: filter.topic
+        ? `Mình chưa tìm thấy bài học đúng với "${filter.topic}"${filter.partType ? ` trong Part ${filter.partType}` : ""}.`
+        : `Mình chưa tìm thấy bài học Part ${filter.partType} phù hợp.`,
+    };
+  }
+
+  return {
+    ok: true,
+    contextType: "lesson_recommendation",
+    data: {
+      title: "Bài học gợi ý",
+      subtitle: lessonRecommendationSubtitle(filter, matchMode),
+      sourceTags: Array.from(new Set([filter.topic, ...filter.topicLabels, ...filter.topicSkillKeys].filter(Boolean))),
+      request: {
+        partType: filter.partType,
+        topic: filter.topic,
+        count: filter.count,
+        matchMode,
+        personalized: typeof ability === "number",
+      },
+      recommendations,
+    },
   };
 }
 
@@ -1188,6 +1717,10 @@ export async function buildDbFirstContext(
     };
   }
   if (intent === "identify_question") return buildQuestionIdentificationContext(userId, userText, routeContext);
+  if (intent === "user_profile.identity") return buildUserProfileIdentityContext(userId);
+  if (intent === "lesson.recommendation") {
+    return buildLessonRecommendationContext(userId, userText, clientContext);
+  }
   if (intent === "question.similar_practice") {
     return buildSimilarPracticeContext(userId, routeContext, clientContext);
   }
@@ -1234,6 +1767,19 @@ export async function buildDbFirstContext(
     return {
       ok: true,
       contextType: "general_toeic_knowledge",
+      data: {
+        allowedScope:
+          "TOEIC exam knowledge, English for TOEIC, TOEIC study strategy, and guidance for this learning app.",
+        refusal:
+          "Mình chỉ hỗ trợ các câu hỏi liên quan TOEIC, tiếng Anh học TOEIC và việc học trong hệ thống này.",
+        routeContext,
+      },
+    };
+  }
+  if (intent === "out_of_project.general") {
+    return {
+      ok: true,
+      contextType: "out_of_project",
       data: {
         allowedScope:
           "TOEIC exam knowledge, English for TOEIC, TOEIC study strategy, and guidance for this learning app.",

@@ -47,8 +47,12 @@ async function createSafeRoutingFallbackMessage(params: {
     routing: Awaited<ReturnType<typeof routeChatMessage>>;
 }) {
     const text =
-        "MÃ¬nh chÆ°a xÃ¡c Ä‘á»‹nh Ä‘Æ°á»£c yÃªu cáº§u Ä‘á»§ rÃµ Ä‘á»ƒ xá»­ lÃ½ an toÃ n. Báº¡n cÃ³ thá»ƒ há»i cá»¥ thá»ƒ vá» cÃ¢u sai, bÃ i test, tiáº¿n Ä‘á»™ hoáº·c kiáº¿n thá»©c TOEIC.";
+        "Mình chưa xác định được yêu cầu đủ rõ để xử lý an toàn. Bạn có thể hỏi cụ thể về câu sai, bài test, tiến độ hoặc kiến thức TOEIC.";
     const finalText =
+        params.routing.decision.kind === "safe_fallback" &&
+        params.routing.decision.reason === "semantic_router_unavailable"
+            ? "Chatbot đang tạm thời gặp lỗi. Bạn vui lòng thử lại sau."
+            :
         params.routing.decision.kind === "safe_fallback" &&
         params.routing.decision.reason === "outside_toeic_scope"
             ? "Mình chỉ hỗ trợ các câu hỏi liên quan TOEIC, tiếng Anh học TOEIC và việc học trong hệ thống này."
@@ -163,7 +167,7 @@ export const processUserMessageController = async (req: Request, res: Response, 
         }
 
         if (!userId) {
-            return res.status(401).json(ApiResponse.fail("NgÆ°á»i dÃ¹ng chÆ°a Ä‘Äƒng nháº­p!"));
+            return res.status(401).json(ApiResponse.fail("Người dùng chưa đăng nhập!"));
         }
 
         const session = await ChatSession.findOne({
@@ -175,7 +179,7 @@ export const processUserMessageController = async (req: Request, res: Response, 
             ],
         });
         if (!session) {
-            return res.status(404).json(ApiResponse.fail("PhiÃªn chat khÃ´ng tá»“n táº¡i hoáº·c khÃ´ng thuá»™c vá» báº¡n."));
+            return res.status(404).json(ApiResponse.fail("Phiên chat không tồn tại hoặc không thuộc về bạn."));
         }
 
         const conversationState = await loadConversationState(sessionId);

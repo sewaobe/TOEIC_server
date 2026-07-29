@@ -165,9 +165,83 @@ function formatRoadmapStep(nextStep: any) {
   return `${label ? `${label}: ` : ""}${title}${part}${minutes}`;
 }
 
+function formatProfileDate(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toLocaleDateString("vi-VN") : "";
+}
+
+function buildUserProfileIdentityTemplate(context: any) {
+  const profile = context.data?.profile ?? {};
+  const name = profile.displayName || profile.username || profile.email || "tài khoản hiện tại";
+  const statusText =
+    profile.accountStatus === "active"
+      ? "đang hoạt động"
+      : profile.accountStatus === "locked"
+        ? "đang bị khóa hoặc chưa kích hoạt"
+        : "chưa xác định";
+  const joinedAt = formatProfileDate(profile.joinedAt);
+  const lastActiveAt = formatProfileDate(profile.lastActiveAt);
+  const lastStudyDate = formatProfileDate(profile.lastStudyDate);
+  const learningLines = [
+    Number.isFinite(Number(profile.streakDays)) ? `streak ${Number(profile.streakDays)} ngày` : "",
+    Number.isFinite(Number(profile.longestStreak)) ? `kỷ lục ${Number(profile.longestStreak)} ngày` : "",
+    Number.isFinite(Number(profile.targetScore)) ? `mục tiêu ${Number(profile.targetScore)} TOEIC` : "",
+    Number.isFinite(Number(profile.latestTestScore)) ? `điểm test gần nhất ${Number(profile.latestTestScore)}` : "",
+    lastStudyDate ? `ngày học gần nhất ${lastStudyDate}` : "",
+  ].filter(Boolean);
+
+  return [
+    `Mình đang thấy bạn là ${name}.`,
+    profile.username ? `- Username: ${profile.username}.` : "",
+    profile.email ? `- Email tài khoản: ${profile.email}.` : "",
+    `- Trạng thái tài khoản: ${statusText}.`,
+    joinedAt ? `- Ngày tham gia: ${joinedAt}.` : "",
+    lastActiveAt ? `- Hoạt động gần nhất: ${lastActiveAt}.` : "",
+    learningLines.length
+      ? `- Tóm tắt học tập: ${learningLines.join(", ")}.`
+      : "- Tóm tắt học tập: hiện chưa có dữ liệu học tập đáng tin cậy.",
+  ].filter(Boolean).join("\n");
+}
+
+function buildLessonRecommendationTemplate(context: any) {
+  const data = context.data ?? {};
+  const items = Array.isArray(data.recommendations) ? data.recommendations : [];
+  if (!items.length) {
+    return "Mình chưa tìm thấy bài học phù hợp với yêu cầu này.";
+  }
+  const subtitle = data.subtitle ? ` theo ${data.subtitle}` : "";
+  const matchMode = data.request?.matchMode;
+  const fallbackNote =
+    matchMode && matchMode !== "exact"
+      ? " Chưa có bài khớp cả Part và chủ đề, nên mình đang gợi ý phương án gần đúng nhất."
+      : "";
+  return [
+    `Mình tìm được ${items.length} bài học${subtitle}.${fallbackNote}`,
+    ...items.slice(0, 5).map((item: any, index: number) => {
+      const part = item.part ? `Part ${item.part}` : "";
+      const reason = item.reason ? ` - ${item.reason}` : "";
+      return `${index + 1}. ${item.title}${part ? ` (${part})` : ""}${reason}`;
+    }),
+  ].join("\n");
+}
+
 export function buildTemplateReply(intent: ChatIntent, context: any, options: TemplateOptions = {}) {
   if (intent === "smalltalk" || intent === "smalltalk.greeting_feedback") {
     return pickSmalltalkTemplate(options);
+  }
+
+  if (intent === "user_profile.identity") {
+    return buildUserProfileIdentityTemplate(context);
+  }
+
+  if (intent === "lesson.recommendation") {
+    return buildLessonRecommendationTemplate(context);
+  }
+
+  if (intent === "out_of_project.general") {
+    return context?.data?.refusal ??
+      "Mình chỉ hỗ trợ các câu hỏi liên quan TOEIC, tiếng Anh học TOEIC và việc học trong hệ thống này.";
   }
 
   if (
@@ -202,17 +276,17 @@ export function buildTemplateReply(intent: ChatIntent, context: any, options: Te
   if (intent === "flashcard.create") {
     const data = context.data;
     const sourceText = [
-      data.suppliedBy?.systemCatalog ? `${data.suppliedBy.systemCatalog} tu tu kho he thong` : "",
-      data.suppliedBy?.gemini ? `${data.suppliedBy.gemini} tu AI bo sung` : "",
+      data.suppliedBy?.systemCatalog ? `${data.suppliedBy.systemCatalog} từ từ kho hệ thống` : "",
+      data.suppliedBy?.gemini ? `${data.suppliedBy.gemini} từ AI bổ sung` : "",
     ].filter(Boolean).join(", ");
     const partial =
       data.policyReason === "STRICT_SOURCE_LIMIT" ||
       data.policyReason === "PARTIAL_DB_ONLY" ||
       data.policyReason === "PARTIAL_AFTER_GENERATION";
     return [
-      `Minh da tao bo flashcard "${data.title}" voi ${data.returnedCount}/${data.requestedCount} tu.`,
-      sourceText ? `Nguon: ${sourceText}.` : "",
-      partial ? "So luong thap hon yeu cau vi minh chi giu cac tu hop le." : "",
+      `Mình đã tạo bộ flashcard "${data.title}" với ${data.returnedCount}/${data.requestedCount} từ.`,
+      sourceText ? `Nguồn: ${sourceText}.` : "",
+      partial ? "Số lượng thấp hơn yêu cầu vì mình chỉ giữ các từ hợp lệ." : "",
     ].filter(Boolean).join("\n");
   }
 
